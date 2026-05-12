@@ -1,0 +1,25 @@
+#!/bin/sh
+# Dev launcher — invoca el bundle a través de Electron como host de Node (ELECTRON_RUN_AS_NODE).
+# Path resolution (DEV ONLY):
+#   $DIR     = packages/proxy/bin/
+#   ELECTRON = ../../../node_modules/electron/dist/Electron.app/Contents/MacOS/Electron
+#   BUNDLE   = ../dist/xcg-proxy.cjs
+# Fase 7 generaliza este launcher para la versión empaquetada en .app/Contents/Resources/.
+
+set -e
+
+DIR="$(cd "$(dirname "$0")" && pwd)"
+ELECTRON_BIN="$DIR/../../../node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
+BUNDLE="$DIR/../dist/xcg-proxy.cjs"
+
+if [ ! -x "$ELECTRON_BIN" ]; then
+  echo "xcg-proxy: Electron binary not found at $ELECTRON_BIN" >&2
+  exit 1
+fi
+
+if [ ! -f "$BUNDLE" ]; then
+  echo "xcg-proxy: bundle not found at $BUNDLE — run 'pnpm --filter @xcg/proxy build'" >&2
+  exit 1
+fi
+
+ELECTRON_RUN_AS_NODE=1 exec "$ELECTRON_BIN" "$BUNDLE" "$@"

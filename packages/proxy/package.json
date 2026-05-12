@@ -2,5 +2,16 @@
   "name": "@xcg/proxy",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "bin": {
+    "xcg-proxy": "./bin/xcg-proxy"
+  },
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/xcg-proxy.cjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.12.0",
+    "esbuild": "^0.24.0"
+  }
 }
