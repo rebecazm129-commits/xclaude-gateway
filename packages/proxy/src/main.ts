@@ -12,6 +12,7 @@ import { JsonlWriter } from './audit.js';
 import { EventSink, type Direction, type EventBody } from './events.js';
 import { InflightTracker } from './latency.js';
 import { classify, type ClassifiedFrame } from './parser.js';
+import { createGracefulShutdown, type ChildExitInfo } from './shutdown.js';
 import { SocketWriter } from './socket.js';
 import { resolveSocketPath } from './socket-path.js';
 import { LineSplitter } from './splitter.js';
@@ -58,21 +59,6 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
   if (wrap === undefined) die('--wrap is required');
   if (name === undefined) die('--name is required');
   return { wrap, name, childArgs: argv.slice(i) };
-}
-
-function signalToNumber(signal: NodeJS.Signals): number {
-  switch (signal) {
-    case 'SIGTERM':
-      return 15;
-    case 'SIGKILL':
-      return 9;
-    case 'SIGINT':
-      return 2;
-    case 'SIGHUP':
-      return 1;
-    default:
-      return 0;
-  }
 }
 
 function elapsedUs(startNs: bigint): number {
@@ -273,14 +259,52 @@ function main(): void {
     }
   });
 
-  let shutdownReason: 'child_exited' | 'parent_closed_stdin' | 'signal_received' =
-    'child_exited';
+  // Estado del child consumido por el adapter de ShutdownDeps. childExitInfo
+  // se actualiza una sola vez desde el listener child.on('exit'); childAlive
+  // pasa a false en ese mismo punto. childExitPromise se resuelve cuando el
+  // child muere y es la misma Promise que se devuelve en cada waitForExit().
+  let childAlive = true;
+  let childExitInfo: ChildExitInfo = { code: null, signal: null };
+  let resolveChildExit!: () => void;
+  const childExitPromise = new Promise<void>((resolve) => {
+    resolveChildExit = resolve;
+  });
 
-  process.stdin.on('end', () => {
-    shutdownReason = 'parent_closed_stdin';
+  const gracefulShutdown = createGracefulShutdown({
+    child: {
+      stdinEnd: () => {
+        childStdin.end();
+      },
+      kill: (signal) => {
+        child.kill(signal);
+      },
+      isAlive: () => childAlive,
+      waitForExit: () => childExitPromise,
+      exitInfo: () => childExitInfo,
+    },
+    socket: {
+      isAlive: () => socketWriter.isAlive(),
+      end: () => socketWriter.end(),
+      destroy: () => socketWriter.destroy(),
+    },
+    jsonl: {
+      fsync: () => writer.fsync(),
+      close: () => writer.close(),
+    },
+    emitShutdown: (reason, exitCode) => {
+      sink.emit({ type: 'proxy.shutdown', reason, exitCode });
+    },
+    exit: (code) => process.exit(code),
+    delay: (ms) => new Promise((r) => setTimeout(r, ms)),
+    stderr: (msg) => {
+      process.stderr.write(msg);
+    },
   });
 
   child.on('exit', (code, signal) => {
+    childAlive = false;
+    childExitInfo = { code, signal };
+    resolveChildExit();
     sink.emit({
       type: 'proxy.child_exited',
       code,
@@ -292,13 +316,18 @@ function main(): void {
       framesInIncomplete: stdinSplitter.incompleteBytes(),
       framesOutIncomplete: stdoutSplitter.incompleteBytes(),
     });
-    sink.emit({ type: 'proxy.shutdown', reason: shutdownReason });
-    sink.close();
+    void gracefulShutdown('child_exited');
+  });
 
-    if (signal !== null) {
-      process.exit(128 + signalToNumber(signal));
-    }
-    process.exit(code ?? 0);
+  process.stdin.on('end', () => {
+    void gracefulShutdown('parent_closed_stdin');
+  });
+
+  process.on('SIGINT', () => {
+    void gracefulShutdown('signal_received');
+  });
+  process.on('SIGTERM', () => {
+    void gracefulShutdown('signal_received');
   });
 }
 

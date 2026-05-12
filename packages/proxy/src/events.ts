@@ -47,6 +47,7 @@ export type EventBody =
   | {
       type: 'proxy.shutdown';
       reason: 'child_exited' | 'parent_closed_stdin' | 'signal_received';
+      exitCode: number;
     }
   | {
       type: 'proxy.socket_dropped';
