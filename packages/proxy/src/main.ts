@@ -1,7 +1,10 @@
 // Invariante MCP: el wrapper nunca escribe a stdout (reservado a frames JSON-RPC del MCP envuelto).
-// Toda salida del wrapper va a stderr.
+// Toda salida del wrapper (lifecycle events + errores) va a stderr.
 
 import { spawn } from 'node:child_process';
+
+import { EventSink } from './events.js';
+import { LineSplitter } from './splitter.js';
 
 interface ParsedArgs {
   wrap: string;
@@ -64,9 +67,15 @@ function signalToNumber(signal: NodeJS.Signals): number {
 
 function main(): void {
   const { wrap, name, childArgs } = parseArgs(process.argv.slice(2));
-  // `name` se valida desde Fase 1 para fijar el contrato del launcher; su uso activo
-  // (etiquetado de eventos) empieza en Fase 3.
-  void name;
+  const sink = new EventSink(name);
+  const startMs = Date.now();
+
+  sink.emit({
+    type: 'proxy.started',
+    pid: process.pid,
+    wrap,
+    wrappedArgs: childArgs,
+  });
 
   const child = spawn(wrap, childArgs, {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -74,26 +83,68 @@ function main(): void {
   });
 
   child.on('error', (err) => {
-    process.stderr.write(`xcg-proxy: failed to spawn '${wrap}': ${err.message}\n`);
+    sink.emit({ type: 'proxy.error', kind: 'spawn_failed', message: err.message });
     process.exit(127);
+  });
+
+  child.on('spawn', () => {
+    // child.pid is guaranteed defined once the 'spawn' event has fired.
+    const childPid = child.pid ?? 0;
+    sink.emit({ type: 'proxy.child_spawned', childPid });
   });
 
   const childStdin = child.stdin;
   const childStdout = child.stdout;
   const childStderr = child.stderr;
   if (childStdin === null || childStdout === null || childStderr === null) {
-    process.stderr.write('xcg-proxy: child pipes unavailable — internal error\n');
+    sink.emit({
+      type: 'proxy.error',
+      kind: 'unexpected',
+      message: 'child pipes unavailable',
+    });
     process.exit(1);
   }
 
-  // Pass-through transparente. Sin parseo, sin observación — Fase 1.
-  // `{ end: false }` en los pipes child→parent evita intentar cerrar process.stdout/stderr
-  // (son streams del propio proceso y no se cierran como pipes normales).
+  // Pass-through PRIMERO (registra el listener interno de pipe que escribe al destino).
   process.stdin.pipe(childStdin);
   childStdout.pipe(process.stdout, { end: false });
   childStderr.pipe(process.stderr, { end: false });
 
+  // Observación DESPUÉS. EventEmitter llama listeners en orden de registro:
+  // el pipe escribe a destino primero, nuestro contador toca el chunk después.
+  const stdinSplitter = new LineSplitter();
+  const stdoutSplitter = new LineSplitter();
+  let framesIn = 0;
+  let framesOut = 0;
+
+  process.stdin.on('data', (chunk: Buffer) => {
+    framesIn += stdinSplitter.feed(chunk).length;
+  });
+
+  childStdout.on('data', (chunk: Buffer) => {
+    framesOut += stdoutSplitter.feed(chunk).length;
+  });
+
+  let shutdownReason: 'child_exited' | 'parent_closed_stdin' | 'signal_received' =
+    'child_exited';
+
+  process.stdin.on('end', () => {
+    shutdownReason = 'parent_closed_stdin';
+  });
+
   child.on('exit', (code, signal) => {
+    sink.emit({
+      type: 'proxy.child_exited',
+      code,
+      signal,
+      runtimeMs: Date.now() - startMs,
+      framesIn,
+      framesOut,
+      framesInIncomplete: stdinSplitter.incompleteBytes(),
+      framesOutIncomplete: stdoutSplitter.incompleteBytes(),
+    });
+    sink.emit({ type: 'proxy.shutdown', reason: shutdownReason });
+
     if (signal !== null) {
       process.exit(128 + signalToNumber(signal));
     }
