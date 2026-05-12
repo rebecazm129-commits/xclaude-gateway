@@ -1,9 +1,16 @@
 // Invariante MCP: el wrapper nunca escribe a stdout (reservado a frames JSON-RPC del MCP envuelto).
-// Toda salida del wrapper (lifecycle events + errores) va a stderr.
+// La única salida del wrapper a stderr es: la bootstrap line al arrancar y errores fatales pre-sink.
+// Los eventos canónicos del wrapper van al JSONL per-sesión vía EventSink.
 
 import { spawn } from 'node:child_process';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
-import { EventSink } from './events.js';
+import { ulid } from 'ulid';
+
+import { JsonlWriter } from './audit.js';
+import { EventSink, type Direction, type EventBody } from './events.js';
+import { classify, type ClassifiedFrame } from './parser.js';
 import { LineSplitter } from './splitter.js';
 
 interface ParsedArgs {
@@ -65,9 +72,69 @@ function signalToNumber(signal: NodeJS.Signals): number {
   }
 }
 
+function buildFrameEvent(
+  frame: ClassifiedFrame,
+  direction: Direction,
+  bytes: number,
+  line: string,
+): EventBody {
+  switch (frame.kind) {
+    case 'request':
+      return {
+        type: 'mcp.request',
+        direction,
+        rpcId: frame.id,
+        method: frame.method,
+        params: frame.params,
+        bytes,
+      };
+    case 'response':
+      return {
+        type: 'mcp.response',
+        direction,
+        rpcId: frame.id,
+        bytes,
+        ...('result' in frame ? { result: frame.result } : {}),
+        ...('error' in frame ? { error: frame.error } : {}),
+      };
+    case 'notification':
+      return {
+        type: 'mcp.notification',
+        direction,
+        method: frame.method,
+        params: frame.params,
+        bytes,
+      };
+    case 'parse_error':
+      return {
+        type: 'proxy.error',
+        kind: 'parse_error',
+        message: `MCP frame parse error: ${frame.reason}`,
+        reason: frame.reason,
+        frameSnippet: line.length > 256 ? line.slice(0, 256) : line,
+      };
+  }
+}
+
 function main(): void {
   const { wrap, name, childArgs } = parseArgs(process.argv.slice(2));
-  const sink = new EventSink(name);
+
+  const session = ulid();
+  const baseDir = join(homedir(), 'Library', 'Application Support', 'xCLAUDE Gateway');
+  const auditFile = join(baseDir, 'wrappers', `${session}.jsonl`);
+
+  let writer: JsonlWriter;
+  try {
+    writer = new JsonlWriter(auditFile);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`xcg-proxy: cannot open audit file ${auditFile}: ${msg}\n`);
+    process.exit(1);
+  }
+
+  process.stderr.write(`xcg-proxy: session ${session} auditing to ${auditFile}\n`);
+
+  const sink = new EventSink(name, [writer], session);
   const startMs = Date.now();
 
   sink.emit({
@@ -84,11 +151,11 @@ function main(): void {
 
   child.on('error', (err) => {
     sink.emit({ type: 'proxy.error', kind: 'spawn_failed', message: err.message });
+    sink.close();
     process.exit(127);
   });
 
   child.on('spawn', () => {
-    // child.pid is guaranteed defined once the 'spawn' event has fired.
     const childPid = child.pid ?? 0;
     sink.emit({ type: 'proxy.child_spawned', childPid });
   });
@@ -102,27 +169,36 @@ function main(): void {
       kind: 'unexpected',
       message: 'child pipes unavailable',
     });
+    sink.close();
     process.exit(1);
   }
 
-  // Pass-through PRIMERO (registra el listener interno de pipe que escribe al destino).
+  // Forwarding PRIMERO. Observación + clasificación DESPUÉS.
   process.stdin.pipe(childStdin);
   childStdout.pipe(process.stdout, { end: false });
   childStderr.pipe(process.stderr, { end: false });
 
-  // Observación DESPUÉS. EventEmitter llama listeners en orden de registro:
-  // el pipe escribe a destino primero, nuestro contador toca el chunk después.
   const stdinSplitter = new LineSplitter();
   const stdoutSplitter = new LineSplitter();
   let framesIn = 0;
   let framesOut = 0;
 
   process.stdin.on('data', (chunk: Buffer) => {
-    framesIn += stdinSplitter.feed(chunk).length;
+    const lines = stdinSplitter.feed(chunk);
+    framesIn += lines.length;
+    for (const line of lines) {
+      const bytes = Buffer.byteLength(line, 'utf8') + 1; // +1 por el \n consumido por el splitter
+      sink.emit(buildFrameEvent(classify(line), 'client_to_server', bytes, line));
+    }
   });
 
   childStdout.on('data', (chunk: Buffer) => {
-    framesOut += stdoutSplitter.feed(chunk).length;
+    const lines = stdoutSplitter.feed(chunk);
+    framesOut += lines.length;
+    for (const line of lines) {
+      const bytes = Buffer.byteLength(line, 'utf8') + 1;
+      sink.emit(buildFrameEvent(classify(line), 'server_to_client', bytes, line));
+    }
   });
 
   let shutdownReason: 'child_exited' | 'parent_closed_stdin' | 'signal_received' =
@@ -144,6 +220,7 @@ function main(): void {
       framesOutIncomplete: stdoutSplitter.incompleteBytes(),
     });
     sink.emit({ type: 'proxy.shutdown', reason: shutdownReason });
+    sink.close();
 
     if (signal !== null) {
       process.exit(128 + signalToNumber(signal));
