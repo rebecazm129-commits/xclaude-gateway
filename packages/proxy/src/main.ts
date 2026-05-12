@@ -10,6 +10,7 @@ import { ulid } from 'ulid';
 
 import { JsonlWriter } from './audit.js';
 import { EventSink, type Direction, type EventBody } from './events.js';
+import { InflightTracker } from './latency.js';
 import { classify, type ClassifiedFrame } from './parser.js';
 import { SocketWriter } from './socket.js';
 import { resolveSocketPath } from './socket-path.js';
@@ -74,14 +75,22 @@ function signalToNumber(signal: NodeJS.Signals): number {
   }
 }
 
+function elapsedUs(startNs: bigint): number {
+  return Number((process.hrtime.bigint() - startNs) / 1000n);
+}
+
 function buildFrameEvent(
   frame: ClassifiedFrame,
   direction: Direction,
   bytes: number,
   line: string,
+  tsObservedNs: bigint,
+  tsWallMs: number,
+  tracker: InflightTracker,
 ): EventBody {
   switch (frame.kind) {
-    case 'request':
+    case 'request': {
+      tracker.trackRequest(direction, frame.id, tsWallMs);
       return {
         type: 'mcp.request',
         direction,
@@ -89,16 +98,22 @@ function buildFrameEvent(
         method: frame.method,
         params: frame.params,
         bytes,
+        overheadUs: elapsedUs(tsObservedNs),
       };
-    case 'response':
+    }
+    case 'response': {
+      const latencyMs = tracker.matchResponse(direction, frame.id, tsWallMs);
       return {
         type: 'mcp.response',
         direction,
         rpcId: frame.id,
         bytes,
+        overheadUs: elapsedUs(tsObservedNs),
         ...('result' in frame ? { result: frame.result } : {}),
         ...('error' in frame ? { error: frame.error } : {}),
+        ...(latencyMs !== undefined ? { latencyMs } : {}),
       };
+    }
     case 'notification':
       return {
         type: 'mcp.notification',
@@ -106,6 +121,7 @@ function buildFrameEvent(
         method: frame.method,
         params: frame.params,
         bytes,
+        overheadUs: elapsedUs(tsObservedNs),
       };
     case 'parse_error':
       return {
@@ -187,30 +203,73 @@ function main(): void {
   }
 
   // Forwarding PRIMERO. Observación + clasificación DESPUÉS.
+  // stderr del child se CAPTURA (no se forwardea): una sola fuente de verdad
+  // para los logs del MCP es el JSONL + mirror del stub.
   process.stdin.pipe(childStdin);
   childStdout.pipe(process.stdout, { end: false });
-  childStderr.pipe(process.stderr, { end: false });
 
   const stdinSplitter = new LineSplitter();
   const stdoutSplitter = new LineSplitter();
+  const stderrSplitter = new LineSplitter();
+  const tracker = new InflightTracker();
   let framesIn = 0;
   let framesOut = 0;
+  let framesStderr = 0;
 
   process.stdin.on('data', (chunk: Buffer) => {
+    const tsObservedNs = process.hrtime.bigint();
+    const tsWallMs = Date.now();
     const lines = stdinSplitter.feed(chunk);
     framesIn += lines.length;
     for (const line of lines) {
       const bytes = Buffer.byteLength(line, 'utf8') + 1; // +1 por el \n consumido por el splitter
-      sink.emit(buildFrameEvent(classify(line), 'client_to_server', bytes, line));
+      sink.emit(
+        buildFrameEvent(
+          classify(line),
+          'client_to_server',
+          bytes,
+          line,
+          tsObservedNs,
+          tsWallMs,
+          tracker,
+        ),
+      );
     }
   });
 
   childStdout.on('data', (chunk: Buffer) => {
+    const tsObservedNs = process.hrtime.bigint();
+    const tsWallMs = Date.now();
     const lines = stdoutSplitter.feed(chunk);
     framesOut += lines.length;
     for (const line of lines) {
       const bytes = Buffer.byteLength(line, 'utf8') + 1;
-      sink.emit(buildFrameEvent(classify(line), 'server_to_client', bytes, line));
+      sink.emit(
+        buildFrameEvent(
+          classify(line),
+          'server_to_client',
+          bytes,
+          line,
+          tsObservedNs,
+          tsWallMs,
+          tracker,
+        ),
+      );
+    }
+  });
+
+  childStderr.on('data', (chunk: Buffer) => {
+    const tsObservedNs = process.hrtime.bigint();
+    const lines = stderrSplitter.feed(chunk);
+    framesStderr += lines.length;
+    for (const line of lines) {
+      const bytes = Buffer.byteLength(line, 'utf8') + 1;
+      sink.emit({
+        type: 'mcp.stderr',
+        text: line,
+        bytes,
+        overheadUs: elapsedUs(tsObservedNs),
+      });
     }
   });
 
@@ -229,6 +288,7 @@ function main(): void {
       runtimeMs: Date.now() - startMs,
       framesIn,
       framesOut,
+      framesStderr,
       framesInIncomplete: stdinSplitter.incompleteBytes(),
       framesOutIncomplete: stdoutSplitter.incompleteBytes(),
     });

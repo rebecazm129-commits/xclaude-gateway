@@ -159,6 +159,7 @@ describe('EventSink — truncation of mcp.* payloads', () => {
       method: 'tools/call',
       params: { content: huge },
       bytes: 80000,
+      overheadUs: 0,
     });
     const e = w.envelopes[0]! as Envelope & {
       params: { content: string };
@@ -180,6 +181,7 @@ describe('EventSink — truncation of mcp.* payloads', () => {
       rpcId: 1,
       result: { content: huge },
       bytes: 80000,
+      overheadUs: 0,
     });
     const e = w.envelopes[0]! as Envelope & {
       result: { content: string };
@@ -198,6 +200,7 @@ describe('EventSink — truncation of mcp.* payloads', () => {
       method: 'notifications/initialized',
       params: { ok: true },
       bytes: 100,
+      overheadUs: 0,
     });
     const e = w.envelopes[0]!;
     expect((e as { truncated?: true }).truncated).toBeUndefined();
@@ -234,5 +237,66 @@ describe('EventSink — truncation of mcp.* payloads', () => {
     const e = w.envelopes[0]! as Envelope & { truncated?: true; message: string };
     expect(e.truncated).toBeUndefined();
     expect(e.message).toBe(huge);
+  });
+
+  it('truncates mcp.stderr text when it exceeds 64 KB', () => {
+    const w = new CaptureWriter();
+    const sink = new EventSink('x', [w]);
+    const huge = 'x'.repeat(70 * 1024);
+    sink.emit({
+      type: 'mcp.stderr',
+      text: huge,
+      bytes: 70 * 1024,
+      overheadUs: 0,
+    });
+    const e = w.envelopes[0]! as Envelope & { text: string; truncated?: true };
+    expect(e.truncated).toBe(true);
+    expect(e.text).toMatch(/^\[truncated \d+ bytes\]$/);
+  });
+
+  it('mcp.stderr with short text is not truncated', () => {
+    const w = new CaptureWriter();
+    const sink = new EventSink('x', [w]);
+    sink.emit({
+      type: 'mcp.stderr',
+      text: 'hola desde el child',
+      bytes: 19,
+      overheadUs: 0,
+    });
+    const e = w.envelopes[0]! as Envelope & { text: string; truncated?: true };
+    expect(e.truncated).toBeUndefined();
+    expect(e.text).toBe('hola desde el child');
+  });
+});
+
+describe('EventSink — mcp.response latencyMs', () => {
+  it('preserves latencyMs in envelope when provided, omits the key when undefined', () => {
+    const w = new CaptureWriter();
+    const sink = new EventSink('x', [w]);
+
+    sink.emit({
+      type: 'mcp.response',
+      direction: 'server_to_client',
+      rpcId: 1,
+      result: { ok: true },
+      bytes: 50,
+      overheadUs: 0,
+      latencyMs: 42,
+    });
+    sink.emit({
+      type: 'mcp.response',
+      direction: 'server_to_client',
+      rpcId: 2,
+      result: { ok: true },
+      bytes: 50,
+      overheadUs: 0,
+      // latencyMs ausente: response huérfano (sin request matchado)
+    });
+
+    const withLatency = w.envelopes[0]! as Envelope & { latencyMs?: number };
+    const orphan = w.envelopes[1]! as Envelope & { latencyMs?: number };
+
+    expect(withLatency.latencyMs).toBe(42);
+    expect('latencyMs' in orphan).toBe(false);
   });
 });

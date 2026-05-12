@@ -40,6 +40,7 @@ export type EventBody =
       runtimeMs: number;
       framesIn: number;
       framesOut: number;
+      framesStderr: number;
       framesInIncomplete: number;
       framesOutIncomplete: number;
     }
@@ -60,6 +61,7 @@ export type EventBody =
       params: unknown;
       truncated?: true;
       bytes: number;
+      overheadUs: number;
     }
   | {
       type: 'mcp.response';
@@ -69,6 +71,8 @@ export type EventBody =
       error?: unknown;
       truncated?: true;
       bytes: number;
+      overheadUs: number;
+      latencyMs?: number;
     }
   | {
       type: 'mcp.notification';
@@ -77,6 +81,14 @@ export type EventBody =
       params: unknown;
       truncated?: true;
       bytes: number;
+      overheadUs: number;
+    }
+  | {
+      type: 'mcp.stderr';
+      text: string;
+      bytes: number;
+      truncated?: true;
+      overheadUs: number;
     };
 
 /**
@@ -122,6 +134,13 @@ function applyTruncation(event: EventBody): EventBody {
     const r = truncate(event.params);
     if (r.truncated) {
       return { ...event, params: r.value, truncated: true };
+    }
+    return event;
+  }
+  if (event.type === 'mcp.stderr') {
+    const r = truncate(event.text);
+    if (r.truncated) {
+      return { ...event, text: r.value as string, truncated: true };
     }
     return event;
   }
