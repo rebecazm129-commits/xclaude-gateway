@@ -1,0 +1,17 @@
+node_modules/
+dist/
+out/
+build/
+release/
+*.tsbuildinfo
+*.dmg
+*.zip
+.DS_Store
+.vscode/
+.idea/
+*.log
+.env
+.env.local
+.env.*.local
+coverage/
+.claude/settings.local.json

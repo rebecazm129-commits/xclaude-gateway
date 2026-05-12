@@ -1,0 +1,10 @@
+{
+  "name": "@xcg/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "electron": "^42.0.0",
+    "electron-vite": "^5.0.0"
+  }
+}
