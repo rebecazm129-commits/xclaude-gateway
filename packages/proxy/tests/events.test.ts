@@ -131,6 +131,20 @@ describe('EventSink — envelope shape', () => {
     sink.emit({ type: 'proxy.child_spawned', childPid: 2 });
     expect(w.envelopes[0]!.id).not.toBe(w.envelopes[1]!.id);
   });
+
+  it('proxy.socket_dropped preserves reason and message in envelope', () => {
+    const w = new CaptureWriter();
+    const sink = new EventSink('x', [w]);
+    sink.emit({
+      type: 'proxy.socket_dropped',
+      reason: 'connect_failed',
+      message: 'ENOENT',
+    });
+    const e = w.envelopes[0]! as Envelope & { reason: string; message: string };
+    expect(e.type).toBe('proxy.socket_dropped');
+    expect(e.reason).toBe('connect_failed');
+    expect(e.message).toBe('ENOENT');
+  });
 });
 
 describe('EventSink — truncation of mcp.* payloads', () => {
@@ -206,5 +220,19 @@ describe('EventSink — truncation of mcp.* payloads', () => {
     };
     expect(e.truncated).toBeUndefined();
     expect(e.wrappedArgs[0]).toBe(longArg);
+  });
+
+  it('proxy.socket_dropped is NOT subjected to truncation even with huge message', () => {
+    const w = new CaptureWriter();
+    const sink = new EventSink('x', [w]);
+    const huge = 'x'.repeat(70 * 1024);
+    sink.emit({
+      type: 'proxy.socket_dropped',
+      reason: 'write_failed',
+      message: huge,
+    });
+    const e = w.envelopes[0]! as Envelope & { truncated?: true; message: string };
+    expect(e.truncated).toBeUndefined();
+    expect(e.message).toBe(huge);
   });
 });

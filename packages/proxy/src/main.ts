@@ -11,6 +11,8 @@ import { ulid } from 'ulid';
 import { JsonlWriter } from './audit.js';
 import { EventSink, type Direction, type EventBody } from './events.js';
 import { classify, type ClassifiedFrame } from './parser.js';
+import { SocketWriter } from './socket.js';
+import { resolveSocketPath } from './socket-path.js';
 import { LineSplitter } from './splitter.js';
 
 interface ParsedArgs {
@@ -134,7 +136,18 @@ function main(): void {
 
   process.stderr.write(`xcg-proxy: session ${session} auditing to ${auditFile}\n`);
 
-  const sink = new EventSink(name, [writer], session);
+  // Closure tardío: el callback se invoca solo desde listeners async del socket
+  // ('error', 'close'), nunca síncrono desde el constructor de SocketWriter, así
+  // que `sink` está siempre asignado cuando se ejecuta.
+  let sink!: EventSink;
+  const socketPath = resolveSocketPath();
+  const socketWriter = new SocketWriter(socketPath, (reason, message) => {
+    sink.emit({ type: 'proxy.socket_dropped', reason, message });
+  });
+  sink = new EventSink(name, [writer, socketWriter], session);
+
+  process.stderr.write(`xcg-proxy: socket mirror at ${socketPath}\n`);
+
   const startMs = Date.now();
 
   sink.emit({

@@ -7,6 +7,7 @@ import { monotonicFactory, ulid } from 'ulid';
 
 import type { Envelope, Writer } from './audit.js';
 import type { ParseErrorReason, RpcId } from './parser.js';
+import type { SocketDropReason } from './socket.js';
 
 const MAX_LEAF_BYTES = 64 * 1024;
 
@@ -45,6 +46,11 @@ export type EventBody =
   | {
       type: 'proxy.shutdown';
       reason: 'child_exited' | 'parent_closed_stdin' | 'signal_received';
+    }
+  | {
+      type: 'proxy.socket_dropped';
+      reason: SocketDropReason;
+      message: string;
     }
   | {
       type: 'mcp.request';
