@@ -1,0 +1,16 @@
+appId: ai.xclaude.gateway
+productName: xCLAUDE Gateway
+files:
+  - out/
+  - package.json
+extraResources:
+  - from: ../../packages/proxy/bin
+    to: proxy/bin
+  - from: ../../packages/proxy/dist
+    to: proxy/dist
+    filter:
+      - xcg-proxy.cjs
+mac:
+  category: public.app-category.developer-tools  # revisar a 'productivity'
+                                                  # cuando Hito 5 (onboarding
+                                                  # consumer) cambie el target

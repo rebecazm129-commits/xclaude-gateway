@@ -1,15 +1,27 @@
 #!/bin/sh
-# Dev launcher — invoca el bundle a través de Electron como host de Node (ELECTRON_RUN_AS_NODE).
-# Path resolution (DEV ONLY):
-#   $DIR     = packages/proxy/bin/
-#   ELECTRON = ../../../node_modules/electron/dist/Electron.app/Contents/MacOS/Electron
-#   BUNDLE   = ../dist/xcg-proxy.cjs
-# Fase 7 generaliza este launcher para la versión empaquetada en .app/Contents/Resources/.
+# Launcher xcg-proxy — host de Node vía Electron (ELECTRON_RUN_AS_NODE).
+# Resuelve el binario de Electron según ubicación del propio script:
+#   - Empaquetado (Fase 7): $DIR termina en .app/Contents/Resources/proxy/bin
+#       → usa el Electron del .app en Contents/MacOS/xCLAUDE Gateway
+#   - Desarrollo: $DIR es packages/proxy/bin/ en el repo
+#       → usa node_modules/electron/dist/Electron.app/...
+# El bundle (xcg-proxy.cjs) está siempre en $DIR/../dist/ en ambos modos
+# porque extraResources preserva la estructura packages/proxy/{bin,dist}.
 
 set -e
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-ELECTRON_BIN="$DIR/../../../node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
+
+case "$DIR" in
+  *".app/Contents/Resources/proxy/bin")
+    APP_ROOT="${DIR%/Contents/Resources/proxy/bin}"
+    ELECTRON_BIN="$APP_ROOT/Contents/MacOS/xCLAUDE Gateway"
+    ;;
+  *)
+    ELECTRON_BIN="$DIR/../../../node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
+    ;;
+esac
+
 BUNDLE="$DIR/../dist/xcg-proxy.cjs"
 
 if [ ! -x "$ELECTRON_BIN" ]; then
