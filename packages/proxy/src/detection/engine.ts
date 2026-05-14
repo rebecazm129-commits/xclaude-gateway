@@ -2,13 +2,35 @@
 // tool_call_allowed when none fire. No real detectors live here; those land
 // in Phases 1 (wrapper integration) and 3 (regex detectors).
 
-import type { Detector, DetectorInput, DetectorOutput } from './types.js';
+import type {
+  Detector,
+  DetectorInput,
+  DetectorOutput,
+  McpRequestEnvelope,
+} from './types.js';
 
 function baselineToolCallAllowed(): DetectorOutput {
   return {
     category: 'tool_call_allowed',
     severity: 'low',
     findings: [],
+  };
+}
+
+function extractToolName(envelope: McpRequestEnvelope): string | undefined {
+  if (envelope.method !== 'tools/call') return undefined;
+  const payload = envelope.payload;
+  if (typeof payload !== 'object' || payload === null) return undefined;
+  const name = (payload as Record<string, unknown>)['name'];
+  return typeof name === 'string' ? name : undefined;
+}
+
+function buildDetectorInput(envelope: McpRequestEnvelope): DetectorInput {
+  const paramsJson = envelope.payload === undefined ? '' : JSON.stringify(envelope.payload);
+  return {
+    envelope,
+    paramsJson,
+    toolName: extractToolName(envelope),
   };
 }
 
@@ -36,7 +58,7 @@ export function emitDetections(
 export class DetectionEngine {
   constructor(private readonly detectors: readonly Detector[]) {}
 
-  detect(input: DetectorInput): DetectorOutput[] {
-    return emitDetections(input, this.detectors);
+  detect(envelope: McpRequestEnvelope): DetectorOutput[] {
+    return emitDetections(buildDetectorInput(envelope), this.detectors);
   }
 }

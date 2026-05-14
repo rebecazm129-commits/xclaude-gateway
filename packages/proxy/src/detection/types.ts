@@ -24,12 +24,18 @@ export interface DetectorOutput {
   findings: DetectionFinding[];
 }
 
-export interface DetectorInput {
+export interface McpRequestEnvelope {
   payload: unknown;
   mcp: string;
   method: string | null;
   direction: Direction;
   sessionId: string;
+}
+
+export interface DetectorInput {
+  envelope: McpRequestEnvelope;
+  paramsJson: string;
+  toolName: string | undefined;
 }
 
 export type Detector = (input: DetectorInput) => DetectorOutput | null;

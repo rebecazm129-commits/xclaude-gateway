@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { DetectionEngine } from '../src/detection/engine.js';
-import type { Detector, DetectorInput } from '../src/detection/types.js';
+import type { Detector, McpRequestEnvelope } from '../src/detection/types.js';
 
-const INPUT: DetectorInput = {
+const INPUT: McpRequestEnvelope = {
   payload: { hello: 'world' },
   mcp: 'test-mcp',
   method: 'tools/call',
