@@ -9,13 +9,16 @@ import { join } from 'node:path';
 import { ulid } from 'ulid';
 
 import { JsonlWriter } from './audit.js';
-import { EventSink, type Direction, type EventBody } from './events.js';
+import { DetectionEngine } from './detection/engine.js';
+import { EventSink } from './events.js';
+import { createFrameProcessor } from './frame-processor.js';
 import { InflightTracker } from './latency.js';
-import { classify, type ClassifiedFrame } from './parser.js';
+import { classify } from './parser.js';
 import { createGracefulShutdown, type ChildExitInfo } from './shutdown.js';
 import { SocketWriter } from './socket.js';
 import { resolveSocketPath } from './socket-path.js';
 import { LineSplitter } from './splitter.js';
+import { elapsedUs } from './timing.js';
 
 interface ParsedArgs {
   wrap: string;
@@ -59,65 +62,6 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
   if (wrap === undefined) die('--wrap is required');
   if (name === undefined) die('--name is required');
   return { wrap, name, childArgs: argv.slice(i) };
-}
-
-function elapsedUs(startNs: bigint): number {
-  return Number((process.hrtime.bigint() - startNs) / 1000n);
-}
-
-function buildFrameEvent(
-  frame: ClassifiedFrame,
-  direction: Direction,
-  bytes: number,
-  line: string,
-  tsObservedNs: bigint,
-  tsWallMs: number,
-  tracker: InflightTracker,
-): EventBody {
-  switch (frame.kind) {
-    case 'request': {
-      tracker.trackRequest(direction, frame.id, tsWallMs);
-      return {
-        type: 'mcp.request',
-        direction,
-        rpcId: frame.id,
-        method: frame.method,
-        params: frame.params,
-        bytes,
-        overheadUs: elapsedUs(tsObservedNs),
-      };
-    }
-    case 'response': {
-      const latencyMs = tracker.matchResponse(direction, frame.id, tsWallMs);
-      return {
-        type: 'mcp.response',
-        direction,
-        rpcId: frame.id,
-        bytes,
-        overheadUs: elapsedUs(tsObservedNs),
-        ...('result' in frame ? { result: frame.result } : {}),
-        ...('error' in frame ? { error: frame.error } : {}),
-        ...(latencyMs !== undefined ? { latencyMs } : {}),
-      };
-    }
-    case 'notification':
-      return {
-        type: 'mcp.notification',
-        direction,
-        method: frame.method,
-        params: frame.params,
-        bytes,
-        overheadUs: elapsedUs(tsObservedNs),
-      };
-    case 'parse_error':
-      return {
-        type: 'proxy.error',
-        kind: 'parse_error',
-        message: `MCP frame parse error: ${frame.reason}`,
-        reason: frame.reason,
-        frameSnippet: line.length > 256 ? line.slice(0, 256) : line,
-      };
-  }
 }
 
 function main(): void {
@@ -198,6 +142,8 @@ function main(): void {
   const stdoutSplitter = new LineSplitter();
   const stderrSplitter = new LineSplitter();
   const tracker = new InflightTracker();
+  const engine = new DetectionEngine([]);
+  const processFrame = createFrameProcessor({ tracker, engine, mcp: name, session });
   let framesIn = 0;
   let framesOut = 0;
   let framesStderr = 0;
@@ -209,17 +155,15 @@ function main(): void {
     framesIn += lines.length;
     for (const line of lines) {
       const bytes = Buffer.byteLength(line, 'utf8') + 1; // +1 por el \n consumido por el splitter
-      sink.emit(
-        buildFrameEvent(
-          classify(line),
-          'client_to_server',
-          bytes,
-          line,
-          tsObservedNs,
-          tsWallMs,
-          tracker,
-        ),
+      const events = processFrame(
+        classify(line),
+        'client_to_server',
+        bytes,
+        line,
+        tsObservedNs,
+        tsWallMs,
       );
+      for (const ev of events) sink.emit(ev);
     }
   });
 
@@ -230,17 +174,15 @@ function main(): void {
     framesOut += lines.length;
     for (const line of lines) {
       const bytes = Buffer.byteLength(line, 'utf8') + 1;
-      sink.emit(
-        buildFrameEvent(
-          classify(line),
-          'server_to_client',
-          bytes,
-          line,
-          tsObservedNs,
-          tsWallMs,
-          tracker,
-        ),
+      const events = processFrame(
+        classify(line),
+        'server_to_client',
+        bytes,
+        line,
+        tsObservedNs,
+        tsWallMs,
       );
+      for (const ev of events) sink.emit(ev);
     }
   });
 

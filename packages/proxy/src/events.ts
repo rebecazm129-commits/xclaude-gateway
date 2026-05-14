@@ -6,6 +6,7 @@
 import { monotonicFactory, ulid } from 'ulid';
 
 import type { Envelope, Writer } from './audit.js';
+import type { DetectionBlock } from './detection/types.js';
 import type { ParseErrorReason, RpcId } from './parser.js';
 import type { SocketDropReason } from './socket.js';
 
@@ -63,6 +64,7 @@ export type EventBody =
       truncated?: true;
       bytes: number;
       overheadUs: number;
+      detection?: DetectionBlock;
     }
   | {
       type: 'mcp.response';
