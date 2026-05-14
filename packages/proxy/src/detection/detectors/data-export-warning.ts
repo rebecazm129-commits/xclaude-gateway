@@ -1,0 +1,45 @@
+// Data export warning detector — scans paramsJson for natural-language data
+// export commands (EN / ES). Scope: TEXT branch only; inspects paramsJson.
+// Emits one DetectorOutput with category 'data_export_warning' and severity
+// 'medium' when any pattern matches; returns null otherwise. Findings record
+// the matched type and 'params' as location — never the raw text.
+
+import type { DetectionFinding, Detector, DetectorOutput } from '../types.js';
+
+interface ExportPattern {
+  readonly pattern: RegExp;
+  readonly type: string;
+}
+
+const EXPORT_PATTERNS: readonly ExportPattern[] = [
+  {
+    type: 'data_export_command',
+    pattern:
+      /\b(?:download|export|dump|extract|save|copy)\s+(?:the\s+|all\s+|my\s+|all\s+my\s+)?(?:database|data|files?|records?|users?|contents?|backup|table)(?:\s+(?:to|into|as|onto|in)\b)?/gi,
+  },
+  {
+    type: 'data_export_command',
+    pattern:
+      /\b(?:descarga|exporta|vuelca|extrae|guarda|copia)\s+(?:la\s+|los\s+|las\s+|mis\s+|todos?\s+los?\s+|todas?\s+las?\s+)?(?:base\s+de\s+datos|datos|archivos?|registros?|usuarios?|contenidos?|backup|tabla)(?:\s+(?:a|en|como|hacia)\b)?/gi,
+  },
+];
+
+export const dataExportWarning: Detector = (input): DetectorOutput | null => {
+  const { paramsJson } = input;
+  if (paramsJson.length === 0) return null;
+
+  const findings: DetectionFinding[] = [];
+  for (const { pattern, type } of EXPORT_PATTERNS) {
+    for (const _match of paramsJson.matchAll(pattern)) {
+      findings.push({ type, location: 'params' });
+    }
+  }
+
+  if (findings.length === 0) return null;
+
+  return {
+    category: 'data_export_warning',
+    severity: 'medium',
+    findings,
+  };
+};
