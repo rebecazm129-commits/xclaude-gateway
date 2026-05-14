@@ -1,13 +1,15 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { readDetections } from './detection-reader.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 function createWindow(): void {
   const win = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1100,
+    height: 700,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
     },
@@ -19,6 +21,10 @@ function createWindow(): void {
     void win.loadFile(join(__dirname, '../renderer/index.html'));
   }
 }
+
+ipcMain.handle('detection:list', async () => {
+  return readDetections();
+});
 
 void app.whenReady().then(() => {
   createWindow();

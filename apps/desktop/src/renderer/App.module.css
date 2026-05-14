@@ -1,0 +1,75 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+  height: 56px;
+  box-sizing: border-box;
+}
+
+.titleGroup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #22c55e;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.6;
+  }
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #38bdf8;
+}
+
+.counter {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+  background: #0f172a;
+  border-bottom: 1px solid #334155;
+  height: 56px;
+  box-sizing: border-box;
+  align-items: center;
+}
+
+.empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  font-size: 14px;
+  padding: 40px;
+  text-align: center;
+}

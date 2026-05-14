@@ -1,0 +1,19 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+}

@@ -1,0 +1,32 @@
+.row {
+  display: grid;
+  grid-template-columns: 80px 90px 200px 180px 1fr;
+  align-items: center;
+  padding: 4px 16px;
+  border-bottom: 1px solid #334155;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  color: #e2e8f0;
+  gap: 12px;
+  height: 32px;
+  box-sizing: border-box;
+}
+
+.timestamp {
+  color: #64748b;
+}
+
+.category {
+  color: #38bdf8;
+}
+
+.mcp {
+  color: #cbd5e1;
+}
+
+.method {
+  color: #cbd5e1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
