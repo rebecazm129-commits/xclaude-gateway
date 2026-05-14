@@ -10,6 +10,7 @@ import { ulid } from 'ulid';
 
 import { JsonlWriter } from './audit.js';
 import { DetectionEngine } from './detection/engine.js';
+import { ACTIVE_DETECTORS } from './detection/detectors/index.js';
 import { EventSink } from './events.js';
 import { createFrameProcessor } from './frame-processor.js';
 import { InflightTracker } from './latency.js';
@@ -142,7 +143,7 @@ function main(): void {
   const stdoutSplitter = new LineSplitter();
   const stderrSplitter = new LineSplitter();
   const tracker = new InflightTracker();
-  const engine = new DetectionEngine([]);
+  const engine = new DetectionEngine(ACTIVE_DETECTORS);
   const processFrame = createFrameProcessor({ tracker, engine, mcp: name, session });
   let framesIn = 0;
   let framesOut = 0;
