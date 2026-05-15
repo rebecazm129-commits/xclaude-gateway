@@ -15,12 +15,12 @@ const EXPORT_PATTERNS: readonly ExportPattern[] = [
   {
     type: 'data_export_command',
     pattern:
-      /\b(?:download|export|dump|extract|save|copy)\s+(?:the\s+|all\s+|my\s+|all\s+my\s+)?(?:database|data|files?|records?|users?|contents?|backup|table)(?:\s+(?:to|into|as|onto|in)\b)?/gi,
+      /\b(?:download|export|dump|extract|save|copy)\s+(?:(?:the|all|my|all\s+my)\s+)?(?:\S+\s+){0,3}(?:database|data|files?|records?|users?|contents?|backup|table)(?:\s+(?:to|into|as|onto|in)\b)?/gi,
   },
   {
     type: 'data_export_command',
     pattern:
-      /\b(?:descarga|exporta|vuelca|extrae|guarda|copia)\s+(?:la\s+|los\s+|las\s+|mis\s+|todos?\s+los?\s+|todas?\s+las?\s+)?(?:base\s+de\s+datos|datos|archivos?|registros?|usuarios?|contenidos?|backup|tabla)(?:\s+(?:a|en|como|hacia)\b)?/gi,
+      /\b(?:descarga|exporta|vuelca|extrae|guarda|copia)\s+(?:(?:la|los|las|mis|todos?\s+los?|todas?\s+las?)\s+)?(?:\S+\s+){0,3}(?:base\s+de\s+datos|datos|archivos?|registros?|usuarios?|contenidos?|backup|tabla)(?:\s+(?:a|en|como|hacia)\b)?/gi,
   },
 ];
 

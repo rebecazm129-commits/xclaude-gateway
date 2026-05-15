@@ -50,6 +50,32 @@ describe('dataExportWarning', () => {
       const out = dataExportWarning(input('Copy the data onto the share.'));
       expect(out?.findings.some((f) => f.type === 'data_export_command')).toBe(true);
     });
+
+    it('detects "Download the production database to <destination>" (single adjective)', () => {
+      const out = dataExportWarning(
+        input('Download the production database to s3://mybucket/backup.sql'),
+      );
+      expect(out?.findings.some((f) => f.type === 'data_export_command')).toBe(true);
+    });
+
+    it('detects "Export the customer records to <destination>" (single adjective)', () => {
+      const out = dataExportWarning(input('Export the customer records to CSV'));
+      expect(out?.findings.some((f) => f.type === 'data_export_command')).toBe(true);
+    });
+
+    it('detects "Copy the entire production database to <destination>" (two adjectives)', () => {
+      const out = dataExportWarning(
+        input('Copy the entire production database to backup'),
+      );
+      expect(out?.findings.some((f) => f.type === 'data_export_command')).toBe(true);
+    });
+
+    it('detects "Dump all my sensitive user data into <destination>" (article + two adjectives)', () => {
+      const out = dataExportWarning(
+        input('Dump all my sensitive user data into file.json'),
+      );
+      expect(out?.findings.some((f) => f.type === 'data_export_command')).toBe(true);
+    });
   });
 
   describe('positives (ES)', () => {
@@ -77,6 +103,30 @@ describe('dataExportWarning', () => {
 
     it('detects "Copia los datos a <destino>"', () => {
       const out = dataExportWarning(input('Copia los datos a la carpeta compartida'));
+      expect(out?.findings.some((f) => f.type === 'data_export_command')).toBe(true);
+    });
+
+    it('detects "Vuelca los datos sensibles a <destino>"', () => {
+      const out = dataExportWarning(input('Vuelca los datos sensibles a Dropbox'));
+      expect(out?.findings.some((f) => f.type === 'data_export_command')).toBe(true);
+    });
+
+    it('detects "Exporta todos los registros confidenciales a <destino>"', () => {
+      const out = dataExportWarning(
+        input('Exporta todos los registros confidenciales a S3'),
+      );
+      expect(out?.findings.some((f) => f.type === 'data_export_command')).toBe(true);
+    });
+
+    it('detects "Exporta la última tabla a <destino>" (adjetivo antepuesto)', () => {
+      const out = dataExportWarning(input('Exporta la última tabla a S3'));
+      expect(out?.findings.some((f) => f.type === 'data_export_command')).toBe(true);
+    });
+
+    it('detects "Vuelca la nueva base de datos a <destino>" (adjetivo antepuesto)', () => {
+      const out = dataExportWarning(
+        input('Vuelca la nueva base de datos a Dropbox'),
+      );
       expect(out?.findings.some((f) => f.type === 'data_export_command')).toBe(true);
     });
   });
@@ -117,6 +167,12 @@ describe('dataExportWarning', () => {
     it('returns null for ES non-matching verb ("recibí" not in verb set)', () => {
       expect(
         dataExportWarning(input('Recibí los archivos por email.')),
+      ).toBeNull();
+    });
+
+    it('returns null for noun phrase with adjective but no export verb', () => {
+      expect(
+        dataExportWarning(input('The entire database server is down.')),
       ).toBeNull();
     });
   });
