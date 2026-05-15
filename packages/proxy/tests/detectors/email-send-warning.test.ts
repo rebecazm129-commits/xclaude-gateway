@@ -56,6 +56,27 @@ describe('emailSendWarning', () => {
       );
       expect(out?.findings.some((f) => f.type === 'email_send_command')).toBe(true);
     });
+
+    it('detects "Send the email to <recipient>" (definite article)', () => {
+      const out = emailSendWarning(
+        input('Send the email to mike@example.com with the quarterly numbers.'),
+      );
+      expect(out?.findings.some((f) => f.type === 'email_send_command')).toBe(true);
+    });
+
+    it('detects "Write this message to <recipient>" (demonstrative)', () => {
+      const out = emailSendWarning(
+        input('Write this message to alice for the project.'),
+      );
+      expect(out?.findings.some((f) => f.type === 'email_send_command')).toBe(true);
+    });
+
+    it('detects "Compose my email to <recipient>" (possessive)', () => {
+      const out = emailSendWarning(
+        input("Compose my email to support saying I'm locked out."),
+      );
+      expect(out?.findings.some((f) => f.type === 'email_send_command')).toBe(true);
+    });
   });
 
   describe('positives (ES)', () => {
@@ -91,6 +112,27 @@ describe('emailSendWarning', () => {
 
     it('detects "Envia mensaje a <destinatario>" (without accent)', () => {
       const out = emailSendWarning(input('Envia mensaje a soporte.'));
+      expect(out?.findings.some((f) => f.type === 'email_send_command')).toBe(true);
+    });
+
+    it('detects "Envía el correo a <destinatario>" (artículo definido)', () => {
+      const out = emailSendWarning(
+        input('Envía el correo a Juan con el reporte mensual.'),
+      );
+      expect(out?.findings.some((f) => f.type === 'email_send_command')).toBe(true);
+    });
+
+    it('detects "Manda este mensaje a <destinatario>" (demostrativo)', () => {
+      const out = emailSendWarning(
+        input('Manda este mensaje a marketing diciendo que está listo.'),
+      );
+      expect(out?.findings.some((f) => f.type === 'email_send_command')).toBe(true);
+    });
+
+    it('detects "Escribe mi email para <destinatario>" (posesivo)', () => {
+      const out = emailSendWarning(
+        input('Escribe mi email para la directiva diciendo que cerramos.'),
+      );
       expect(out?.findings.some((f) => f.type === 'email_send_command')).toBe(true);
     });
   });
@@ -130,6 +172,14 @@ describe('emailSendWarning', () => {
 
     it('returns null for ES missing preposition / diciendo clause', () => {
       expect(emailSendWarning(input('Envía mensaje urgente.'))).toBeNull();
+    });
+
+    it('returns null for possessive email mention without send verb', () => {
+      expect(emailSendWarning(input('Your email reached me yesterday.'))).toBeNull();
+    });
+
+    it('returns null for definite article email mention without send verb', () => {
+      expect(emailSendWarning(input('The email server is down.'))).toBeNull();
     });
   });
 });

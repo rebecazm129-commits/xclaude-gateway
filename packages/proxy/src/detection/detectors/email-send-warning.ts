@@ -17,12 +17,12 @@ const EMAIL_SEND_PATTERNS: readonly EmailSendPattern[] = [
   {
     type: 'email_send_command',
     pattern:
-      /\b(?:send|compose|draft|write)\s+(?:an?\s+)?(?:email|mail|message)\s+(?:to|for|saying|that\s+says)\b/gi,
+      /\b(?:send|compose|draft|write)\s+(?:(?:an?|the|this|that|my|your|his|her|our|their)\s+)?(?:email|mail|message)\s+(?:to|for|saying|that\s+says)\b/gi,
   },
   {
     type: 'email_send_command',
     pattern:
-      /\b(?:envía|envia|manda|redacta|escribe)\s+(?:un\s+)?(?:correo|email|mensaje|mail)\s+(?:a|para|que\s+diga|diciendo)\b/gi,
+      /\b(?:envía|envia|manda|redacta|escribe)\s+(?:(?:un|una|el|la|los|las|este|esta|ese|esa|mi|tu|su|nuestro|nuestra|vuestro|vuestra)\s+)?(?:correo|email|mensaje|mail)\s+(?:a|para|que\s+diga|diciendo)\b/gi,
   },
 ];
 
