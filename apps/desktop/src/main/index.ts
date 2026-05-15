@@ -11,7 +11,7 @@ function createWindow(): void {
     width: 1100,
     height: 700,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.mjs'),
+      preload: join(__dirname, '../preload/index.js'),
     },
   });
 
