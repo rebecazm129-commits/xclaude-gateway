@@ -48,13 +48,18 @@ export type DetectionBlock = DetectorOutput;
 // los detectores regex inline. Lo de abajo es la segunda forma, separada,
 // para el detector NER que corre fuera del path crítico.
 
-// Resultado que un detector off-path entrega cuando termina, identificado
-// por el rpcId del evento original al que pertenece. NO es un return del
-// detector: se entrega invocando el EnrichmentSink inyectado. El sessionId
-// se obtiene de input.envelope.sessionId del DetectorInput original.
+// Resultado que un detector off-path entrega cuando termina. Se correlaciona
+// con el evento original mediante la clave compuesta (sessionId, rpcId,
+// direction) — la misma que el matching request/response de la Fase 5 del
+// Hito 2 — porque rpcId se reutiliza por sesión y un server puede iniciar
+// requests al client (sampling). Los tres campos se obtienen del
+// DetectorInput original: rpcId del frame, sessionId y direction de
+// input.envelope. NO es un return del detector: se entrega invocando el
+// EnrichmentSink inyectado.
 export interface DetectionEnrichment {
   rpcId: string;
   sessionId: string;
+  direction: Direction;
   detection: DetectionBlock;
 }
 
