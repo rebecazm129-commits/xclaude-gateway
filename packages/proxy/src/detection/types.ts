@@ -49,16 +49,18 @@ export type DetectionBlock = DetectorOutput;
 // para el detector NER que corre fuera del path crítico.
 
 // Resultado que un detector off-path entrega cuando termina. Se correlaciona
-// con el evento original mediante la clave compuesta (sessionId, rpcId,
-// direction) — la misma que el matching request/response de la Fase 5 del
-// Hito 2 — porque rpcId se reutiliza por sesión y un server puede iniciar
-// requests al client (sampling). Los tres campos se obtienen del
-// DetectorInput original: rpcId del frame, sessionId y direction de
-// input.envelope. NO es un return del detector: se entrega invocando el
-// EnrichmentSink inyectado.
+// con el evento original mediante la clave compuesta (session, rpcId,
+// direction) — el mismo nombre de campo que usan el JSONL real y el
+// DetectionEvent del Desktop, y la misma terna que el matching
+// request/response de la Fase 5 del Hito 2 — porque rpcId se reutiliza por
+// sesión y un server puede iniciar requests al client (sampling). Los tres
+// valores se obtienen del DetectorInput original: rpcId del frame, y
+// session/direction de input.envelope (donde el campo de origen se llama
+// envelope.sessionId). NO es un return del detector: se entrega invocando
+// el EnrichmentSink inyectado.
 export interface DetectionEnrichment {
   rpcId: string;
-  sessionId: string;
+  session: string;
   direction: Direction;
   detection: DetectionBlock;
 }
