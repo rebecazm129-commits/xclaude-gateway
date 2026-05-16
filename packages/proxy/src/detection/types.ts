@@ -41,3 +41,36 @@ export interface DetectorInput {
 export type Detector = (input: DetectorInput) => DetectorOutput | null;
 
 export type DetectionBlock = DetectorOutput;
+
+// --- Camino off-path del motor híbrido (Fase 7 Hito 3) ---
+// Bitácora de diseño: 362242b46fa781cfa9b1dc5dc79d37ec.
+// El contrato síncrono de arriba (Detector) queda intacto y es el que usan
+// los detectores regex inline. Lo de abajo es la segunda forma, separada,
+// para el detector NER que corre fuera del path crítico.
+
+// Resultado que un detector off-path entrega cuando termina, identificado
+// por el rpcId del evento original al que pertenece. NO es un return del
+// detector: se entrega invocando el EnrichmentSink inyectado. El sessionId
+// se obtiene de input.envelope.sessionId del DetectorInput original.
+export interface DetectionEnrichment {
+  rpcId: string;
+  sessionId: string;
+  detection: DetectionBlock;
+}
+
+// El orquestador provee este sink. El detector off-path lo invoca al
+// terminar la inferencia. El orquestador escribe el enrichment como una
+// línea nueva en el JSONL canónico (evento mcp.detection_enrichment),
+// respetando el contrato append-only del Hito 2 (no se reescribe el
+// evento original).
+export type EnrichmentSink = (enrichment: DetectionEnrichment) => void;
+
+// Segunda forma de detector, separada del contrato síncrono Detector.
+// No devuelve resultado: encola el input para inferencia asíncrona y,
+// cuando termina, entrega el resultado por el EnrichmentSink que recibió
+// al construirse. enqueue() no bloquea: si la cola interna está saturada
+// aplica descarte best-effort (la política concreta vive en el detector,
+// no en este tipo).
+export interface AsyncDetector {
+  enqueue(input: DetectorInput, rpcId: string): void;
+}
