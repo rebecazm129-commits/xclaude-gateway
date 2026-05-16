@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@xcg/shared": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-window": "^1.8.10"
