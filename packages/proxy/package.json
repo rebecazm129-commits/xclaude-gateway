@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
+    "@xcg/shared": "workspace:*",
     "ulid": "^2.3.0"
   },
   "devDependencies": {

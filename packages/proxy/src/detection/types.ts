@@ -1,7 +1,7 @@
 // Detection types — contract surface for the detection engine.
 // Pure types, no runtime. Consumed by engine.ts and the wrapper (Phase 1+).
 
-import type { Direction } from '../events.js';
+import type { Direction } from '@xcg/shared';
 
 export type Severity = 'low' | 'medium' | 'high' | 'critical';
 

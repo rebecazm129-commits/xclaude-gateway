@@ -5,6 +5,14 @@
 
 import { monotonicFactory, ulid } from 'ulid';
 
+// `Direction` se define en @xcg/shared (contrato compartido del monorepo).
+// Se re-exporta aquí porque events.ts es el módulo de tipos de evento del
+// proxy: frame-processor.ts y latency.ts lo importan desde './events.js' en
+// su calidad de tipo de evento, sin conocer la topología del monorepo.
+// La fuente de verdad es @xcg/shared; este re-export es fachada explícita.
+import type { Direction } from '@xcg/shared';
+export type { Direction };
+
 import type { Envelope, Writer } from './audit.js';
 import type { DetectionBlock } from './detection/types.js';
 import type { ParseErrorReason, RpcId } from './parser.js';
@@ -13,8 +21,6 @@ import type { SocketDropReason } from './socket.js';
 const MAX_LEAF_BYTES = 64 * 1024;
 
 const nextId = monotonicFactory();
-
-export type Direction = 'client_to_server' | 'server_to_client';
 
 export type EventBody =
   | {
