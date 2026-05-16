@@ -3,6 +3,13 @@
 // de detección: vive aquí para que proxy y desktop compartan una sola fuente.
 export type Direction = 'client_to_server' | 'server_to_client';
 
+// `RpcId` es el id de correlación de un frame JSON-RPC 2.0 (spec: string,
+// number o null para notificaciones). Vive aquí porque es una propiedad
+// fundamental del frame MCP, igual que Direction: el proxy lo produce y el
+// contrato off-path lo consume para la clave de correlación. NO se estrecha
+// a string — estrechar rompe la correlación con number/null reales del JSONL.
+export type RpcId = string | number | null;
+
 // --- Contrato de detección compartido (movido desde proxy en 3b) ---
 // Bitácora: 362242b46fa781cfa9b1dc5dc79d37ec. Estos tipos los consumen el
 // proxy (motor de detección) y el desktop (reader del dashboard); fuente
@@ -37,7 +44,7 @@ export interface DetectionBlock {
 // sesión y un server puede iniciar requests al client (sampling). NO es un
 // return del detector: se entrega invocando el EnrichmentSink inyectado.
 export interface DetectionEnrichment {
-  rpcId: string;
+  rpcId: RpcId;
   session: string;
   direction: Direction;
   detection: DetectionBlock;

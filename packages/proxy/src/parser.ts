@@ -3,7 +3,12 @@
 // the call site forwards the raw line to its destination regardless
 // of classification — parse errors do not block pass-through.
 
-export type RpcId = string | number | null;
+// `RpcId` se define en @xcg/shared (contrato compartido del monorepo).
+// Se re-exporta aquí porque parser.ts es donde nace el tipo para el proxy:
+// latency.ts y events.ts lo importan desde './parser.js' sin conocer la
+// topología del monorepo. La fuente de verdad es @xcg/shared; fachada explícita.
+import type { RpcId } from '@xcg/shared';
+export type { RpcId };
 
 export type ParseErrorReason =
   | 'invalid_json'

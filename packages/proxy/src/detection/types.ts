@@ -3,6 +3,7 @@
 
 import type {
   Direction,
+  RpcId,
   Severity,
   Category,
   DetectionFinding,
@@ -53,5 +54,5 @@ export type Detector = (input: DetectorInput) => DetectorOutput | null;
 // aplica descarte best-effort (la política concreta vive en el detector,
 // no en este tipo).
 export interface AsyncDetector {
-  enqueue(input: DetectorInput, rpcId: string): void;
+  enqueue(input: DetectorInput, rpcId: RpcId): void;
 }
