@@ -48,6 +48,10 @@ export interface DetectionEnrichment {
   session: string;
   direction: Direction;
   detection: DetectionBlock;
+  // Latencia de inferencia NER en microsegundos (medida por el AsyncDetector,
+  // mismo concepto que elapsedUs del productor sincrono). Se emite al JSONL
+  // para instrumentar el p95 NER en produccion.
+  overheadUs: number;
 }
 
 // El orquestador provee este sink. El detector off-path lo invoca al

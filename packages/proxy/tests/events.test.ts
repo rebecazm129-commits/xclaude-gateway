@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Envelope, Writer } from '../src/audit.js';
-import { EventSink, truncate } from '../src/events.js';
+import { createEnrichmentSink, EventSink, truncate } from '../src/events.js';
 
 class CaptureWriter implements Writer {
   envelopes: Envelope[] = [];
@@ -267,6 +267,35 @@ describe('EventSink — truncation of mcp.* payloads', () => {
     expect(e.truncated).toBeUndefined();
     expect(e.text).toBe('hola desde el child');
   });
+
+  it('mcp.detection_enrichment is NOT subjected to truncation', () => {
+    const w = new CaptureWriter();
+    const sink = new EventSink('x', [w]);
+    sink.emit({
+      type: 'mcp.detection_enrichment',
+      rpcId: 42,
+      direction: 'client_to_server',
+      detection: {
+        category: 'pii_detected',
+        severity: 'medium',
+        findings: [{ type: 'email', location: 'params.email' }],
+      },
+      overheadUs: 12345,
+    });
+    const e = w.envelopes[0]! as Envelope & {
+      truncated?: true;
+      rpcId: number;
+      direction: string;
+      detection: { category: string };
+      overheadUs: number;
+    };
+    expect(e.truncated).toBeUndefined();
+    expect(e.type).toBe('mcp.detection_enrichment');
+    expect(e.rpcId).toBe(42);
+    expect(e.direction).toBe('client_to_server');
+    expect(e.detection.category).toBe('pii_detected');
+    expect(e.overheadUs).toBe(12345);
+  });
 });
 
 describe('EventSink — mcp.response latencyMs', () => {
@@ -298,5 +327,62 @@ describe('EventSink — mcp.response latencyMs', () => {
 
     expect(withLatency.latencyMs).toBe(42);
     expect('latencyMs' in orphan).toBe(false);
+  });
+});
+
+describe('createEnrichmentSink — adapter', () => {
+  it('emits mcp.detection_enrichment with exact shape; ignores enrichment.session', () => {
+    const w = new CaptureWriter();
+    const sink = new EventSink('x', [w]);
+    const enrichmentSink = createEnrichmentSink(sink);
+    enrichmentSink({
+      rpcId: 7,
+      session: 'session-from-async-detector-IGNORED',
+      direction: 'server_to_client',
+      detection: {
+        category: 'credential_detected',
+        severity: 'critical',
+        findings: [{ type: 'api_key' }],
+      },
+      overheadUs: 99000,
+    });
+    const e = w.envelopes[0]! as Envelope & {
+      rpcId: number;
+      direction: string;
+      detection: { category: string; severity: string };
+      overheadUs: number;
+    };
+    expect(e.type).toBe('mcp.detection_enrichment');
+    expect(e.rpcId).toBe(7);
+    expect(e.direction).toBe('server_to_client');
+    expect(e.detection.category).toBe('credential_detected');
+    expect(e.detection.severity).toBe('critical');
+    expect(e.overheadUs).toBe(99000);
+    expect(e.session).not.toBe('session-from-async-detector-IGNORED');
+    expect(e.session).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+  });
+
+  it('preserves RpcId variants (string, null) without narrowing', () => {
+    const w = new CaptureWriter();
+    const sink = new EventSink('x', [w]);
+    const enrichmentSink = createEnrichmentSink(sink);
+
+    enrichmentSink({
+      rpcId: 'string-id',
+      session: 's',
+      direction: 'client_to_server',
+      detection: { category: 'pii_detected', severity: 'low', findings: [] },
+      overheadUs: 0,
+    });
+    enrichmentSink({
+      rpcId: null,
+      session: 's',
+      direction: 'client_to_server',
+      detection: { category: 'pii_detected', severity: 'low', findings: [] },
+      overheadUs: 0,
+    });
+
+    expect((w.envelopes[0]! as Envelope & { rpcId: unknown }).rpcId).toBe('string-id');
+    expect((w.envelopes[1]! as Envelope & { rpcId: unknown }).rpcId).toBe(null);
   });
 });

@@ -14,7 +14,11 @@ import type { Direction } from '@xcg/shared';
 export type { Direction };
 
 import type { Envelope, Writer } from './audit.js';
-import type { DetectionBlock } from './detection/types.js';
+import type {
+  DetectionBlock,
+  DetectionEnrichment,
+  EnrichmentSink,
+} from './detection/types.js';
 import type { ParseErrorReason, RpcId } from './parser.js';
 import type { SocketDropReason } from './socket.js';
 
@@ -97,6 +101,17 @@ export type EventBody =
       text: string;
       bytes: number;
       truncated?: true;
+      overheadUs: number;
+    }
+  | {
+      // Resultado de un detector off-path (NER) entregado por el orquestador
+      // via EnrichmentSink. Append-only: no reescribe el mcp.request original;
+      // el reader del Desktop lo correlaciona con su request por la terna
+      // (session, rpcId, direction). overheadUs es la latencia de inferencia.
+      type: 'mcp.detection_enrichment';
+      rpcId: RpcId;
+      direction: Direction;
+      detection: DetectionBlock;
       overheadUs: number;
     };
 
@@ -206,4 +221,22 @@ export class EventSink {
       writer.close();
     }
   }
+}
+
+// Adapter entre el contrato off-path (EnrichmentSink, consumido por el
+// AsyncDetector segun @xcg/shared) y el productor JSONL del proxy. Asume
+// worker per-wrapper (Modelo A de la cuestion c del NER): enrichment.session
+// se ignora porque siempre coincide con el session del EventSink que arranco
+// el proxy. Si en el futuro se multiplexa un worker entre wrappers (Modelo C),
+// este adapter tendria que verificar la igualdad o indexar por session.
+export function createEnrichmentSink(sink: EventSink): EnrichmentSink {
+  return (enrichment) => {
+    sink.emit({
+      type: 'mcp.detection_enrichment',
+      rpcId: enrichment.rpcId,
+      direction: enrichment.direction,
+      detection: enrichment.detection,
+      overheadUs: enrichment.overheadUs,
+    });
+  };
 }
