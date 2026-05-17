@@ -22,7 +22,19 @@ export interface DetectionEvent {
   mcp: string;
   type: 'mcp.request';
   method: string;
+  // rpcId/direction viajan en la estructura para la clave de correlación
+  // (session, rpcId, direction) del join NER. NO son datos de presentación:
+  // DetectionRow no los pinta. Si el renderer los usara, reabriria la
+  // Decision 1 del contrato (maquinaria de correlacion != presentacion).
+  rpcId: RpcId;
+  direction: Direction;
   detection: DetectionBlock;
+  // Opcion (b) acumular: si un mcp.detection_enrichment correlaciona con
+  // este request por la terna (session, rpcId, direction), su DetectionBlock
+  // se adjunta aqui SIN reemplazar `detection` (la regex original se
+  // preserva, fidelidad de auditoria). Ausente si no hubo join. Como se
+  // muestran dos detecciones en una fila es decision de UI de Fase 7.
+  enrichment?: DetectionBlock;
 }
 
 // Variante 2: línea mcp.detection_enrichment que el orquestador escribe cuando

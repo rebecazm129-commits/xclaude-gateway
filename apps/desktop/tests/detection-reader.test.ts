@@ -197,6 +197,10 @@ describe('readDetections', () => {
     await mkdir(dir, { recursive: true });
     const req = baseEvent('a', '2025-05-14T12:00:00.000Z');
     const enr = baseEnrichmentEvent('b', '2025-05-14T12:00:01.000Z');
+    // rpcId distinto: terna (session, rpcId, direction) NO correlaciona,
+    // asi que NO hay join y ambas variantes aparecen como filas separadas.
+    // El caso "misma terna -> join" lo cubre el test de correlacion positiva.
+    enr['rpcId'] = 999;
     await writeFile(
       join(dir, 's.jsonl'),
       JSON.stringify(req) + '\n' + JSON.stringify(enr) + '\n',
@@ -207,5 +211,67 @@ describe('readDetections', () => {
     expect(result[0]?.type).toBe('mcp.detection_enrichment');
     expect(result[1]?.id).toBe('a');
     expect(result[1]?.type).toBe('mcp.request');
+  });
+
+  it('joins enrichment onto matching request by (session, rpcId, direction)', async () => {
+    const dir = join(tmpDir, 'join-positive');
+    await mkdir(dir, { recursive: true });
+    const req = baseEvent('a', '2025-05-14T12:00:00.000Z');
+    const enr = baseEnrichmentEvent('b', '2025-05-14T12:00:01.000Z');
+    // baseEvent y baseEnrichmentEvent emiten la misma terna por defecto
+    // (session 'sess', rpcId 1, direction 'client_to_server').
+    await writeFile(
+      join(dir, 's.jsonl'),
+      JSON.stringify(req) + '\n' + JSON.stringify(enr) + '\n',
+    );
+    const result = await readDetections(dir);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.type).toBe('mcp.request');
+    expect(result[0]?.id).toBe('a');
+    const row = result[0];
+    if (row?.type !== 'mcp.request') throw new Error('expected mcp.request');
+    // detection original (regex) PRESERVADA, no reemplazada (opcion b).
+    expect(row.detection.category).toBe('tool_call_allowed');
+    // enrichment NER adjunto.
+    expect(row.enrichment?.category).toBe('pii_detected');
+  });
+
+  it('keeps an orphan enrichment as its own row when no request matches', async () => {
+    const dir = join(tmpDir, 'join-orphan');
+    await mkdir(dir, { recursive: true });
+    const enr = baseEnrichmentEvent('e1', '2025-05-14T12:00:00.000Z');
+    await writeFile(join(dir, 's.jsonl'), JSON.stringify(enr) + '\n');
+    const result = await readDetections(dir);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.type).toBe('mcp.detection_enrichment');
+    expect(result[0]?.id).toBe('e1');
+  });
+
+  it('does not join when the triple differs (different rpcId)', async () => {
+    const dir = join(tmpDir, 'join-no-match');
+    await mkdir(dir, { recursive: true });
+    const req = baseEvent('a', '2025-05-14T12:00:00.000Z');
+    const enr = baseEnrichmentEvent('b', '2025-05-14T12:00:01.000Z');
+    enr['rpcId'] = 2;
+    await writeFile(
+      join(dir, 's.jsonl'),
+      JSON.stringify(req) + '\n' + JSON.stringify(enr) + '\n',
+    );
+    const result = await readDetections(dir);
+    expect(result).toHaveLength(2);
+    const reqRow = result.find((r) => r.id === 'a');
+    if (reqRow?.type !== 'mcp.request') throw new Error('expected mcp.request');
+    expect(reqRow.enrichment).toBeUndefined();
+  });
+
+  it('dedupes a repeated line by envelope id', async () => {
+    const dir = join(tmpDir, 'join-dedupe');
+    await mkdir(dir, { recursive: true });
+    const req = baseEvent('a', '2025-05-14T12:00:00.000Z');
+    const line = JSON.stringify(req) + '\n';
+    await writeFile(join(dir, 's.jsonl'), line + line);
+    const result = await readDetections(dir);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.id).toBe('a');
   });
 });
