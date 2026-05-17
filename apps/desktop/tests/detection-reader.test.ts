@@ -37,6 +37,24 @@ function baseEvent(id: string, ts: string): Record<string, unknown> {
   };
 }
 
+function baseEnrichmentEvent(id: string, ts: string): Record<string, unknown> {
+  return {
+    v: 1,
+    id,
+    ts,
+    session: 'sess',
+    mcp: 'test-mcp',
+    type: 'mcp.detection_enrichment',
+    rpcId: 1,
+    direction: 'client_to_server',
+    detection: {
+      category: 'pii_detected',
+      severity: 'medium',
+      findings: [{ type: 'email', location: 'params.email' }],
+    },
+  };
+}
+
 describe('readDetections', () => {
   it('returns [] when the directory does not exist', async () => {
     const result = await readDetections(join(tmpDir, 'does-not-exist'));
@@ -131,5 +149,63 @@ describe('readDetections', () => {
     await writeFile(join(dir, 's.jsonl'), '\n' + JSON.stringify(event) + '\n\n\n');
     const result = await readDetections(dir);
     expect(result).toHaveLength(1);
+  });
+
+  it('parses a valid enrichment event', async () => {
+    const dir = join(tmpDir, 'enrichment-valid');
+    await mkdir(dir, { recursive: true });
+    const event = baseEnrichmentEvent('e1', '2025-05-14T12:34:56.000Z');
+    await writeFile(join(dir, 's.jsonl'), JSON.stringify(event) + '\n');
+    const result = await readDetections(dir);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.type).toBe('mcp.detection_enrichment');
+    expect(result[0]?.detection.category).toBe('pii_detected');
+  });
+
+  it('skips enrichment without rpcId', async () => {
+    const dir = join(tmpDir, 'enrichment-no-rpcid');
+    await mkdir(dir, { recursive: true });
+    const event = baseEnrichmentEvent('e2', '2025-05-14T12:34:56.000Z');
+    delete event['rpcId'];
+    await writeFile(join(dir, 's.jsonl'), JSON.stringify(event) + '\n');
+    const result = await readDetections(dir);
+    expect(result).toEqual([]);
+  });
+
+  it('skips enrichment with invalid rpcId type', async () => {
+    const dir = join(tmpDir, 'enrichment-bad-rpcid');
+    await mkdir(dir, { recursive: true });
+    const event = baseEnrichmentEvent('e3', '2025-05-14T12:34:56.000Z');
+    event['rpcId'] = true;
+    await writeFile(join(dir, 's.jsonl'), JSON.stringify(event) + '\n');
+    const result = await readDetections(dir);
+    expect(result).toEqual([]);
+  });
+
+  it('skips enrichment with invalid direction', async () => {
+    const dir = join(tmpDir, 'enrichment-bad-direction');
+    await mkdir(dir, { recursive: true });
+    const event = baseEnrichmentEvent('e4', '2025-05-14T12:34:56.000Z');
+    event['direction'] = 'bidirectional';
+    await writeFile(join(dir, 's.jsonl'), JSON.stringify(event) + '\n');
+    const result = await readDetections(dir);
+    expect(result).toEqual([]);
+  });
+
+  it('reads mixed mcp.request and mcp.detection_enrichment, sorted desc by ts', async () => {
+    const dir = join(tmpDir, 'enrichment-mixed');
+    await mkdir(dir, { recursive: true });
+    const req = baseEvent('a', '2025-05-14T12:00:00.000Z');
+    const enr = baseEnrichmentEvent('b', '2025-05-14T12:00:01.000Z');
+    await writeFile(
+      join(dir, 's.jsonl'),
+      JSON.stringify(req) + '\n' + JSON.stringify(enr) + '\n',
+    );
+    const result = await readDetections(dir);
+    expect(result).toHaveLength(2);
+    expect(result[0]?.id).toBe('b');
+    expect(result[0]?.type).toBe('mcp.detection_enrichment');
+    expect(result[1]?.id).toBe('a');
+    expect(result[1]?.type).toBe('mcp.request');
   });
 });

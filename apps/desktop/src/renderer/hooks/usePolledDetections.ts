@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 
-import type { DetectionEvent } from '../../shared/types.js';
+import type { EnrichableEvent } from '../../shared/types.js';
 
 const POLL_INTERVAL_MS = 2000;
 
-export function usePolledDetections(): DetectionEvent[] {
-  const [detections, setDetections] = useState<DetectionEvent[]>([]);
+export function usePolledDetections(): EnrichableEvent[] {
+  const [detections, setDetections] = useState<EnrichableEvent[]>([]);
 
   useEffect(() => {
     let cancelled = false;

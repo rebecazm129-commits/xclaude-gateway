@@ -1,7 +1,7 @@
-import type { DetectionEvent } from '../../shared/types.js';
+import type { EnrichableEvent } from '../../shared/types.js';
 
 export interface XcgApi {
-  listDetections(): Promise<DetectionEvent[]>;
+  listDetections(): Promise<EnrichableEvent[]>;
 }
 
 declare global {
