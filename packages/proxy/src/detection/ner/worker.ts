@@ -29,7 +29,6 @@ export type WorkerJobResponse =
       session: string;
       direction: Direction;
       detection: DetectorOutput;
-      overheadUs: number;
     }
   | { kind: 'skip'; jobId: string }
   | { kind: 'error'; jobId?: string; message: string };
@@ -96,7 +95,6 @@ async function main(): Promise<void> {
 
   process.on('message', async (msg: WorkerJobRequest) => {
     if (msg.kind !== 'infer') return;
-    const t0 = process.hrtime.bigint();
     let tokens: NerToken[];
     try {
       tokens = (await ner(msg.paramsJson)) as NerToken[];
@@ -122,7 +120,6 @@ async function main(): Promise<void> {
       send({ kind: 'skip', jobId: msg.jobId });
       return;
     }
-    const overheadUs = Number((process.hrtime.bigint() - t0) / 1000n);
     const detection: DetectorOutput = {
       category: 'pii_detected',
       severity: 'low',
@@ -135,7 +132,6 @@ async function main(): Promise<void> {
       session: msg.session,
       direction: msg.direction,
       detection,
-      overheadUs,
     });
   });
 }

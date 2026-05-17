@@ -21,6 +21,7 @@ import type {
 } from './detection/types.js';
 import type { ParseErrorReason, RpcId } from './parser.js';
 import type { SocketDropReason } from './socket.js';
+import type { NerDropReason } from './detection/ner/async-detector.js';
 
 const MAX_LEAF_BYTES = 64 * 1024;
 
@@ -64,6 +65,12 @@ export type EventBody =
       type: 'proxy.socket_dropped';
       reason: SocketDropReason;
       message: string;
+    }
+  | {
+      type: 'proxy.ner_dropped';
+      reason: NerDropReason;
+      jobId?: string;
+      rpcId?: RpcId;
     }
   | {
       type: 'mcp.request';

@@ -48,9 +48,9 @@ export interface DetectionEnrichment {
   session: string;
   direction: Direction;
   detection: DetectionBlock;
-  // Latencia de inferencia NER en microsegundos (medida por el AsyncDetector,
-  // mismo concepto que elapsedUs del productor sincrono). Se emite al JSONL
-  // para instrumentar el p95 NER en produccion.
+  // Tiempo total off-path desde enqueue hasta entrega al sink (cola + IPC +
+  // inferencia + dispatch), en microsegundos, medido por el AsyncDetector con
+  // elapsedUs igual que el path sincrono. Se emite al JSONL para el p95 NER.
   overheadUs: number;
 }
 
