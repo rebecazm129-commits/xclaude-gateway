@@ -11,6 +11,8 @@ import type {
 } from '@xcg/shared';
 
 export type {
+  Direction,
+  RpcId,
   Severity,
   Category,
   DetectionFinding,

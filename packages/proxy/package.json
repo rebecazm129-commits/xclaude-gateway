@@ -7,7 +7,9 @@
     "xcg-proxy": "./bin/xcg-proxy"
   },
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/xcg-proxy.cjs",
+    "build": "pnpm run build:main && pnpm run build:worker",
+    "build:main": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/xcg-proxy.cjs",
+    "build:worker": "esbuild src/detection/ner/worker.ts --bundle --platform=node --target=node22 --format=cjs --external:@huggingface/transformers --external:onnxruntime-node --outfile=dist/xcg-ner-worker.cjs",
     "stub": "esbuild scripts/stub-orchestrator.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/xcg-stub.cjs && node dist/xcg-stub.cjs",
     "test": "vitest run",
     "test:watch": "vitest",
