@@ -22,9 +22,15 @@ const events = lines.map(l => { try { return JSON.parse(l); } catch { return nul
 // Extraer strings de payload: method names + arguments + responses
 const payloads = [];
 for (const ev of events) {
-  if (ev.type === 'mcp.request' || ev.type === 'mcp.response') {
-    const txt = JSON.stringify(ev.payload ?? ev);
-    if (txt && txt.length > 10) payloads.push(txt);
+  // Mide BYTE-IDENTICO a lo que AsyncDetector recibe: paramsJson =
+  // JSON.stringify(envelope.payload), donde envelope.payload === frame.params
+  // === ev.params del JSONL (cadena de equivalencias verificada en engine.ts
+  // buildDetectorInput + frame-processor.ts:33). Solo mcp.request: el
+  // AsyncDetector solo se invoca en case 'request'. Filtra params {} (txt
+  // length 2): no aporta senal al NER e inflaria el p95 con casos triviales.
+  if (ev.type === 'mcp.request' && ev.params !== undefined) {
+    const txt = JSON.stringify(ev.params);
+    if (txt && txt.length > 2) payloads.push(txt);
   }
 }
 
