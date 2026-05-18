@@ -151,6 +151,9 @@ function main(): void {
     onDrop: (reason, jobId, rpcId) => {
       sink.emit({ type: 'proxy.ner_dropped', reason, jobId, rpcId });
     },
+    onWorkerDied: (cause, pendingDropped) => {
+      sink.emit({ type: 'proxy.ner_worker_died', cause, pendingDropped });
+    },
   });
   const processFrame = createFrameProcessor({ tracker, engine, asyncDetector, mcp: name, session });
   let framesIn = 0;
@@ -241,6 +244,9 @@ function main(): void {
     jsonl: {
       fsync: () => writer.fsync(),
       close: () => writer.close(),
+    },
+    worker: {
+      terminate: (timeoutMs) => asyncDetector.terminate(timeoutMs),
     },
     emitShutdown: (reason, exitCode) => {
       sink.emit({ type: 'proxy.shutdown', reason, exitCode });

@@ -109,6 +109,11 @@ export interface ShutdownDeps {
     fsync(): Promise<void>;
     close(): void;
   };
+  // Opcional: solo presente si hay detector NER off-path configurado. Si no,
+  // el shutdown se comporta igual que sin NER (cero regresion).
+  worker?: {
+    terminate(timeoutMs: number): Promise<void>;
+  };
   emitShutdown(reason: ShutdownReason, exitCode: number): void;
   exit(code: number): void;
   delay(ms: number): Promise<void>;
@@ -131,6 +136,8 @@ export type GracefulShutdown = (reason: ShutdownReason) => Promise<void>;
  *   4. computeExitCode(reason, neededSigkill, child.exitInfo()).
  *   5. (proxy.child_exited lo emite main.ts en su listener, no esta función.)
  *   6. emitShutdown(reason, exitCode) — JSONL siempre, socket sólo si vivo.
+ *   6b. worker.terminate(SIGTERM_GRACE_MS) si hay NER off-path: mata el worker,
+ *       que drena su cola pendiente vía sink antes de cerrar el socket.
  *   7. socket.end() con timeout 200ms → destroy. Skip si !socket.isAlive().
  *   8. jsonl.fsync() con timeout 500ms → stderr 'fsync timeout, exiting anyway'.
  *   9. jsonl.close().
@@ -180,6 +187,15 @@ export function createGracefulShutdown(deps: ShutdownDeps): GracefulShutdown {
       // hace silent no-op si está dead, así que el chequeo socket.isAlive()
       // se usa sólo para decidir si vale la pena el end() graceful.
       deps.emitShutdown(reason, exitCode);
+
+      // Paso 6b: terminar el worker NER antes de cerrar el socket. terminate()
+      // mata el worker -> dispara onWorkerDeath -> emite los onDrop pendientes
+      // y proxy.ner_worker_died por el sink, que aun deben vehicularse por el
+      // SocketWriter vivo. Por eso va ANTES del Paso 7. Opcional: no-op si no
+      // hay NER configurado.
+      if (deps.worker !== undefined) {
+        await deps.worker.terminate(SIGTERM_GRACE_MS);
+      }
 
       // Paso 7
       if (deps.socket.isAlive()) {

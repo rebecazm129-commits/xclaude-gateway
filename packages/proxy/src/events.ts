@@ -73,6 +73,11 @@ export type EventBody =
       rpcId?: RpcId;
     }
   | {
+      type: 'proxy.ner_worker_died';
+      cause: 'exit' | 'error';
+      pendingDropped: number;
+    }
+  | {
       type: 'mcp.request';
       direction: Direction;
       rpcId: RpcId;

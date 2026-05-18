@@ -9,8 +9,10 @@ import type { WorkerJobResponse } from '../../../src/detection/ner/worker.js';
 function fakeChild() {
   const ee = new EventEmitter() as EventEmitter & {
     send: ReturnType<typeof vi.fn>;
+    kill: ReturnType<typeof vi.fn>;
   };
   ee.send = vi.fn();
+  ee.kill = vi.fn();
   return ee;
 }
 
@@ -32,13 +34,15 @@ function setup() {
   const child = fakeChild();
   const enriched: unknown[] = [];
   const drops: Array<{ reason: string; rpcId: unknown }> = [];
+  const deaths: Array<{ cause: string; pendingDropped: number }> = [];
   const det = new AsyncDetectorNer({
     workerScript: 'unused',
     enrichmentSink: (e) => enriched.push(e),
     onDrop: (reason, _jobId, rpcId) => drops.push({ reason, rpcId }),
+    onWorkerDied: (cause, pendingDropped) => deaths.push({ cause, pendingDropped }),
     forkImpl: () => child as unknown as never,
   });
-  return { child, enriched, drops, det };
+  return { child, enriched, drops, deaths, det };
 }
 
 function emit(child: EventEmitter, msg: WorkerJobResponse) {
@@ -117,11 +121,80 @@ describe('AsyncDetectorNer', () => {
   });
 
   it('is a silent no-op after the worker dies', () => {
-    const { child, det, drops } = setup();
+    const { child, det, drops, deaths } = setup();
     emit(child, { kind: 'ready' });
     child.emit('exit', 1, null);
     det.enqueue(input('{"a":1}'), 1);
     expect(child.send).not.toHaveBeenCalled();
     expect(drops).toHaveLength(0);
+    expect(deaths).toEqual([{ cause: 'exit', pendingDropped: 0 }]);
+  });
+
+  it('drains the queue with worker_dead on worker death', () => {
+    const { child, det, drops, deaths } = setup();
+    // Sin 'ready': los jobs se acumulan en la cola sin despacharse.
+    det.enqueue(input('{"a":1}'), 1);
+    det.enqueue(input('{"b":2}'), 2);
+    child.emit('exit', 1, null);
+    expect(drops).toEqual([
+      { reason: 'worker_dead', rpcId: 1 },
+      { reason: 'worker_dead', rpcId: 2 },
+    ]);
+    expect(deaths).toEqual([{ cause: 'exit', pendingDropped: 2 }]);
+  });
+
+  it('includes the in-flight job in the drain on worker death', () => {
+    const { child, det, drops, deaths } = setup();
+    emit(child, { kind: 'ready' });
+    det.enqueue(input('{"a":1}'), 1);
+    // Job 1 esta in-flight (despachado, sin respuesta). Job 2 en cola.
+    det.enqueue(input('{"b":2}'), 2);
+    child.emit('exit', 1, null);
+    expect(drops).toEqual([
+      { reason: 'worker_dead', rpcId: 1 },
+      { reason: 'worker_dead', rpcId: 2 },
+    ]);
+    expect(deaths).toEqual([{ cause: 'exit', pendingDropped: 2 }]);
+  });
+
+  it('reports cause error when the worker errors', () => {
+    const { child, det, deaths } = setup();
+    child.emit('error', new Error('fork failed'));
+    expect(deaths).toEqual([{ cause: 'error', pendingDropped: 0 }]);
+  });
+
+  it('invokes onWorkerDied only once on double death (exit then error)', () => {
+    const { child, det, deaths } = setup();
+    child.emit('exit', 1, null);
+    child.emit('error', new Error('late error'));
+    expect(deaths).toHaveLength(1);
+    expect(deaths[0]).toEqual({ cause: 'exit', pendingDropped: 0 });
+  });
+
+  it('terminate sends SIGTERM and resolves on worker exit', async () => {
+    const { child, det } = setup();
+    const p = det.terminate(1000);
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+    child.emit('exit', 0, null);
+    await expect(p).resolves.toBeUndefined();
+  });
+
+  it('terminate escalates to SIGKILL on timeout', async () => {
+    vi.useFakeTimers();
+    const { child, det } = setup();
+    const p = det.terminate(1000);
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+    vi.advanceTimersByTime(1000);
+    expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+    await expect(p).resolves.toBeUndefined();
+    vi.useRealTimers();
+  });
+
+  it('terminate resolves immediately when worker already dead', async () => {
+    const { child, det } = setup();
+    child.emit('exit', 1, null);
+    child.kill.mockClear();
+    await expect(det.terminate(1000)).resolves.toBeUndefined();
+    expect(child.kill).not.toHaveBeenCalled();
   });
 });

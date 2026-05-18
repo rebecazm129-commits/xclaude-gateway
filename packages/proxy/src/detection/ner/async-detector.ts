@@ -27,6 +27,9 @@ export interface AsyncDetectorNerDeps {
   workerScript: string;
   enrichmentSink: EnrichmentSink;
   onDrop: OnNerDrop;
+  // Invocado una vez cuando el worker muere (exit o error). El caller emite
+  // proxy.ner_worker_died. cause distingue salida limpia de error de fork.
+  onWorkerDied: (cause: 'exit' | 'error', pendingDropped: number) => void;
   // Inyectable para test (default node:child_process.fork). El test pasa un
   // fake controlable y evita fork real (251ms cold start + cache del modelo).
   forkImpl?: (modulePath: string) => ChildProcess;
@@ -47,26 +50,31 @@ export class AsyncDetectorNer implements AsyncDetector {
   private readonly child: ChildProcess;
   private readonly enrichmentSink: EnrichmentSink;
   private readonly onDrop: OnNerDrop;
+  private readonly onWorkerDied: AsyncDetectorNerDeps['onWorkerDied'];
   private workerReady = false;
   private inFlight: QueuedJob | undefined;
-  // PROVISIONAL: error recovery pendiente decision 7. Minimo defensivo: si el
-  // worker muere, enqueue pasa a no-op silencioso (no crashea el proxy). NO
-  // hay telemetria de crash ni restart aqui -- eso es la decision 7.
+  // Decision 7 (cerrada): si el worker muere, degradar sin reintentar. enqueue
+  // pasa a no-op silencioso (alive=false), se drena la cola con onDrop
+  // 'worker_dead' y se emite proxy.ner_worker_died via onWorkerDied. NO restart
+  // automatico: el NER es off-path severidad low, un worker muerto degrada PII
+  // pero no rompe proxy ni auditoria; restart se anadira con datos de
+  // dogfooding si los justifican (Principio 6).
   private alive = true;
 
   constructor(deps: AsyncDetectorNerDeps) {
     this.enrichmentSink = deps.enrichmentSink;
     this.onDrop = deps.onDrop;
+    this.onWorkerDied = deps.onWorkerDied;
     const forkImpl = deps.forkImpl ?? fork;
     this.child = forkImpl(deps.workerScript);
     this.child.on('message', (msg: WorkerJobResponse) => {
       this.handleMessage(msg);
     });
     this.child.on('exit', () => {
-      this.alive = false;
+      this.onWorkerDeath('exit');
     });
     this.child.on('error', () => {
-      this.alive = false;
+      this.onWorkerDeath('error');
     });
   }
 
@@ -139,5 +147,48 @@ export class AsyncDetectorNer implements AsyncDetector {
     // 'skip' y 'error' no invocan al sink (no hay enrichment). 'error' es
     // job-level: el worker sigue vivo, solo se drena el siguiente.
     this.drain();
+  }
+
+  // Muerte del worker (exit o error). Idempotente via this.alive: si ya estaba
+  // muerto, no hace nada. Drena cola + inFlight con onDrop 'worker_dead' y
+  // emite un unico onWorkerDied con el total. NO reintenta (decision 7).
+  private onWorkerDeath(cause: 'exit' | 'error'): void {
+    if (!this.alive) return;
+    this.alive = false;
+    // FIFO honesto: el inFlight entro antes que cualquier job en cola (fue
+    // despachado), asi que se reporta primero en el audit trail.
+    const pending =
+      this.inFlight !== undefined
+        ? [this.inFlight, ...this.queue]
+        : [...this.queue];
+    this.queue.length = 0;
+    this.inFlight = undefined;
+    for (const job of pending) {
+      this.onDrop('worker_dead', undefined, job.request.rpcId);
+    }
+    this.onWorkerDied(cause, pending.length);
+  }
+
+  // Shutdown limpio (pieza 4). Deja de aceptar enqueues, SIGTERM al worker,
+  // espera su muerte con timeout; si expira, SIGKILL. Resuelve siempre, nunca
+  // rechaza (consistente con el resto del shutdown defensivo).
+  terminate(timeoutMs: number): Promise<void> {
+    if (!this.alive) return Promise.resolve();
+    this.alive = false;
+    return new Promise<void>((resolve) => {
+      let done = false;
+      const finish = (): void => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        this.child.kill('SIGKILL');
+        finish();
+      }, timeoutMs);
+      this.child.once('exit', finish);
+      this.child.kill('SIGTERM');
+    });
   }
 }
