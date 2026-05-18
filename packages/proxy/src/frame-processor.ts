@@ -7,6 +7,8 @@ import type { DetectionEngine } from './detection/engine.js';
 import type { Direction, EventBody } from './events.js';
 import type { InflightTracker } from './latency.js';
 import type { ClassifiedFrame } from './parser.js';
+import { buildDetectorInput } from './detection/engine.js';
+import type { AsyncDetector } from './detection/types.js';
 import { elapsedUs } from './timing.js';
 
 export interface FrameProcessorDeps {
@@ -14,6 +16,7 @@ export interface FrameProcessorDeps {
   engine: DetectionEngine;
   mcp: string;
   session: string;
+  asyncDetector?: AsyncDetector;
 }
 
 export type FrameProcessor = (
@@ -30,13 +33,17 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
     switch (frame.kind) {
       case 'request': {
         deps.tracker.trackRequest(direction, frame.id, tsWallMs);
-        const detections = deps.engine.detect({
+        const envelope = {
           payload: frame.params,
           mcp: deps.mcp,
           method: frame.method,
           direction,
           sessionId: deps.session,
-        });
+        };
+        const detections = deps.engine.detect(envelope);
+        if (deps.asyncDetector !== undefined) {
+          deps.asyncDetector.enqueue(buildDetectorInput(envelope), frame.id);
+        }
         const overheadUs = elapsedUs(tsObservedNs);
         return detections.map((detection) => ({
           type: 'mcp.request',

@@ -91,10 +91,15 @@ export class AsyncDetectorNer implements AsyncDetector {
         direction: input.envelope.direction,
       },
     };
-    // PROVISIONAL: lifecycle pendiente decision 6. enqueue antes de 'ready'
-    // acumula en cola; se drena al recibir 'ready'. Conservador y suficiente
-    // para que la clase sea correcta; el lifecycle real cruza el wiring de
-    // main.ts (pieza 3).
+    // Lifecycle (decision 6-A): enqueue antes de 'ready' acumula en cola; al
+    // recibir 'ready' se drena. El AsyncDetectorNer se construye eager en
+    // main.ts despues del spawn del MCP child, asi que el primer burst de
+    // frames (initialize/tools/list) normalmente llega antes de 'ready' (el
+    // spawn+init del MCP suele tardar <100ms vs cold start NER ~251ms, pero
+    // el timing relativo no esta medido): se acumula y se enriquece tras el
+    // cold start. Registrar el primer
+    // burst importa mas que evitar ese overheadUs alto (auditoria: registrar
+    // generosamente). El terminate en shutdown sigue pendiente: decision 7.
     if (this.workerReady && this.inFlight === undefined) {
       this.dispatch(job);
     } else {

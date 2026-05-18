@@ -25,7 +25,7 @@ function extractToolName(envelope: McpRequestEnvelope): string | undefined {
   return typeof name === 'string' ? name : undefined;
 }
 
-function buildDetectorInput(envelope: McpRequestEnvelope): DetectorInput {
+export function buildDetectorInput(envelope: McpRequestEnvelope): DetectorInput {
   const paramsJson = envelope.payload === undefined ? '' : JSON.stringify(envelope.payload);
   return {
     envelope,

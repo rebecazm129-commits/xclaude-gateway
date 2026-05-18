@@ -11,7 +11,8 @@ import { ulid } from 'ulid';
 import { JsonlWriter } from './audit.js';
 import { DetectionEngine } from './detection/engine.js';
 import { ACTIVE_DETECTORS } from './detection/detectors/index.js';
-import { EventSink } from './events.js';
+import { AsyncDetectorNer } from './detection/ner/async-detector.js';
+import { EventSink, createEnrichmentSink } from './events.js';
 import { createFrameProcessor } from './frame-processor.js';
 import { InflightTracker } from './latency.js';
 import { classify } from './parser.js';
@@ -144,7 +145,14 @@ function main(): void {
   const stderrSplitter = new LineSplitter();
   const tracker = new InflightTracker();
   const engine = new DetectionEngine(ACTIVE_DETECTORS);
-  const processFrame = createFrameProcessor({ tracker, engine, mcp: name, session });
+  const asyncDetector = new AsyncDetectorNer({
+    workerScript: join(__dirname, 'xcg-ner-worker.cjs'),
+    enrichmentSink: createEnrichmentSink(sink),
+    onDrop: (reason, jobId, rpcId) => {
+      sink.emit({ type: 'proxy.ner_dropped', reason, jobId, rpcId });
+    },
+  });
+  const processFrame = createFrameProcessor({ tracker, engine, asyncDetector, mcp: name, session });
   let framesIn = 0;
   let framesOut = 0;
   let framesStderr = 0;
