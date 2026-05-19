@@ -15,3 +15,8 @@ release/
 .env.*.local
 coverage/
 .claude/settings.local.json
+
+# Modelo NER materializado por `pnpm fetch:model` (cuestion a / packaging).
+# Artefacto binario (~105MB q8 + configs), fuera de git por decision de
+# producto: el .app lo empaqueta via electron-builder extraResources.
+packages/proxy/models/

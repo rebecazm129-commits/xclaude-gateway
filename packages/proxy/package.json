@@ -9,7 +9,9 @@
   "scripts": {
     "build": "pnpm run build:main && pnpm run build:worker",
     "build:main": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/xcg-proxy.cjs",
-    "build:worker": "esbuild src/detection/ner/worker.ts --bundle --platform=node --target=node22 --format=cjs --external:@huggingface/transformers --external:onnxruntime-node --outfile=dist/xcg-ner-worker.cjs",
+    "build:worker": "esbuild src/detection/ner/worker.ts --bundle --platform=node --target=node22 --format=cjs --loader:.node=copy --alias:sharp=./scripts/empty-stub.cjs --alias:onnxruntime-web=./scripts/empty-stub.cjs --outfile=dist/xcg-ner-worker.cjs && pnpm run copy:dylib",
+    "copy:dylib": "node scripts/copy-dylib.mjs",
+    "fetch:model": "node scripts/fetch-model.mjs",
     "stub": "esbuild scripts/stub-orchestrator.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/xcg-stub.cjs && node dist/xcg-stub.cjs",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -18,6 +20,7 @@
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
     "@xcg/shared": "workspace:*",
+    "onnxruntime-node": "1.24.3",
     "ulid": "^2.3.0"
   },
   "devDependencies": {

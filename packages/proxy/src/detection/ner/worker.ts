@@ -1,4 +1,6 @@
-import { pipeline } from '@huggingface/transformers';
+import { join } from 'node:path';
+
+import { env, pipeline } from '@huggingface/transformers';
 
 import type {
   DetectionFinding,
@@ -6,6 +8,16 @@ import type {
   Direction,
   RpcId,
 } from '../types.js';
+
+// Modo offline (decision packaging / cuestion a): el modelo se sirve desde
+// disco local, nunca por red. allowRemoteModels=false impide cualquier
+// descarga (Principio 8: sin red en runtime). localModelPath resuelve via
+// __dirname relativo: en repo -> packages/proxy/models/, en el .app firmado
+// -> .app/Contents/Resources/proxy/models/ (misma estructura proxy/{dist,
+// models}). Verificado que en directorio read-only no se intenta escribir
+// cache, por lo que no se configura env.cacheDir.
+env.allowRemoteModels = false;
+env.localModelPath = join(__dirname, '..', 'models');
 
 // --- Protocolo IPC main<->worker (replicado en async-detector.ts del lado
 // main para que ambos compilen contra la misma forma). Mensajes planos

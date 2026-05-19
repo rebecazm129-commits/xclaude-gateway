@@ -10,6 +10,11 @@ extraResources:
     to: proxy/dist
     filter:
       - xcg-proxy.cjs
+      - xcg-ner-worker.cjs
+      - "*.node"
+      - "*.dylib"
+  - from: ../../packages/proxy/models
+    to: proxy/models
 mac:
   category: public.app-category.developer-tools  # revisar a 'productivity'
                                                   # cuando Hito 5 (onboarding

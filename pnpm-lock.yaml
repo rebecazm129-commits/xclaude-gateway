@@ -66,6 +66,9 @@ importers:
       '@xcg/shared':
         specifier: workspace:*
         version: link:../shared
+      onnxruntime-node:
+        specifier: 1.24.3
+        version: 1.24.3
       ulid:
         specifier: ^2.3.0
         version: 2.4.0
