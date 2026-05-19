@@ -10,7 +10,20 @@
 
 set -e
 
-DIR="$(cd "$(dirname "$0")" && pwd)"
+# gamma-fix (Hito 4): resolver $0 siguiendo symlinks iterativamente antes
+# de calcular DIR. POSIX puro (readlink -f no es portable en macOS). Si $0
+# no es symlink, el bucle no itera: comportamiento identico a los 3 modos
+# validados en Hito 2 (dev, .app directo, .app instalado).
+SELF="$0"
+while [ -L "$SELF" ]; do
+  TARGET="$(readlink "$SELF")"
+  case "$TARGET" in
+    /*) SELF="$TARGET" ;;
+    *)  SELF="$(dirname "$SELF")/$TARGET" ;;
+  esac
+done
+
+DIR="$(cd "$(dirname "$SELF")" && pwd)"
 
 case "$DIR" in
   *".app/Contents/Resources/proxy/bin")
