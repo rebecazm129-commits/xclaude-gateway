@@ -3,7 +3,7 @@ import { tmpdir as osTmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { ensureSymlink, removeSymlink } from '../../src/config/install.js';
+import { ensureSymlink, removeSymlink } from '../src/install.js';
 
 describe('ensureSymlink — idempotent symlink ensure (Milestone 4 Phase 3a)', () => {
   let tmp: string;

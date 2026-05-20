@@ -1,4 +1,4 @@
-// Contrato compartido del monorepo (type-only, sin runtime).
+// Contrato compartido del monorepo: tipos + helpers genéricos de runtime.
 // Direction es una propiedad fundamental de cualquier frame MCP, no un tipo
 // de detección: vive aquí para que proxy y desktop compartan una sola fuente.
 export type Direction = 'client_to_server' | 'server_to_client';
@@ -59,3 +59,14 @@ export interface DetectionEnrichment {
 // línea nueva en el JSONL (evento mcp.detection_enrichment), respetando el
 // contrato append-only del Hito 2 (no se reescribe el evento original).
 export type EnrichmentSink = (enrichment: DetectionEnrichment) => void;
+
+// --- Generic POSIX symlink helpers (Milestone 4 Phase 3, moved from
+// @xcg/proxy in F3b prep). Knows nothing about xCLAUDE-specific paths;
+// callers compose with their own absolute paths. ---
+export {
+  ensureSymlink,
+  removeSymlink,
+  type EnsureResult,
+  type RemoveResult,
+  type InstallError,
+} from './install.js';
