@@ -30,7 +30,7 @@ function isStringArray(v: unknown): v is string[] {
 // Basename alone is not enough (false positives from an unrelated binary
 // named xcg-proxy; and post gamma-fix the command is the stable symlink,
 // also named xcg-proxy). Checking the arg shape removes both false cases.
-function isAlreadyWrapped(command: string, args: readonly string[]): boolean {
+export function isAlreadyWrapped(command: string, args: readonly string[]): boolean {
   if (basename(command) !== 'xcg-proxy') return false;
   return (
     args.length >= 5 &&
