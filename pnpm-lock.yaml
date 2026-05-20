@@ -14,9 +14,6 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@xcg/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -39,6 +36,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^4.3.4
         version: 4.7.0(vite@5.4.21(@types/node@24.12.4))
+      '@xcg/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       electron:
         specifier: ^42.0.0
         version: 42.0.1
