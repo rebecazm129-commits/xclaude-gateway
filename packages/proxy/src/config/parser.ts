@@ -97,7 +97,7 @@ export function parseConfig(configPath: string): ParseResult {
   const mcpServers = (parsed as ClaudeConfig).mcpServers;
   if (mcpServers === undefined) {
     // Absent mcpServers is valid: zero MCPs, empty plan, not an error.
-    return { ok: true, plan: { entries: [] } };
+    return { ok: true, plan: { entries: [] }, raw: parsed };
   }
   if (!isPlainObject(mcpServers)) {
     return {
@@ -110,5 +110,5 @@ export function parseConfig(configPath: string): ParseResult {
     classifyEntry(name, (mcpServers as Record<string, unknown>)[name]),
   );
   const plan: WrapPlan = { entries };
-  return { ok: true, plan };
+  return { ok: true, plan, raw: parsed };
 }

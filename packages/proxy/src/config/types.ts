@@ -55,8 +55,13 @@ export interface WrapPlan {
 
 // The parser returns this instead of throwing: corrupt/unreadable config is
 // a reported error, not an exception (Phase 1 is read-only and must fail safe).
+// `raw` is the parsed JSON value as read from disk. F2 (applyWrap/unwrap)
+// operates on it to preserve unknown keys verbatim (entries with custom
+// fields, top-level keys outside mcpServers). F1 already has it in memory;
+// exposing it avoids a second read and avoids the parser owning a notion
+// of "extra" that the transformer would have to recompose.
 export type ParseResult =
-  | { ok: true; plan: WrapPlan }
+  | { ok: true; plan: WrapPlan; raw: unknown }
   | { ok: false; error: ParseError };
 
 export type ParseError =

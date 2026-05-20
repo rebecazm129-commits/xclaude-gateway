@@ -72,13 +72,17 @@ describe('parseConfig — read-only classifier (Milestone 4 Phase 1)', () => {
   it('absent mcpServers is valid: empty plan, not an error', () => {
     const path = writeConfig({ otherKey: 1 });
     const r = parseConfig(path);
-    expect(r).toEqual({ ok: true, plan: { entries: [] } });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.plan.entries).toEqual([]);
   });
 
   it('empty mcpServers object: empty plan', () => {
     const path = writeConfig({ mcpServers: {} });
     const r = parseConfig(path);
-    expect(r).toEqual({ ok: true, plan: { entries: [] } });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.plan.entries).toEqual([]);
   });
 
   it('malformed JSON: invalid-json error, never throws', () => {
