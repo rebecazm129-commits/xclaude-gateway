@@ -10,6 +10,7 @@ extraResources:
     to: proxy/dist
     filter:
       - xcg-proxy.cjs
+      - xcg-config.cjs
       - xcg-ner-worker.cjs
       - "*.node"
       - "*.dylib"
