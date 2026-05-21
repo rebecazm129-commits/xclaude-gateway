@@ -1,50 +1,5 @@
 #!/bin/sh
-# Launcher xcg-proxy — host de Node vía Electron (ELECTRON_RUN_AS_NODE).
-# Resuelve el binario de Electron según ubicación del propio script:
-#   - Empaquetado (Fase 7): $DIR termina en .app/Contents/Resources/proxy/bin
-#       → usa el Electron del .app en Contents/MacOS/xCLAUDE Gateway
-#   - Desarrollo: $DIR es packages/proxy/bin/ en el repo
-#       → usa node_modules/electron/dist/Electron.app/...
-# El bundle (xcg-proxy.cjs) está siempre en $DIR/../dist/ en ambos modos
-# porque extraResources preserva la estructura packages/proxy/{bin,dist}.
+# Launcher xcg-proxy. Delegates to _xcg-launcher (shared with xcg-config).
+# See _xcg-launcher for path resolution and dev/packaged detection logic.
 
-set -e
-
-# gamma-fix (Hito 4): resolver $0 siguiendo symlinks iterativamente antes
-# de calcular DIR. POSIX puro (readlink -f no es portable en macOS). Si $0
-# no es symlink, el bucle no itera: comportamiento identico a los 3 modos
-# validados en Hito 2 (dev, .app directo, .app instalado).
-SELF="$0"
-while [ -L "$SELF" ]; do
-  TARGET="$(readlink "$SELF")"
-  case "$TARGET" in
-    /*) SELF="$TARGET" ;;
-    *)  SELF="$(dirname "$SELF")/$TARGET" ;;
-  esac
-done
-
-DIR="$(cd "$(dirname "$SELF")" && pwd)"
-
-case "$DIR" in
-  *".app/Contents/Resources/proxy/bin")
-    APP_ROOT="${DIR%/Contents/Resources/proxy/bin}"
-    ELECTRON_BIN="$APP_ROOT/Contents/MacOS/xCLAUDE Gateway"
-    ;;
-  *)
-    ELECTRON_BIN="$DIR/../../../node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
-    ;;
-esac
-
-BUNDLE="$DIR/../dist/xcg-proxy.cjs"
-
-if [ ! -x "$ELECTRON_BIN" ]; then
-  echo "xcg-proxy: Electron binary not found at $ELECTRON_BIN" >&2
-  exit 1
-fi
-
-if [ ! -f "$BUNDLE" ]; then
-  echo "xcg-proxy: bundle not found at $BUNDLE — run 'pnpm --filter @xcg/proxy build'" >&2
-  exit 1
-fi
-
-ELECTRON_RUN_AS_NODE=1 exec "$ELECTRON_BIN" "$BUNDLE" "$@"
+exec "$(dirname "$0")/_xcg-launcher" xcg-proxy "$@"

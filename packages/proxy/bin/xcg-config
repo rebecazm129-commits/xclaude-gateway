@@ -1,0 +1,5 @@
+#!/bin/sh
+# Launcher xcg-config. Delegates to _xcg-launcher (shared with xcg-proxy).
+# See _xcg-launcher for path resolution and dev/packaged detection logic.
+
+exec "$(dirname "$0")/_xcg-launcher" xcg-config "$@"

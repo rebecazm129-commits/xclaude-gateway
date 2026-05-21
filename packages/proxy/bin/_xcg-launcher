@@ -1,0 +1,64 @@
+#!/bin/sh
+# Internal launcher shared by xcg-proxy and xcg-config. Not invoked
+# directly by users. Hosts a Node bundle via Electron (ELECTRON_RUN_AS_NODE).
+#
+# Usage: _xcg-launcher <bundle-basename> [original args...]
+#   bundle-basename: 'xcg-proxy' | 'xcg-config' (matches dist/<basename>.cjs)
+#
+# Resolves Electron binary based on script location:
+#   - Packaged: $DIR ends in .app/Contents/Resources/proxy/bin
+#       -> uses Electron from the .app
+#   - Dev: $DIR is packages/proxy/bin in the repo
+#       -> uses node_modules/electron/dist/Electron.app
+# The bundle is always at $DIR/../dist/<basename>.cjs in both modes
+# (electron-builder preserves the packages/proxy/{bin,dist} layout).
+
+set -e
+
+# Require bundle-basename as first argument.
+BUNDLE_BASENAME="${1:-}"
+if [ -z "$BUNDLE_BASENAME" ]; then
+  echo "_xcg-launcher: missing bundle basename (first arg)" >&2
+  exit 2
+fi
+shift
+
+# gamma-fix (Hito 4 F0): resolve $0 following symlinks iteratively before
+# computing DIR. POSIX-only (readlink -f is not portable on macOS). If $0
+# is not a symlink the loop is a no-op: behavior identical to the original
+# bin/xcg-proxy in the 3 modes validated in Hito 2 (dev, .app direct,
+# .app installed).
+SELF="$0"
+while [ -L "$SELF" ]; do
+  TARGET="$(readlink "$SELF")"
+  case "$TARGET" in
+    /*) SELF="$TARGET" ;;
+    *)  SELF="$(dirname "$SELF")/$TARGET" ;;
+  esac
+done
+
+DIR="$(cd "$(dirname "$SELF")" && pwd)"
+
+case "$DIR" in
+  *".app/Contents/Resources/proxy/bin")
+    APP_ROOT="${DIR%/Contents/Resources/proxy/bin}"
+    ELECTRON_BIN="$APP_ROOT/Contents/MacOS/xCLAUDE Gateway"
+    ;;
+  *)
+    ELECTRON_BIN="$DIR/../../../node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
+    ;;
+esac
+
+BUNDLE="$DIR/../dist/${BUNDLE_BASENAME}.cjs"
+
+if [ ! -x "$ELECTRON_BIN" ]; then
+  echo "${BUNDLE_BASENAME}: Electron binary not found at $ELECTRON_BIN" >&2
+  exit 1
+fi
+
+if [ ! -f "$BUNDLE" ]; then
+  echo "${BUNDLE_BASENAME}: bundle not found at $BUNDLE — run 'pnpm --filter @xcg/proxy build'" >&2
+  exit 1
+fi
+
+ELECTRON_RUN_AS_NODE=1 exec "$ELECTRON_BIN" "$BUNDLE" "$@"
