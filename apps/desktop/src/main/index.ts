@@ -3,8 +3,17 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ensureSymlink } from '@xcg/shared';
-import { STABLE_XCG_PROXY_PATH } from '@xcg/shared/config';
+import {
+  CLAUDE_DESKTOP_CONFIG_PATH,
+  STABLE_XCG_PROXY_PATH,
+} from '@xcg/shared/config';
 
+import {
+  resolveXcgPathFromMain,
+  runConfigInstall,
+  runConfigStatus,
+  runConfigUninstall,
+} from './config-handlers.js';
 import { readDetections } from './detection-reader.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -27,6 +36,33 @@ function createWindow(): void {
 
 ipcMain.handle('detection:list', async () => {
   return readDetections();
+});
+
+ipcMain.handle('config:status', () => {
+  return runConfigStatus({
+    configPath: CLAUDE_DESKTOP_CONFIG_PATH,
+    xcgPath: resolveXcgPathFromMain(),
+  });
+});
+
+ipcMain.handle('config:install', (_event, mode: 'dry-run' | 'yes') => {
+  return runConfigInstall(
+    {
+      configPath: CLAUDE_DESKTOP_CONFIG_PATH,
+      xcgPath: resolveXcgPathFromMain(),
+    },
+    mode,
+  );
+});
+
+ipcMain.handle('config:uninstall', (_event, mode: 'dry-run' | 'yes') => {
+  return runConfigUninstall(
+    {
+      configPath: CLAUDE_DESKTOP_CONFIG_PATH,
+      xcgPath: resolveXcgPathFromMain(),
+    },
+    mode,
+  );
 });
 
 // Milestone 4 Phase 3b: ensure a stable symlink in
