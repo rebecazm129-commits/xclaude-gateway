@@ -47,29 +47,3 @@
   color: #38bdf8;
 }
 
-.counter {
-  color: #64748b;
-  font-size: 13px;
-}
-
-.filters {
-  display: flex;
-  gap: 8px;
-  padding: 12px 20px;
-  background: #0f172a;
-  border-bottom: 1px solid #334155;
-  height: 56px;
-  box-sizing: border-box;
-  align-items: center;
-}
-
-.empty {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #475569;
-  font-size: 14px;
-  padding: 40px;
-  text-align: center;
-}

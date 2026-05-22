@@ -1,51 +1,88 @@
-import { useEffect, useMemo, useState } from 'react';
-import { FixedSizeList } from 'react-window';
+import { useCallback, useEffect, useState } from 'react';
 
-import { DetectionRow } from './components/DetectionRow.js';
-import { FilterDropdown } from './components/FilterDropdown.js';
-import { usePolledDetections } from './hooks/usePolledDetections.js';
-import type { Severity, Category } from '../shared/types.js';
+import type { StatusResult } from '@xcg/shared/config';
+
+import { Detections } from './components/Detections.js';
+import { Setup } from './components/Setup.js';
+import { Tabs, type TabOption } from './components/Tabs.js';
 
 import styles from './App.module.css';
 
-const SEVERITY_OPTIONS: readonly Severity[] = ['low', 'medium', 'high', 'critical'];
-const CATEGORY_OPTIONS: readonly Category[] = [
-  'credential_detected',
-  'prompt_injection',
-  'email_send_warning',
-  'data_export_warning',
-  'tool_call_allowed',
-  'pii_detected',
+type TabId = 'setup' | 'detections';
+
+const TAB_OPTIONS: readonly TabOption<TabId>[] = [
+  { id: 'setup', label: 'Setup' },
+  { id: 'detections', label: 'Detections' },
 ];
 
-const ROW_HEIGHT = 32;
-const HEADER_AND_FILTERS_HEIGHT = 112;
+const LAST_TAB_STORAGE_KEY = 'xcg:lastTab';
+
+function readLastTab(): TabId | null {
+  try {
+    const stored = window.localStorage.getItem(LAST_TAB_STORAGE_KEY);
+    if (stored === 'setup' || stored === 'detections') {
+      return stored;
+    }
+    return null;
+  } catch {
+    // localStorage may be unavailable (private mode, etc.). Fail open.
+    return null;
+  }
+}
+
+function writeLastTab(tab: TabId): void {
+  try {
+    window.localStorage.setItem(LAST_TAB_STORAGE_KEY, tab);
+  } catch {
+    // Best-effort — if write fails the app still works, just no persistence.
+  }
+}
+
+// Decide which tab to show on first launch when localStorage is empty.
+// Setup is the default if there's nothing wrapped yet (the user hasn't completed
+// setup, or there's no config at all). Detections is the default once at least
+// one MCP is wrapped.
+function defaultTabFromStatus(status: StatusResult | null): TabId {
+  if (status === null) return 'setup';
+  if (!status.ok) return 'setup';
+  if (!status.configPresent) return 'setup';
+  if (status.summary.alreadyWrapped === 0) return 'setup';
+  return 'detections';
+}
 
 export function App(): JSX.Element {
-  const detections = usePolledDetections();
-  const [selectedSeverities, setSelectedSeverities] =
-    useState<readonly Severity[]>(SEVERITY_OPTIONS);
-  const [selectedCategories, setSelectedCategories] =
-    useState<readonly Category[]>(CATEGORY_OPTIONS);
-  const [listHeight, setListHeight] = useState(
-    window.innerHeight - HEADER_AND_FILTERS_HEIGHT,
-  );
+  const [configStatus, setConfigStatus] = useState<StatusResult | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>(() => readLastTab() ?? 'setup');
+  const [statusLoaded, setStatusLoaded] = useState(false);
 
+  // One-shot configStatus on mount (D-D4). Sets the initial status and, if
+  // localStorage was empty, picks the default tab based on the result.
   useEffect(() => {
-    function onResize(): void {
-      setListHeight(window.innerHeight - HEADER_AND_FILTERS_HEIGHT);
-    }
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    let cancelled = false;
+    void window.xcg.configStatus().then((result) => {
+      if (cancelled) return;
+      setConfigStatus(result);
+      // Only override the tab if localStorage had no preference.
+      if (readLastTab() === null) {
+        setActiveTab(defaultTabFromStatus(result));
+      }
+      setStatusLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const filtered = useMemo(() => {
-    const sevSet = new Set(selectedSeverities);
-    const catSet = new Set(selectedCategories);
-    return detections.filter(
-      (d) => sevSet.has(d.detection.severity) && catSet.has(d.detection.category),
-    );
-  }, [detections, selectedSeverities, selectedCategories]);
+  const handleTabChange = useCallback((tab: TabId) => {
+    setActiveTab(tab);
+    writeLastTab(tab);
+  }, []);
+
+  const refreshStatus = useCallback(() => {
+    void window.xcg.configStatus().then((result) => {
+      setConfigStatus(result);
+    });
+  }, []);
 
   return (
     <div className={styles['app']}>
@@ -54,44 +91,12 @@ export function App(): JSX.Element {
           <span className={styles['pulse']} aria-hidden="true" />
           <h1 className={styles['title']}>xCLAUDE Gateway</h1>
         </span>
-        <span className={styles['counter']}>Detections: {filtered.length}</span>
       </header>
-      <div className={styles['filters']}>
-        <FilterDropdown
-          label="Severity"
-          options={SEVERITY_OPTIONS}
-          selected={selectedSeverities}
-          onChange={setSelectedSeverities}
-        />
-        <FilterDropdown
-          label="Category"
-          options={CATEGORY_OPTIONS}
-          selected={selectedCategories}
-          onChange={setSelectedCategories}
-        />
-      </div>
-      {filtered.length === 0 ? (
-        <div className={styles['empty']}>
-          No detections yet. Wrap an MCP server with xcg-proxy to start auditing.
-        </div>
+      <Tabs options={TAB_OPTIONS} active={activeTab} onChange={handleTabChange} />
+      {activeTab === 'setup' ? (
+        <Setup status={statusLoaded ? configStatus : null} onRefresh={refreshStatus} />
       ) : (
-        <FixedSizeList
-          height={listHeight}
-          width="100%"
-          itemSize={ROW_HEIGHT}
-          itemCount={filtered.length}
-          itemKey={(index) => filtered[index]?.id ?? index}
-        >
-          {({ index, style }) => {
-            const item = filtered[index];
-            if (item === undefined) return null;
-            return (
-              <div style={style}>
-                <DetectionRow event={item} />
-              </div>
-            );
-          }}
-        </FixedSizeList>
+        <Detections />
       )}
     </div>
   );
