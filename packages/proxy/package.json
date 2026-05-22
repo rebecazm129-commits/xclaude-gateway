@@ -11,7 +11,7 @@
     "build": "pnpm run build:main && pnpm run build:worker && pnpm run build:config",
     "build:main": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/xcg-proxy.cjs",
     "build:worker": "esbuild src/detection/ner/worker.ts --bundle --platform=node --target=node22 --format=cjs --loader:.node=copy --alias:sharp=./scripts/empty-stub.cjs --alias:onnxruntime-web=./scripts/empty-stub.cjs --outfile=dist/xcg-ner-worker.cjs && pnpm run copy:dylib",
-    "build:config": "esbuild src/config/cli.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/xcg-config.cjs",
+    "build:config": "esbuild src/config/cli-entry.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/xcg-config.cjs",
     "copy:dylib": "node scripts/copy-dylib.mjs",
     "fetch:model": "node scripts/fetch-model.mjs",
     "stub": "esbuild scripts/stub-orchestrator.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/xcg-stub.cjs && node dist/xcg-stub.cjs",
