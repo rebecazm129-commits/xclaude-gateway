@@ -21,9 +21,13 @@ import { dirname, basename, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { homedir } from 'node:os';
 
-import { parseConfig } from './parser.js';
-import { applyWrap, unwrap } from './transform.js';
-import type { ParseError, WrapPlanEntry } from './types.js';
+import {
+  applyWrap,
+  parseConfig,
+  unwrap,
+  type ParseError,
+  type WrapPlanEntry,
+} from '@xcg/shared/config';
 
 // --- Defaults ---
 
