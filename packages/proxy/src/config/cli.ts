@@ -7,17 +7,7 @@
 // emits output, exits. Contract frozen in Bitácora ficha
 // 367242b46fa781c299d5e7f303b971fc.
 
-import {
-  closeSync,
-  copyFileSync,
-  existsSync,
-  fsyncSync,
-  openSync,
-  renameSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
-import { dirname, basename, join, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import {
@@ -26,8 +16,10 @@ import {
   parseConfig,
   STABLE_XCG_PROXY_PATH,
   unwrap,
+  writeAtomic,
   type ParseError,
   type WrapPlanEntry,
+  type WriteAtomicError,
 } from '@xcg/shared/config';
 
 // --- Defaults (canonical paths re-exported from @xcg/shared/config) ---
@@ -84,45 +76,20 @@ function parseErrorToPayload(err: ParseError): {
   };
 }
 
-// Atomic write: tmpfile in same dir, fsync tmp, rename to target, fsync dir.
-// Preserves the original file's permissions. .bak is created first-write-wins:
-// only if it doesn't exist already.
-function writeAtomic(
-  configPath: string,
-  newContent: unknown,
-): void {
-  const dir = dirname(configPath);
-  const bakPath = `${configPath}.bak`;
-
-  // First-write-wins backup. If a previous install already wrote .bak, leave
-  // it untouched — that one represents the user's pre-xCLAUDE state.
-  if (!existsSync(bakPath)) {
-    copyFileSync(configPath, bakPath);
-    const bakFd = openSync(bakPath, 'r');
-    fsyncSync(bakFd);
-    closeSync(bakFd);
-  }
-
-  // Inherit permissions from the existing config.
-  const origMode = statSync(configPath).mode & 0o777;
-
-  // Write new content to tmpfile in same dir.
-  const tmpPath = join(dir, `${basename(configPath)}.tmp.${process.pid}`);
-  const serialized = `${JSON.stringify(newContent, null, 2)}\n`;
-  writeFileSync(tmpPath, serialized, { mode: origMode });
-
-  // fsync the tmpfile.
-  const tmpFd = openSync(tmpPath, 'r');
-  fsyncSync(tmpFd);
-  closeSync(tmpFd);
-
-  // Atomic rename.
-  renameSync(tmpPath, configPath);
-
-  // fsync the directory so the rename hits disk.
-  const dirFd = openSync(dir, 'r');
-  fsyncSync(dirFd);
-  closeSync(dirFd);
+// Maps a WriteAtomicError (permission / io) into the same JSON error shape
+// the CLI uses for ParseError. Both are surfaced under error.kind: 'unreadable'
+// from the consumer's perspective (the .bak/config write path is the same
+// disk surface as reading the config); detail preserves the specific cause.
+function writeAtomicErrorToPayload(err: WriteAtomicError): {
+  schema: 1;
+  ok: false;
+  error: { kind: 'unreadable'; detail: string };
+} {
+  return {
+    schema: 1,
+    ok: false,
+    error: { kind: 'unreadable', detail: `${err.kind}: ${err.detail}` },
+  };
 }
 
 // --- Plan serialization for output ---
@@ -245,7 +212,13 @@ export function runInstall(
   // mode === 'yes': commit
   let outcome: 'wrote' | 'noop' = 'noop';
   if (!isNoop) {
-    writeAtomic(opts.configPath, wrapped);
+    const wr = writeAtomic(opts.configPath, wrapped);
+    if (!wr.ok) {
+      return {
+        exitCode: EXIT_USAGE_OR_CORRUPT,
+        payload: writeAtomicErrorToPayload(wr.error),
+      };
+    }
     outcome = 'wrote';
   }
   return {
@@ -309,7 +282,13 @@ export function runUninstall(
 
   let outcome: 'wrote' | 'noop' = 'noop';
   if (!isNoop) {
-    writeAtomic(opts.configPath, unwrapped);
+    const wr = writeAtomic(opts.configPath, unwrapped);
+    if (!wr.ok) {
+      return {
+        exitCode: EXIT_USAGE_OR_CORRUPT,
+        payload: writeAtomicErrorToPayload(wr.error),
+      };
+    }
     outcome = 'wrote';
   }
   return {

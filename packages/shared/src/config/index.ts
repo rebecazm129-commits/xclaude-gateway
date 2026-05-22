@@ -7,6 +7,8 @@
 export { isAlreadyWrapped, parseConfig } from './parser.js';
 export { applyWrap, unwrap } from './transform.js';
 export { CLAUDE_DESKTOP_CONFIG_PATH, STABLE_XCG_PROXY_PATH } from './paths.js';
+export { writeAtomic } from './io.js';
+export type { WriteAtomicError, WriteAtomicResult } from './io.js';
 export type {
   ClaudeConfig,
   InstallOk,
