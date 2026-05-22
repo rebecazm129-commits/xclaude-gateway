@@ -180,6 +180,11 @@ export function Setup({ status, onRefresh }: SetupProps): ReactElement {
               Refresh
             </button>
           </div>
+          {canUninstall ? (
+            <p className={styles['uninstallHint']}>
+              Before removing xCLAUDE Gateway from your Applications folder, click Uninstall to restore your MCP configuration.
+            </p>
+          ) : null}
         </>
       ) : (
         <div className={styles['actions']}>
