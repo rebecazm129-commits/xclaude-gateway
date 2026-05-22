@@ -9,10 +9,19 @@ export { applyWrap, unwrap } from './transform.js';
 export { CLAUDE_DESKTOP_CONFIG_PATH, STABLE_XCG_PROXY_PATH } from './paths.js';
 export type {
   ClaudeConfig,
+  InstallOk,
+  InstallResult,
+  IpcConfigEntry,
+  IpcConfigError,
+  IpcConfigSummary,
   McpEntry,
   ParseError,
   ParseResult,
   SkipReason,
+  StatusOk,
+  StatusResult,
+  UninstallOk,
+  UninstallResult,
   WrapPlan,
   WrapPlanEntry,
 } from './types.js';

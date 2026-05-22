@@ -1,4 +1,8 @@
 // Config types — wrap plan for claude_desktop_config.json (Milestone 4 Phase 1).
+// Extended in Milestone 4 Phase 5.1 with IPC result payloads (StatusResult,
+// InstallResult, UninstallResult) used by apps/desktop main handlers and
+// renderer. CLI stdout JSON uses snake_case with schema:1; IPC uses camelCase
+// TS-native types — different contracts on purpose.
 // Pure types, no runtime. Consumed by the config parser (Phase 1, read-only)
 // and the writer/CLI (Phase 2+). The WrapPlan is DESCRIPTIVE: it states what
 // would change, it never mutates or writes anything.
@@ -69,3 +73,59 @@ export type ParseError =
   | { kind: 'unreadable'; detail: string }   // permissions / IO error
   | { kind: 'invalid-json'; detail: string } // JSON.parse failed
   | { kind: 'unexpected-shape'; detail: string }; // not an object / mcpServers not an object
+
+// --- IPC result payloads (Milestone 4 Phase 5.1) ---
+//
+// These are the shapes returned by the IPC handlers in apps/desktop's main
+// process to the renderer. They are NOT the same shape as the CLI emits over
+// stdout (which is JSON with schema:1 for humans/scripts); these are
+// TS-native types for typed contract between main and renderer over Electron
+// IPC. The handler always returns one of these; rejection is reserved for
+// unexpected errors (handler bug, IPC corruption), not for domain errors
+// like "config not found" or "invalid JSON".
+
+export type IpcConfigError =
+  | { ok: false; error: { kind: 'not-found' } }
+  | { ok: false; error: { kind: 'unreadable'; detail: string } }
+  | { ok: false; error: { kind: 'invalid-json'; detail: string } }
+  | { ok: false; error: { kind: 'unexpected-shape'; detail: string } };
+
+export interface IpcConfigSummary {
+  wrappable: number;
+  alreadyWrapped: number;
+  skippedOther: number;
+}
+
+export type IpcConfigEntry =
+  | { kind: 'wrappable'; name: string }
+  | { kind: 'skipped'; name: string; reason: SkipReason };
+
+export interface StatusOk {
+  ok: true;
+  configPresent: boolean;
+  configPath: string;
+  entries: readonly IpcConfigEntry[];
+  summary: IpcConfigSummary;
+}
+
+export interface InstallOk {
+  ok: true;
+  mode: 'dry-run' | 'yes';
+  configPath: string;
+  xcgPath: string;
+  outcome: 'wrote' | 'would_write' | 'noop';
+  entries: readonly IpcConfigEntry[];
+  summary: IpcConfigSummary;
+}
+
+export interface UninstallOk {
+  ok: true;
+  mode: 'dry-run' | 'yes';
+  configPath: string;
+  outcome: 'wrote' | 'would_write' | 'noop';
+  summary: IpcConfigSummary;
+}
+
+export type StatusResult = StatusOk | IpcConfigError;
+export type InstallResult = InstallOk | IpcConfigError;
+export type UninstallResult = UninstallOk | IpcConfigError;
