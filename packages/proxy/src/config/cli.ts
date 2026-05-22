@@ -19,34 +19,21 @@ import {
 } from 'node:fs';
 import { dirname, basename, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { homedir } from 'node:os';
 
 import {
   applyWrap,
+  CLAUDE_DESKTOP_CONFIG_PATH,
   parseConfig,
+  STABLE_XCG_PROXY_PATH,
   unwrap,
   type ParseError,
   type WrapPlanEntry,
 } from '@xcg/shared/config';
 
-// --- Defaults ---
+// --- Defaults (canonical paths re-exported from @xcg/shared/config) ---
 
-const DEFAULT_CONFIG_PATH = join(
-  process.env.HOME ?? '',
-  'Library',
-  'Application Support',
-  'Claude',
-  'claude_desktop_config.json',
-);
-
-const STABLE_SYMLINK_PATH = join(
-  homedir(),
-  'Library',
-  'Application Support',
-  'xCLAUDE Gateway',
-  'bin',
-  'xcg-proxy',
-);
+const DEFAULT_CONFIG_PATH = CLAUDE_DESKTOP_CONFIG_PATH;
+const STABLE_SYMLINK_PATH = STABLE_XCG_PROXY_PATH;
 
 // --- Exit codes (P5 frozen) ---
 

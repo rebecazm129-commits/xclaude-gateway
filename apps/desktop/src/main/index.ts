@@ -1,9 +1,9 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ensureSymlink } from '@xcg/shared';
+import { STABLE_XCG_PROXY_PATH } from '@xcg/shared/config';
 
 import { readDetections } from './detection-reader.js';
 
@@ -42,14 +42,7 @@ function bootstrapStableSymlink(): void {
     return;
   }
   const target = join(process.resourcesPath, 'proxy', 'bin', 'xcg-proxy');
-  const link = join(
-    homedir(),
-    'Library',
-    'Application Support',
-    'xCLAUDE Gateway',
-    'bin',
-    'xcg-proxy',
-  );
+  const link = STABLE_XCG_PROXY_PATH;
   const r = ensureSymlink(target, link);
   if (r.ok) {
     console.log(`[xcg] stable symlink ${r.status}: ${link} -> ${target}`);

@@ -6,6 +6,7 @@
 
 export { isAlreadyWrapped, parseConfig } from './parser.js';
 export { applyWrap, unwrap } from './transform.js';
+export { CLAUDE_DESKTOP_CONFIG_PATH, STABLE_XCG_PROXY_PATH } from './paths.js';
 export type {
   ClaudeConfig,
   McpEntry,
