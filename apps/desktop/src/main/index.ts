@@ -14,6 +14,7 @@ import {
   runConfigStatus,
   runConfigUninstall,
 } from './config-handlers.js';
+import { runValidateHealth, runRepairWraps } from './health-handlers.js';
 import { readDetections } from './detection-reader.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -63,6 +64,20 @@ ipcMain.handle('config:uninstall', (_event, mode: 'dry-run' | 'yes') => {
     },
     mode,
   );
+});
+
+ipcMain.handle('system:health', () => {
+  return runValidateHealth({
+    configPath: CLAUDE_DESKTOP_CONFIG_PATH,
+    xcgPath: resolveXcgPathFromMain(),
+  });
+});
+
+ipcMain.handle('system:repair-wraps', () => {
+  return runRepairWraps({
+    configPath: CLAUDE_DESKTOP_CONFIG_PATH,
+    xcgPath: resolveXcgPathFromMain(),
+  });
 });
 
 // Milestone 4 Phase 3b: ensure a stable symlink in

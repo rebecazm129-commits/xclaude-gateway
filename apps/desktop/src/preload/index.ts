@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+import type { HealthResult, RepairResult } from '@xcg/shared';
 import type {
   InstallResult,
   StatusResult,
@@ -14,4 +15,6 @@ contextBridge.exposeInMainWorld('xcg', {
     ipcRenderer.invoke('config:install', mode),
   configUninstall: (mode: 'dry-run' | 'yes'): Promise<UninstallResult> =>
     ipcRenderer.invoke('config:uninstall', mode),
+  validateHealth: (): Promise<HealthResult> => ipcRenderer.invoke('system:health'),
+  repairWraps: (): Promise<RepairResult> => ipcRenderer.invoke('system:repair-wraps'),
 });

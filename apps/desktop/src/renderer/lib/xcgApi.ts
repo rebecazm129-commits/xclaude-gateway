@@ -1,3 +1,4 @@
+import type { HealthResult, RepairResult } from '@xcg/shared';
 import type {
   InstallResult,
   StatusResult,
@@ -10,6 +11,8 @@ export interface XcgApi {
   configStatus(): Promise<StatusResult>;
   configInstall(mode: 'dry-run' | 'yes'): Promise<InstallResult>;
   configUninstall(mode: 'dry-run' | 'yes'): Promise<UninstallResult>;
+  validateHealth(): Promise<HealthResult>;
+  repairWraps(): Promise<RepairResult>;
 }
 
 declare global {
