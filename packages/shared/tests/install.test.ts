@@ -90,6 +90,36 @@ describe('ensureSymlink — idempotent symlink ensure (Milestone 4 Phase 3a)', (
     expect(r).toEqual({ ok: true, status: 'created' });
     expect(readlinkSync(link)).toBe(target);
   });
+
+  it('refuses to create a self-referential symlink (cycle guard, C4.E-FIX.C)', () => {
+    const path = join(tmp, 'self-ref');
+    const result = ensureSymlink(path, path);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe('cycle');
+      expect(result.error.detail).toContain('self-referential');
+    }
+    // The path must NOT exist on disk after the guarded call.
+    expect(existsSync(path)).toBe(false);
+  });
+
+  it('auto-repairs a pre-existing cycle when given a valid distinct target (sub-caso C2)', () => {
+    // Pre-existing cycle: create a symlink that points to itself.
+    const cyclePath = join(tmp, 'pre-existing-cycle');
+    symlinkSync(cyclePath, cyclePath);
+    // Now provide a valid distinct target.
+    const validTarget = join(tmp, 'valid-target');
+    writeFileSync(validTarget, '#!/bin/sh\necho ok\n');
+    // ensureSymlink should detect the current target (cycle) does not match
+    // validTarget, unlink the cycle, and create a fresh symlink to validTarget.
+    const result = ensureSymlink(validTarget, cyclePath);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.status).toBe('updated');
+    }
+    // Symlink should now point to validTarget.
+    expect(readlinkSync(cyclePath)).toBe(validTarget);
+  });
 });
 
 describe('removeSymlink — idempotent uninstall', () => {

@@ -22,7 +22,8 @@ export type RemoveResult =
 export type InstallError =
   | { kind: 'not-a-symlink'; detail: string }  // linkPath exists and is NOT a symlink (refuse to clobber)
   | { kind: 'permission'; detail: string }
-  | { kind: 'io'; detail: string };
+  | { kind: 'io'; detail: string }
+  | { kind: 'cycle'; detail: string };          // target === link would create a self-referential symlink
 
 // --- Internal helpers ---
 
@@ -43,6 +44,19 @@ function classifyFsError(e: unknown): InstallError {
 //   (iv)  linkPath exists but is NOT a symlink → error 'not-a-symlink'
 //         (refuse to clobber a regular file; that would be destructive).
 export function ensureSymlink(targetPath: string, linkPath: string): EnsureResult {
+  // Guard: target === link would create a self-referential symlink (cycle).
+  // Discovered in C4.E.4 smoke validation; caused by handler signature
+  // collapsing two semantically distinct paths in production.
+  if (targetPath === linkPath) {
+    return {
+      ok: false,
+      error: {
+        kind: 'cycle',
+        detail: 'targetPath equals linkPath: refusing to create a self-referential symlink',
+      },
+    };
+  }
+
   // Step 1: probe linkPath without following symlinks.
   let stat;
   try {
