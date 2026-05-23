@@ -18,11 +18,14 @@ import {
   type HealthCheckResult,
   type HealthResult,
   type BrokenWrapDetail,
+  type RepairResult,
 } from '@xcg/shared';
+import { ensureSymlink } from '@xcg/shared';
 import {
   STABLE_XCG_PROXY_PATH,
   parseConfig,
   isAlreadyWrapped,
+  writeAtomic,
   type ParseResult,
 } from '@xcg/shared/config';
 
@@ -183,5 +186,103 @@ export function runValidateHealth(opts: HealthHandlerOptions): HealthResult {
     status: anyFail ? 'unhealthy' : 'healthy',
     checks,
     checkedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Repair the config: ensure stable symlink + rewrite broken wraps to point
+ * at the symlinkPath. Idempotent — calling twice on a healthy system is a no-op.
+ *
+ * Criterio C4-B-2-2 (b): only wraps whose command does NOT exist on disk are
+ * rewritten. Wraps with working commands (even non-canonical paths like a
+ * direct .app path) are left alone. Repair means fix-what-is-broken, not
+ * canonicalize-everything.
+ *
+ * Compose: ensureSymlink (F3a) + writeAtomic (F5.1 C1) + parseConfig.
+ */
+export function runRepairWraps(opts: HealthHandlerOptions): RepairResult {
+  const symlinkPath = opts.symlinkPath ?? STABLE_XCG_PROXY_PATH;
+
+  // STEP 1: ensure stable symlink exists and points at xcgPath
+  const symRes = ensureSymlink(opts.xcgPath, symlinkPath);
+  if (!symRes.ok) {
+    return {
+      ok: false,
+      error: `failed to ensure symlink: ${symRes.error.kind}: ${symRes.error.detail}`,
+    };
+  }
+  const symlinkAction: 'created' | 'recreated' | 'unchanged' =
+    symRes.status === 'created'
+      ? 'created'
+      : symRes.status === 'updated'
+        ? 'recreated'
+        : 'unchanged';
+
+  // STEP 2: parse config
+  const parsed = parseConfig(opts.configPath);
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      error: `failed to parse config: ${parsed.error.kind}`,
+    };
+  }
+
+  // STEP 3: surgery — only rewrite wraps with command paths that don't exist
+  const raw = parsed.raw;
+  if (typeof raw !== 'object' || raw === null) {
+    return {
+      ok: true,
+      repairedWraps: [],
+      symlinkAction,
+      newHealth: runValidateHealth(opts),
+    };
+  }
+  const mcpServers = (raw as { mcpServers?: unknown }).mcpServers;
+  if (typeof mcpServers !== 'object' || mcpServers === null) {
+    return {
+      ok: true,
+      repairedWraps: [],
+      symlinkAction,
+      newHealth: runValidateHealth(opts),
+    };
+  }
+
+  const repairedWraps: string[] = [];
+  const newMcpServers: Record<string, unknown> = {};
+  for (const [name, entry] of Object.entries(mcpServers as Record<string, unknown>)) {
+    if (
+      isWrapShape(entry) &&
+      isAlreadyWrapped(entry.command, entry.args) &&
+      !existsSync(entry.command)
+    ) {
+      // Broken wrap: rewrite command to the stable symlinkPath, preserve args verbatim.
+      newMcpServers[name] = { ...entry, command: symlinkPath };
+      repairedWraps.push(name);
+      continue;
+    }
+    newMcpServers[name] = entry;
+  }
+
+  // STEP 4: writeAtomic only if there were changes
+  if (repairedWraps.length > 0) {
+    const newRaw = {
+      ...(raw as Record<string, unknown>),
+      mcpServers: newMcpServers,
+    };
+    const wr = writeAtomic(opts.configPath, newRaw);
+    if (!wr.ok) {
+      return {
+        ok: false,
+        error: `failed to write config: ${wr.error.kind}: ${wr.error.detail}`,
+      };
+    }
+  }
+
+  // STEP 5: re-validate post-repair
+  return {
+    ok: true,
+    repairedWraps,
+    symlinkAction,
+    newHealth: runValidateHealth(opts),
   };
 }

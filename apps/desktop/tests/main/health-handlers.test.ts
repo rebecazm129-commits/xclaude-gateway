@@ -1,10 +1,11 @@
-import { existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir as osTmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   runValidateHealth,
+  runRepairWraps,
   type HealthHandlerOptions,
 } from '../../src/main/health-handlers.js';
 
@@ -211,5 +212,212 @@ describe('runValidateHealth (Milestone 5 Component 4 step B.1)', () => {
     expect(result.checks).toHaveLength(3);
     const checkIds = result.checks.map((c) => c.check).sort();
     expect(checkIds).toEqual(['config', 'symlink', 'wraps']);
+  });
+});
+
+describe('runRepairWraps (Milestone 5 Component 4 step B.2)', () => {
+  let tmp: string;
+  let configPath: string;
+  let symlinkPath: string;
+  let xcgTargetPath: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(osTmpdir(), 'xcg-repair-test-'));
+    configPath = join(tmp, 'claude_desktop_config.json');
+    symlinkPath = join(tmp, 'xcg-proxy-link');
+    xcgTargetPath = join(tmp, 'xcg-proxy-real');
+    writeFileSync(xcgTargetPath, '#!/bin/sh\necho ok\n');
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  function writeConfig(content: unknown): void {
+    writeFileSync(configPath, JSON.stringify(content, null, 2));
+  }
+
+  function writeWrappedConfig(wraps: Array<{ name: string; command: string }>, extraTopLevel: Record<string, unknown> = {}): void {
+    const mcpServers: Record<string, { command: string; args: string[] }> = {};
+    for (const w of wraps) {
+      mcpServers[w.name] = {
+        command: w.command,
+        args: ['--wrap', '/usr/local/bin/npx', '--name', w.name, '--', '-y', 'somepkg'],
+      };
+    }
+    writeConfig({ ...extraTopLevel, mcpServers });
+  }
+
+  function opts(): HealthHandlerOptions {
+    return { configPath, xcgPath: xcgTargetPath, symlinkPath };
+  }
+
+  function readConfig(): { mcpServers: Record<string, { command: string; args: string[] }>; [k: string]: unknown } {
+    return JSON.parse(readFileSync(configPath, 'utf8'));
+  }
+
+  it('R1. no symlink, no broken wraps → creates symlink, no wraps repaired, healthy after', () => {
+    writeConfig({ mcpServers: {} });
+    const result = runRepairWraps(opts());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.symlinkAction).toBe('created');
+      expect(result.repairedWraps).toHaveLength(0);
+      expect(result.newHealth.status).toBe('healthy');
+    }
+    expect(existsSync(symlinkPath)).toBe(true);
+  });
+
+  it('R2. symlink already correct, no broken wraps → unchanged symlink, no wraps repaired, healthy', () => {
+    symlinkSync(xcgTargetPath, symlinkPath);
+    writeConfig({ mcpServers: {} });
+    const result = runRepairWraps(opts());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.symlinkAction).toBe('unchanged');
+      expect(result.repairedWraps).toHaveLength(0);
+    }
+  });
+
+  it('R3. symlink points to wrong target → recreated, no wraps repaired, healthy after', () => {
+    const wrongTarget = join(tmp, 'wrong-target');
+    writeFileSync(wrongTarget, 'wrong');
+    symlinkSync(wrongTarget, symlinkPath);
+    writeConfig({ mcpServers: {} });
+    const result = runRepairWraps(opts());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.symlinkAction).toBe('recreated');
+      expect(result.newHealth.status).toBe('healthy');
+    }
+  });
+
+  it('R4. 1 broken wrap → rewrites it to symlinkPath, repairedWraps has 1, healthy after', () => {
+    writeWrappedConfig([{ name: 'filesystem', command: join(tmp, 'missing-dir', 'xcg-proxy') }]);
+    const result = runRepairWraps(opts());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.repairedWraps).toEqual(['filesystem']);
+      expect(result.newHealth.status).toBe('healthy');
+    }
+    const cfg = readConfig();
+    expect(cfg.mcpServers.filesystem.command).toBe(symlinkPath);
+  });
+
+  it('R5. 2 broken wraps → rewrites both, repairedWraps has 2, healthy after', () => {
+    writeWrappedConfig([
+      { name: 'fs1', command: join(tmp, 'missing-1', 'xcg-proxy') },
+      { name: 'fs2', command: join(tmp, 'missing-2', 'xcg-proxy') },
+    ]);
+    const result = runRepairWraps(opts());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.repairedWraps.sort()).toEqual(['fs1', 'fs2']);
+    }
+    const cfg = readConfig();
+    expect(cfg.mcpServers.fs1.command).toBe(symlinkPath);
+    expect(cfg.mcpServers.fs2.command).toBe(symlinkPath);
+  });
+
+  it('R6. 1 broken + 1 OK → only the broken one is rewritten, OK preserved', () => {
+    const okXcg = join(tmp, 'xcg-proxy');
+    writeFileSync(okXcg, '#!/bin/sh\necho ok\n');
+    writeWrappedConfig([
+      { name: 'ok-wrap', command: okXcg },
+      { name: 'broken-wrap', command: join(tmp, 'missing-dir', 'xcg-proxy') },
+    ]);
+    const result = runRepairWraps(opts());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.repairedWraps).toEqual(['broken-wrap']);
+    }
+    const cfg = readConfig();
+    expect(cfg.mcpServers['ok-wrap'].command).toBe(okXcg);
+    expect(cfg.mcpServers['broken-wrap'].command).toBe(symlinkPath);
+  });
+
+  it('R7. non-wrap entries → untouched, preserved verbatim', () => {
+    writeConfig({
+      mcpServers: {
+        filesystem: {
+          command: '/usr/local/bin/npx',
+          args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'],
+        },
+      },
+    });
+    const result = runRepairWraps(opts());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.repairedWraps).toHaveLength(0);
+    }
+    const cfg = readConfig();
+    expect(cfg.mcpServers.filesystem.command).toBe('/usr/local/bin/npx');
+  });
+
+  it('R8. wrap with existing command but NOT pointing to symlinkPath → left alone (criterio (b))', () => {
+    // Wrap apunta a un xcg-proxy real pero no al symlink canonico.
+    const directPath = join(tmp, 'xcg-proxy');
+    writeFileSync(directPath, '#!/bin/sh\necho ok\n');
+    writeWrappedConfig([{ name: 'filesystem', command: directPath }]);
+    const result = runRepairWraps(opts());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // criterio (b): no se canonicaliza un wrap funcional.
+      expect(result.repairedWraps).toHaveLength(0);
+    }
+    const cfg = readConfig();
+    expect(cfg.mcpServers.filesystem.command).toBe(directPath);
+  });
+
+  it('R9. config not found → ok: false with parse error message', () => {
+    const result = runRepairWraps(opts());
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('parse config');
+    }
+  });
+
+  it('R10. config invalid JSON → ok: false with parse error message', () => {
+    writeFileSync(configPath, '{not valid json');
+    const result = runRepairWraps(opts());
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('parse config');
+    }
+  });
+
+  it('R11. idempotency: 2 consecutive calls, 2nd is no-op', () => {
+    writeWrappedConfig([{ name: 'filesystem', command: join(tmp, 'missing-dir', 'xcg-proxy') }]);
+    const r1 = runRepairWraps(opts());
+    expect(r1.ok).toBe(true);
+    if (r1.ok) {
+      expect(r1.repairedWraps).toEqual(['filesystem']);
+    }
+    const r2 = runRepairWraps(opts());
+    expect(r2.ok).toBe(true);
+    if (r2.ok) {
+      // El wrap ya apunta a symlinkPath; existsSync(symlinkPath) es true tras R1; no se reescribe.
+      expect(r2.repairedWraps).toHaveLength(0);
+      expect(r2.symlinkAction).toBe('unchanged');
+    }
+  });
+
+  it('R12. args of repaired wrap are preserved verbatim + other top-level keys preserved', () => {
+    writeWrappedConfig(
+      [{ name: 'filesystem', command: join(tmp, 'missing-dir', 'xcg-proxy') }],
+      { otherTopLevelKey: 'preserveMe', anotherKey: { nested: true } },
+    );
+    const result = runRepairWraps(opts());
+    expect(result.ok).toBe(true);
+    const cfg = readConfig();
+    // command rewritten
+    expect(cfg.mcpServers.filesystem.command).toBe(symlinkPath);
+    // args preserved verbatim
+    expect(cfg.mcpServers.filesystem.args).toEqual([
+      '--wrap', '/usr/local/bin/npx', '--name', 'filesystem', '--', '-y', 'somepkg',
+    ]);
+    // top-level keys preserved
+    expect((cfg as Record<string, unknown>).otherTopLevelKey).toBe('preserveMe');
+    expect((cfg as Record<string, unknown>).anotherKey).toEqual({ nested: true });
   });
 });
