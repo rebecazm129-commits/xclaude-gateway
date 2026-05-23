@@ -4,6 +4,7 @@ import type { StatusResult } from '@xcg/shared/config';
 
 import { Detections } from './components/Detections.js';
 import { Setup } from './components/Setup.js';
+import { HealthWarning } from './components/HealthWarning.js';
 import { Tabs, type TabOption } from './components/Tabs.js';
 import { usePolledHealth } from './hooks/usePolledHealth.js';
 
@@ -56,9 +57,40 @@ export function App(): JSX.Element {
   const [activeTab, setActiveTab] = useState<TabId>(() => readLastTab() ?? 'setup');
   const [statusLoaded, setStatusLoaded] = useState(false);
   const { health, refresh: refreshHealth } = usePolledHealth();
-  // Used in C4.D.2 (pulse color conditional, HealthWarning panel, refresh button).
-  void health;
-  void refreshHealth;
+
+  const pulseVariantClass =
+    health === null
+      ? styles['pulseUnknown']
+      : health.status === 'healthy'
+        ? styles['pulseHealthy']
+        : styles['pulseUnhealthy'];
+
+  const pulseTooltip =
+    health === null
+      ? 'Checking system health…'
+      : health.checks
+          .map((c) => {
+            const label = c.check === 'symlink' ? 'Stable launcher' : c.check === 'config' ? 'Config file' : 'Wrap paths';
+            if (c.status === 'ok') return `✓ ${label}`;
+            if (c.status === 'skip') return `– ${label}: ${c.reason}`;
+            return `✗ ${label}: ${c.reason}`;
+          })
+          .join('\n');
+
+  async function handleRefresh(): Promise<void> {
+    await refreshHealth();
+    // Also refresh configStatus per C4-D-12: repair touches the config, both views need sync.
+    try {
+      const status = await window.xcg.configStatus();
+      setConfigStatus(status);
+    } catch (err) {
+      console.error('configStatus refresh failed:', err);
+    }
+  }
+
+  function handleRepaired(_result: import('@xcg/shared').RepairResult): void {
+    void handleRefresh();
+  }
 
   // One-shot configStatus on mount (D-D4). Sets the initial status and, if
   // localStorage was empty, picks the default tab based on the result.
@@ -93,11 +125,25 @@ export function App(): JSX.Element {
     <div className={styles['app']}>
       <header className={styles['header']}>
         <span className={styles['titleGroup']}>
-          <span className={styles['pulse']} aria-hidden="true" />
+          <span
+            className={`${styles['pulse']} ${pulseVariantClass}`}
+            title={pulseTooltip}
+            aria-label={`System health: ${health?.status ?? 'unknown'}`}
+          />
           <h1 className={styles['title']}>xCLAUDE Gateway</h1>
         </span>
+        <button
+          type="button"
+          className={styles['refreshButton']}
+          onClick={() => void handleRefresh()}
+          title="Refresh status"
+          aria-label="Refresh status"
+        >
+          ⟳
+        </button>
       </header>
       <Tabs options={TAB_OPTIONS} active={activeTab} onChange={handleTabChange} />
+      <HealthWarning health={health} onRepaired={handleRepaired} />
       {activeTab === 'setup' ? (
         <Setup status={statusLoaded ? configStatus : null} onRefresh={refreshStatus} />
       ) : (

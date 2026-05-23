@@ -25,8 +25,49 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #22c55e;
+  background: #64748b;
   animation: pulse 1.5s ease-in-out infinite;
+}
+
+.pulseHealthy {
+  background: #22c55e;
+}
+
+.pulseUnhealthy {
+  background: #ef4444;
+}
+
+.pulseUnknown {
+  background: #64748b;
+  animation: none;
+}
+
+.refreshButton {
+  background: transparent;
+  border: 1px solid #334155;
+  color: #94a3b8;
+  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  padding: 0;
+  line-height: 1;
+}
+
+.refreshButton:hover {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-color: #475569;
+}
+
+.refreshButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 @keyframes pulse {
