@@ -30,11 +30,19 @@ import {
 } from '@xcg/shared/config';
 
 export interface HealthHandlerOptions {
-  /** Absolute path to claude_desktop_config.json. */
+  /** Canonical claude_desktop_config.json path. */
   configPath: string;
-  /** Target that the stable symlink is expected to point at. Used by runRepairWraps in C4.B.2; runValidateHealth includes it for signature consistency but does not check the target identity. */
-  xcgPath: string;
-  /** Override for the stable symlink path. Production omits this and uses STABLE_XCG_PROXY_PATH; tests inject a tmpdir-scoped path. */
+  /**
+   * Real target binary path for ensureSymlink (in packaged:
+   * /Applications/.../Contents/Resources/proxy/bin/xcg-proxy). Distinct
+   * from symlinkPath which is the canonical path written into config wraps.
+   * Required to avoid the cycle bug discovered in C4.E.4.
+   */
+  xcgTargetPath: string;
+  /**
+   * Stable canonical path written into config wraps. Defaults to
+   * STABLE_XCG_PROXY_PATH (the symlink in ~/Library/Application Support/...).
+   */
   symlinkPath?: string;
 }
 
@@ -174,7 +182,7 @@ function checkWraps(parsed: ParseResult): HealthCheckResult {
  * future post-MVP checks documented in the C4.0 ficha.
  */
 export function runValidateHealth(opts: HealthHandlerOptions): HealthResult {
-  void opts.xcgPath;
+  void opts.xcgTargetPath;
   const symlinkPath = opts.symlinkPath ?? STABLE_XCG_PROXY_PATH;
   const checks: HealthCheckResult[] = [];
   checks.push(checkSymlink(symlinkPath));
@@ -204,7 +212,7 @@ export function runRepairWraps(opts: HealthHandlerOptions): RepairResult {
   const symlinkPath = opts.symlinkPath ?? STABLE_XCG_PROXY_PATH;
 
   // STEP 1: ensure stable symlink exists and points at xcgPath
-  const symRes = ensureSymlink(opts.xcgPath, symlinkPath);
+  const symRes = ensureSymlink(opts.xcgTargetPath, symlinkPath);
   if (!symRes.ok) {
     return {
       ok: false,

@@ -10,6 +10,7 @@ import {
 
 import {
   resolveXcgPathFromMain,
+  resolveXcgTargetPathFromMain,
   runConfigInstall,
   runConfigStatus,
   runConfigUninstall,
@@ -69,14 +70,14 @@ ipcMain.handle('config:uninstall', (_event, mode: 'dry-run' | 'yes') => {
 ipcMain.handle('system:health', () => {
   return runValidateHealth({
     configPath: CLAUDE_DESKTOP_CONFIG_PATH,
-    xcgPath: resolveXcgPathFromMain(),
+    xcgTargetPath: resolveXcgTargetPathFromMain(),
   });
 });
 
 ipcMain.handle('system:repair-wraps', () => {
   return runRepairWraps({
     configPath: CLAUDE_DESKTOP_CONFIG_PATH,
-    xcgPath: resolveXcgPathFromMain(),
+    xcgTargetPath: resolveXcgTargetPathFromMain(),
   });
 });
 

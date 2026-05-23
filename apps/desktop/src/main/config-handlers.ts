@@ -45,6 +45,32 @@ export function resolveXcgPathFromMain(): string {
   return join(here, '..', '..', '..', '..', 'packages', 'proxy', 'bin', 'xcg-proxy');
 }
 
+/**
+ * Resolves the REAL target binary path for ensureSymlink in runRepairWraps.
+ *
+ * Distinct from resolveXcgPathFromMain (which returns the stable canonical
+ * path written into config wraps). In packaged builds, the two values diverge:
+ *   - resolveXcgPathFromMain → STABLE_XCG_PROXY_PATH (the symlink itself)
+ *   - resolveXcgTargetPathFromMain → join(process.resourcesPath, 'proxy',
+ *     'bin', 'xcg-proxy') (the actual binary inside the .app, target of the
+ *     symlink)
+ *
+ * In dev, both return the same path (the script in the repo) because there is
+ * no symlink layer.
+ *
+ * Introduced in C4.E-FIX.A to eliminate the cycle bug found in C4.E.4 smoke:
+ * runRepairWraps was previously using resolveXcgPathFromMain for BOTH the
+ * ensureSymlink target AND the canonical wrap command, causing
+ * ensureSymlink(STABLE, STABLE) → self-referential symlink in packaged.
+ */
+export function resolveXcgTargetPathFromMain(): string {
+  if (app.isPackaged) {
+    return join(process.resourcesPath, 'proxy', 'bin', 'xcg-proxy');
+  }
+  // Dev: same as resolveXcgPathFromMain — the script in the repo.
+  return resolveXcgPathFromMain();
+}
+
 // --- Internal helpers (camelCase for IPC, parallel to cli.ts snake_case) ---
 
 function entryToIpc(entry: WrapPlanEntry): IpcConfigEntry {

@@ -47,7 +47,7 @@ describe('runValidateHealth (Milestone 5 Component 4 step B.1)', () => {
   }
 
   function opts(): HealthHandlerOptions {
-    return { configPath, xcgPath: xcgTargetPath, symlinkPath };
+    return { configPath, xcgTargetPath, symlinkPath };
   }
 
   function makeFakeXcgBinary(name: string = 'xcg-proxy'): string {
@@ -249,7 +249,7 @@ describe('runRepairWraps (Milestone 5 Component 4 step B.2)', () => {
   }
 
   function opts(): HealthHandlerOptions {
-    return { configPath, xcgPath: xcgTargetPath, symlinkPath };
+    return { configPath, xcgTargetPath, symlinkPath };
   }
 
   function readConfig(): { mcpServers: Record<string, { command: string; args: string[] }>; [k: string]: unknown } {
@@ -419,5 +419,32 @@ describe('runRepairWraps (Milestone 5 Component 4 step B.2)', () => {
     // top-level keys preserved
     expect((cfg as Record<string, unknown>).otherTopLevelKey).toBe('preserveMe');
     expect((cfg as Record<string, unknown>).anotherKey).toEqual({ nested: true });
+  });
+
+  it('regression C4.E.4: when xcgTargetPath equals symlinkPath, cycle guard fires (caller bug surfaces as cycle error)', () => {
+    // Documents the bug discovered in C4.E.4 smoke: in production packaged
+    // builds, the IPC handler had ensureSymlink(xcgPath, symlinkPath) where
+    // both resolved to STABLE_XCG_PROXY_PATH. With the FIX.A signature
+    // refactor, the caller now provides DISTINCT paths in production. If
+    // any future caller regresses and passes the same path for both, the
+    // FIX.C cycle guard in ensureSymlink rejects the call without touching
+    // disk. This test pins that defense-in-depth behavior.
+    const samePath = join(tmp, 'same-path');
+    writeFileSync(samePath, '#!/bin/sh\necho ok\n');
+    const cfgPath = join(tmp, 'cfg.json');
+    writeFileSync(cfgPath, JSON.stringify({
+      mcpServers: {
+        foo: { command: samePath, args: ['arg'] },
+      },
+    }, null, 2));
+    const result = runRepairWraps({
+      configPath: cfgPath,
+      xcgTargetPath: samePath,
+      symlinkPath: samePath,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('cycle');
+    }
   });
 });
