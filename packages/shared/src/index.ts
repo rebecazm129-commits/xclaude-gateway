@@ -70,3 +70,12 @@ export {
   type RemoveResult,
   type InstallError,
 } from './install.js';
+
+export type {
+  HealthStatus,
+  HealthCheckId,
+  HealthCheckResult,
+  BrokenWrapDetail,
+  HealthResult,
+  RepairResult,
+} from './health.js'
