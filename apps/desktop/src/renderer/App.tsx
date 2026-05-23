@@ -5,6 +5,7 @@ import type { StatusResult } from '@xcg/shared/config';
 import { Detections } from './components/Detections.js';
 import { Setup } from './components/Setup.js';
 import { Tabs, type TabOption } from './components/Tabs.js';
+import { usePolledHealth } from './hooks/usePolledHealth.js';
 
 import styles from './App.module.css';
 
@@ -54,6 +55,10 @@ export function App(): JSX.Element {
   const [configStatus, setConfigStatus] = useState<StatusResult | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>(() => readLastTab() ?? 'setup');
   const [statusLoaded, setStatusLoaded] = useState(false);
+  const { health, refresh: refreshHealth } = usePolledHealth();
+  // Used in C4.D.2 (pulse color conditional, HealthWarning panel, refresh button).
+  void health;
+  void refreshHealth;
 
   // One-shot configStatus on mount (D-D4). Sets the initial status and, if
   // localStorage was empty, picks the default tab based on the result.
