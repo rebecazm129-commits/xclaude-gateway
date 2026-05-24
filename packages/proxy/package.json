@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./detection/selftest": "./src/detection/selftest.ts"
+  },
   "bin": {
     "xcg-proxy": "./bin/xcg-proxy",
     "xcg-config": "./bin/xcg-config"

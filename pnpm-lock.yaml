@@ -36,6 +36,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^4.3.4
         version: 4.7.0(vite@5.4.21(@types/node@24.12.4))
+      '@xcg/proxy':
+        specifier: workspace:*
+        version: link:../../packages/proxy
       '@xcg/shared':
         specifier: workspace:*
         version: link:../../packages/shared

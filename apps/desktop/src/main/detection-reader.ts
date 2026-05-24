@@ -7,6 +7,7 @@ import type {
   DetectionEnrichmentEvent,
   EnrichableEvent,
 } from '../shared/types.js';
+import { SELFTEST_WRAPPER_NAME } from './selftest-runner.js';
 
 const DEFAULT_WRAPPERS_DIR = join(
   homedir(),
@@ -93,6 +94,17 @@ export async function readDetections(
       try {
         parsed = JSON.parse(line);
       } catch {
+        continue;
+      }
+      // Self-test synthetic events (wrapper --name SELFTEST_WRAPPER_NAME) are
+      // excluded from the audit dashboard: they are demonstrative, not real MCP
+      // traffic (C2.B.1.a, decision A). Identified structurally by the reserved
+      // wrapper name.
+      if (
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        (parsed as Record<string, unknown>)['mcp'] === SELFTEST_WRAPPER_NAME
+      ) {
         continue;
       }
       if (isDetectionEvent(parsed)) {

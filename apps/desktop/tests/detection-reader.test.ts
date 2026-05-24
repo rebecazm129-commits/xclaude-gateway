@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { readDetections } from '../src/main/detection-reader.js';
+import { SELFTEST_WRAPPER_NAME } from '../src/main/selftest-runner.js';
 
 let tmpDir: string;
 
@@ -273,5 +274,30 @@ describe('readDetections', () => {
     const result = await readDetections(dir);
     expect(result).toHaveLength(1);
     expect(result[0]?.id).toBe('a');
+  });
+
+  it('excludes self-test synthetic events (mcp === SELFTEST_WRAPPER_NAME)', async () => {
+    const dir = join(tmpDir, 'selftest-excluded');
+    await mkdir(dir, { recursive: true });
+    const selftest = baseEvent('st1', '2025-05-14T12:00:00.000Z');
+    selftest['mcp'] = SELFTEST_WRAPPER_NAME;
+    await writeFile(join(dir, 's.jsonl'), JSON.stringify(selftest) + '\n');
+    const result = await readDetections(dir);
+    expect(result).toEqual([]);
+  });
+
+  it('excludes only self-test events, keeping real traffic in the same file', async () => {
+    const dir = join(tmpDir, 'selftest-mixed');
+    await mkdir(dir, { recursive: true });
+    const real = baseEvent('real1', '2025-05-14T12:00:00.000Z');
+    const selftest = baseEvent('st1', '2025-05-14T12:00:01.000Z');
+    selftest['mcp'] = SELFTEST_WRAPPER_NAME;
+    await writeFile(
+      join(dir, 's.jsonl'),
+      JSON.stringify(real) + '\n' + JSON.stringify(selftest) + '\n',
+    );
+    const result = await readDetections(dir);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.id).toBe('real1');
   });
 });
