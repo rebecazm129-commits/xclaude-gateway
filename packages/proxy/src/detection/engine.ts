@@ -69,6 +69,6 @@ export const BASELINE_EXAMPLE_PAYLOAD: SelfTestExample = {
   expectedSeverity: 'low',
   label: 'Allowed tool call',
   description: "A benign tool call that produces no detection and is recorded as the baseline.",
-  payload: { name: 'get_weather', arguments: { city: 'Madrid' } },
+  message: 'hello world',
   method: 'tools/call',
 };

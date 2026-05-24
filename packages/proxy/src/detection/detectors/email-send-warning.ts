@@ -51,6 +51,6 @@ export const EXAMPLE_PAYLOAD: SelfTestExample = {
   expectedSeverity: 'high',
   label: 'Email send',
   description: "A request asking the model to send an email on the user's behalf.",
-  payload: { instruction: 'send an email to alice@example.com' },
+  message: 'send an email to alice@example.com',
   method: 'tools/call',
 };

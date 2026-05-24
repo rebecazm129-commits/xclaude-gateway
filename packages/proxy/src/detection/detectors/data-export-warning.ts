@@ -49,6 +49,6 @@ export const EXAMPLE_PAYLOAD: SelfTestExample = {
   expectedSeverity: 'medium',
   label: 'Data export',
   description: "A request asking the model to export or copy data outside its boundary.",
-  payload: { instruction: 'export the database to a backup file' },
+  message: 'export the database to a backup file',
   method: 'tools/call',
 };

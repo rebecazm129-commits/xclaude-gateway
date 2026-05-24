@@ -44,6 +44,6 @@ export const EXAMPLE_PAYLOAD: SelfTestExample = {
   expectedSeverity: 'critical',
   label: 'Credential leak',
   description: "An API key embedded in a tool call argument.",
-  payload: { note: 'my key is sk-ant-api03-AAAA1111BBBB2222CCCC3333DDDD4444' },
+  message: 'my key is sk-ant-api03-AAAA1111BBBB2222CCCC3333DDDD4444',
   method: 'tools/call',
 };

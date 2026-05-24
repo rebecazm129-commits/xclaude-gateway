@@ -81,3 +81,4 @@ export type {
 } from './health.js'
 
 export type { SelfTestExample } from './selftest.js';
+export { toEchoToolCallParams } from './selftest.js';

@@ -13,11 +13,12 @@ import { describe, it, expect } from 'vitest';
 import { DetectionEngine } from '../../src/detection/engine.js';
 import { ACTIVE_DETECTORS } from '../../src/detection/detectors/index.js';
 import { getSelfTestPayloads } from '../../src/detection/selftest.js';
-import type { McpRequestEnvelope } from '../../src/detection/types.js';
+import { toEchoToolCallParams } from '@xcg/shared';
+import type { McpRequestEnvelope, SelfTestExample } from '../../src/detection/types.js';
 
-function envelopeFor(example: { payload: unknown; method: string }): McpRequestEnvelope {
+function envelopeFor(example: SelfTestExample): McpRequestEnvelope {
   return {
-    payload: example.payload,
+    payload: toEchoToolCallParams(example),
     mcp: 'test-mcp',
     method: example.method,
     direction: 'client_to_server',
