@@ -7,6 +7,7 @@ import type {
   DetectorInput,
   DetectorOutput,
   McpRequestEnvelope,
+  SelfTestExample,
 } from './types.js';
 
 function baselineToolCallAllowed(): DetectorOutput {
@@ -62,3 +63,12 @@ export class DetectionEngine {
     return emitDetections(buildDetectorInput(envelope), this.detectors);
   }
 }
+
+export const BASELINE_EXAMPLE_PAYLOAD: SelfTestExample = {
+  categoryKey: 'tool_call_allowed',
+  expectedSeverity: 'low',
+  label: 'Allowed tool call',
+  description: "A benign tool call that produces no detection and is recorded as the baseline.",
+  payload: { name: 'get_weather', arguments: { city: 'Madrid' } },
+  method: 'tools/call',
+};

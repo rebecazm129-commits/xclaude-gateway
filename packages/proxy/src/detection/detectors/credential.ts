@@ -3,7 +3,7 @@
 // 'critical' when any pattern matches; returns null otherwise. Findings
 // record the matched type and 'params' as location — never the raw secret.
 
-import type { DetectionFinding, Detector, DetectorOutput } from '../types.js';
+import type { DetectionFinding, Detector, DetectorOutput, SelfTestExample } from '../types.js';
 
 interface CredentialPattern {
   readonly pattern: RegExp;
@@ -37,4 +37,13 @@ export const credentialDetected: Detector = (input): DetectorOutput | null => {
     severity: 'critical',
     findings,
   };
+};
+
+export const EXAMPLE_PAYLOAD: SelfTestExample = {
+  categoryKey: 'credential_detected',
+  expectedSeverity: 'critical',
+  label: 'Credential leak',
+  description: "An API key embedded in a tool call argument.",
+  payload: { note: 'my key is sk-ant-api03-AAAA1111BBBB2222CCCC3333DDDD4444' },
+  method: 'tools/call',
 };

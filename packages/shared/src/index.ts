@@ -79,3 +79,5 @@ export type {
   HealthResult,
   RepairResult,
 } from './health.js'
+
+export type { SelfTestExample } from './selftest.js';

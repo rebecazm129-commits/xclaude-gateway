@@ -19,6 +19,7 @@ export type {
   DetectionBlock,
   DetectionEnrichment,
   EnrichmentSink,
+  SelfTestExample,
 } from '@xcg/shared';
 
 // DetectorOutput era la definición material; ahora DetectionBlock vive en

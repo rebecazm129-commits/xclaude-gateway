@@ -4,7 +4,7 @@
 // 'medium' when any pattern matches; returns null otherwise. Findings record
 // the matched type and 'params' as location — never the raw text.
 
-import type { DetectionFinding, Detector, DetectorOutput } from '../types.js';
+import type { DetectionFinding, Detector, DetectorOutput, SelfTestExample } from '../types.js';
 
 interface ExportPattern {
   readonly pattern: RegExp;
@@ -42,4 +42,13 @@ export const dataExportWarning: Detector = (input): DetectorOutput | null => {
     severity: 'medium',
     findings,
   };
+};
+
+export const EXAMPLE_PAYLOAD: SelfTestExample = {
+  categoryKey: 'data_export_warning',
+  expectedSeverity: 'medium',
+  label: 'Data export',
+  description: "A request asking the model to export or copy data outside its boundary.",
+  payload: { instruction: 'export the database to a backup file' },
+  method: 'tools/call',
 };

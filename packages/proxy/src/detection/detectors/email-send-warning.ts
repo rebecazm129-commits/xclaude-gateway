@@ -6,7 +6,7 @@
 // 'high' when any pattern matches; returns null otherwise. Findings record
 // the matched type and 'params' as location — never the raw text.
 
-import type { DetectionFinding, Detector, DetectorOutput } from '../types.js';
+import type { DetectionFinding, Detector, DetectorOutput, SelfTestExample } from '../types.js';
 
 interface EmailSendPattern {
   readonly pattern: RegExp;
@@ -44,4 +44,13 @@ export const emailSendWarning: Detector = (input): DetectorOutput | null => {
     severity: 'high',
     findings,
   };
+};
+
+export const EXAMPLE_PAYLOAD: SelfTestExample = {
+  categoryKey: 'email_send_warning',
+  expectedSeverity: 'high',
+  label: 'Email send',
+  description: "A request asking the model to send an email on the user's behalf.",
+  payload: { instruction: 'send an email to alice@example.com' },
+  method: 'tools/call',
 };
