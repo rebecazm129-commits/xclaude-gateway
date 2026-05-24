@@ -280,6 +280,33 @@ function scanInto(
 }
 
 /**
+ * Build the JSON-RPC initialize frame for the MCP handshake. The wrapper is a
+ * transparent pipe, so this is consumed by the wrapped server; detection does
+ * not depend on it, but a clean handshake keeps the server happy.
+ */
+export function buildInitializeFrame(rpcId: number): object {
+  return {
+    jsonrpc: '2.0',
+    id: rpcId,
+    method: 'initialize',
+    params: {
+      protocolVersion: '2024-11-05',
+      capabilities: {},
+      clientInfo: { name: SELFTEST_WRAPPER_NAME, version: '0.0.0' },
+    },
+  };
+}
+
+/** Build the JSON-RPC notifications/initialized frame (a notification, no id). */
+export function buildInitializedNotification(): object {
+  return {
+    jsonrpc: '2.0',
+    method: 'notifications/initialized',
+    params: {},
+  };
+}
+
+/**
  * Build the JSON-RPC tools/call frame for an example, embedding the textual
  * trigger as the echo tool's `message` argument via the shared helper.
  */

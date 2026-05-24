@@ -80,5 +80,10 @@ export type {
   RepairResult,
 } from './health.js'
 
-export type { SelfTestExample } from './selftest.js';
+export type {
+  SelfTestExample,
+  SelfTestRunOutcome,
+  SelfTestEntryResult,
+  SelfTestReport,
+} from './selftest.js';
 export { toEchoToolCallParams } from './selftest.js';

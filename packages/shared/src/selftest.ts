@@ -44,3 +44,26 @@ export function toEchoToolCallParams(example: SelfTestExample): {
 } {
   return { name: 'echo', arguments: { message: example.message } };
 }
+
+export type SelfTestRunOutcome =
+  | { readonly kind: 'complete_pass' }
+  | { readonly kind: 'timeout_partial' }
+  | { readonly kind: 'detection_mismatch' }
+  | { readonly kind: 'timeout_no_data' }
+  | { readonly kind: 'spawn_failed'; readonly reason: string };
+
+export interface SelfTestEntryResult {
+  readonly example: SelfTestExample;
+  readonly actual: { readonly category: Category; readonly severity: Severity } | null;
+  readonly pass: boolean;
+}
+
+export interface SelfTestReport {
+  readonly runId: string;
+  readonly startedAt: string;     // ISO timestamp
+  readonly finishedAt: string;    // ISO timestamp
+  readonly outcome: SelfTestRunOutcome;
+  readonly entries: readonly SelfTestEntryResult[];   // siempre presente, parcial admitido
+  readonly wrapperSession: string | null;
+  readonly auditFile: string | null;
+}
