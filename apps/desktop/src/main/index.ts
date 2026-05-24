@@ -1,8 +1,9 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { ensureSymlink } from '@xcg/shared';
+import { ensureSymlink, type SelfTestReport } from '@xcg/shared';
 import {
   CLAUDE_DESKTOP_CONFIG_PATH,
   STABLE_XCG_PROXY_PATH,
@@ -17,6 +18,8 @@ import {
 } from './config-handlers.js';
 import { runValidateHealth, runRepairWraps } from './health-handlers.js';
 import { readDetections } from './detection-reader.js';
+import { spawnWrapper, readDetectionsFromAudit, resolveNpxPath } from './selftest-runner.js';
+import { runSelfTest } from './selftest-handler.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -79,6 +82,40 @@ ipcMain.handle('system:repair-wraps', () => {
     configPath: CLAUDE_DESKTOP_CONFIG_PATH,
     xcgTargetPath: resolveXcgTargetPathFromMain(),
   });
+});
+
+ipcMain.handle('system:self-test:run', async (): Promise<SelfTestReport> => {
+  const npxPath = resolveNpxPath(CLAUDE_DESKTOP_CONFIG_PATH);
+  if (npxPath === null) {
+    const ts = new Date().toISOString();
+    return {
+      runId: randomUUID(),
+      startedAt: ts,
+      finishedAt: ts,
+      outcome: {
+        kind: 'spawn_failed',
+        reason: 'npx not found in PATH, config, or known locations',
+      },
+      entries: [],
+      wrapperSession: null,
+      auditFile: null,
+    };
+  }
+  return runSelfTest(
+    {
+      launcher: spawnWrapper,
+      reader: readDetectionsFromAudit,
+      runId: () => randomUUID(),
+      now: () => new Date().toISOString(),
+    },
+    {
+      proxyBinPath: resolveXcgTargetPathFromMain(),
+      npxPath,
+      serverPackage: '@modelcontextprotocol/server-everything',
+      discoveryTimeoutMs: 5000,
+      readbackTimeoutMs: 10000,
+    },
+  );
 });
 
 // Milestone 4 Phase 3b: ensure a stable symlink in

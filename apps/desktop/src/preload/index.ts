@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-import type { HealthResult, RepairResult } from '@xcg/shared';
+import type { HealthResult, RepairResult, SelfTestReport } from '@xcg/shared';
 import type {
   InstallResult,
   StatusResult,
@@ -17,4 +17,5 @@ contextBridge.exposeInMainWorld('xcg', {
     ipcRenderer.invoke('config:uninstall', mode),
   validateHealth: (): Promise<HealthResult> => ipcRenderer.invoke('system:health'),
   repairWraps: (): Promise<RepairResult> => ipcRenderer.invoke('system:repair-wraps'),
+  runSelfTest: (): Promise<SelfTestReport> => ipcRenderer.invoke('system:self-test:run'),
 });
