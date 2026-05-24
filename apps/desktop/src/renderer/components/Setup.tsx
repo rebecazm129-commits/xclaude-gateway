@@ -6,6 +6,8 @@ import type {
   UninstallResult,
 } from '@xcg/shared/config';
 
+import { SelfTest } from './SelfTest.js';
+
 import styles from './Setup.module.css';
 
 export interface SetupProps {
@@ -201,6 +203,8 @@ export function Setup({ status, onRefresh }: SetupProps): ReactElement {
       {action !== null ? (
         <div className={styles[`feedback_${action.tone}`]}>{action.text}</div>
       ) : null}
+
+      <SelfTest />
     </div>
   );
 }
