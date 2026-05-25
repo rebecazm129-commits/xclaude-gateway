@@ -5,22 +5,24 @@
   gap: 20px;
   padding: 24px 20px;
   overflow-y: auto;
-  background: #0f172a;
+  background: var(--kraft-bg);
+  font-family: var(--kraft-font-ui);
+  color: var(--kraft-ink);
 }
 
 .loading {
-  color: #64748b;
+  color: var(--kraft-ink-soft);
   font-size: 14px;
   text-align: center;
   padding: 40px;
 }
 
 .errorPanel {
-  background: #2a1418;
-  border: 1px solid #ef4444;
-  color: #fca5a5;
+  background: var(--kraft-critical-bg);
+  border: var(--kraft-hairline) solid var(--kraft-critical-border);
+  color: var(--kraft-critical-text);
   padding: 14px 16px;
-  border-radius: 6px;
+  border-radius: var(--kraft-radius-sm);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -34,30 +36,37 @@
 .path {
   margin: 0;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--kraft-ink-soft);
 }
 
 .pathLabel {
-  color: #64748b;
+  color: var(--kraft-ink-disabled);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+  margin-right: 4px;
 }
 
 .pathValue {
-  color: #cbd5e1;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--kraft-ink);
+  font-family: var(--kraft-font-mono);
   font-size: 12px;
-  background: #1e293b;
+  background: var(--kraft-filter-bg);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--kraft-radius-sm);
 }
 
 .notice {
   margin: 0;
   font-size: 13px;
-  color: #cbd5e1;
-  background: #1e293b;
-  border-left: 3px solid #38bdf8;
+  color: var(--kraft-ink-body);
+  background: var(--kraft-surface);
+  border-left: 3px solid var(--kraft-accent);
+  border-top: var(--kraft-hairline) solid var(--kraft-border);
+  border-right: var(--kraft-hairline) solid var(--kraft-border);
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
   padding: 10px 14px;
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 var(--kraft-radius-sm) var(--kraft-radius-sm) 0;
   line-height: 1.5;
 }
 
@@ -70,24 +79,27 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  background: #1e293b;
-  padding: 14px 16px;
-  border-radius: 6px;
-  border: 1px solid #334155;
+  gap: 6px;
+  background: var(--kraft-surface);
+  padding: 16px 18px;
+  border-radius: var(--kraft-radius-md);
+  border: var(--kraft-hairline) solid var(--kraft-border);
 }
 
 .summaryCount {
-  font-size: 22px;
-  font-weight: 600;
-  color: #38bdf8;
+  font-family: var(--kraft-font-display);
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--kraft-ink);
+  letter-spacing: -0.01em;
+  line-height: 1.1;
 }
 
 .summaryLabel {
-  font-size: 11px;
-  color: #64748b;
+  font-size: 10px;
+  color: var(--kraft-ink-soft);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 }
 
 .entries {
@@ -96,52 +108,60 @@
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  background: #1e293b;
-  border-radius: 6px;
+  background: var(--kraft-surface);
+  border-radius: var(--kraft-radius-md);
   overflow: hidden;
-  border: 1px solid #334155;
+  border: var(--kraft-hairline) solid var(--kraft-border);
 }
 
 .entry {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 14px;
-  background: #1e293b;
+  padding: 11px 16px;
+  background: var(--kraft-surface);
   font-size: 13px;
 }
 
 .entry + .entry {
-  border-top: 1px solid #334155;
+  border-top: var(--kraft-hairline) solid var(--kraft-border);
 }
 
 .entryName {
-  color: #e2e8f0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--kraft-ink);
+  font-family: var(--kraft-font-mono);
 }
 
 .entryKind_wrappable {
-  color: #38bdf8;
-  font-size: 12px;
+  color: var(--kraft-accent);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .entryKind_skipped {
-  color: #64748b;
-  font-size: 12px;
+  color: var(--kraft-ink-soft);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .entryKind {
-  color: #64748b;
-  font-size: 12px;
+  color: var(--kraft-ink-soft);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .entriesEmpty {
-  background: #1e293b;
-  border: 1px solid #334155;
+  background: var(--kraft-surface);
+  border: var(--kraft-hairline) solid var(--kraft-border);
   padding: 14px 16px;
-  border-radius: 6px;
-  color: #64748b;
+  border-radius: var(--kraft-radius-md);
+  color: var(--kraft-ink-soft);
   font-size: 13px;
   text-align: center;
 }
@@ -154,33 +174,37 @@
 .installButton,
 .uninstallButton,
 .refreshButton {
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #cbd5e1;
+  background: var(--kraft-surface);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  color: var(--kraft-ink);
   padding: 8px 16px;
   font-size: 13px;
   font-weight: 500;
-  border-radius: 4px;
+  font-family: var(--kraft-font-ui);
+  border-radius: var(--kraft-radius-sm);
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition:
+    background var(--kraft-transition-fast) ease,
+    border-color var(--kraft-transition-fast) ease,
+    color var(--kraft-transition-fast) ease;
 }
 
 .installButton:hover:not(:disabled),
 .uninstallButton:hover:not(:disabled),
 .refreshButton:hover:not(:disabled) {
-  background: #334155;
-  border-color: #475569;
+  background: var(--kraft-filter-bg);
+  border-color: var(--kraft-ink-soft);
 }
 
 .installButton:not(:disabled) {
-  background: #38bdf8;
-  border-color: #38bdf8;
-  color: #0f172a;
+  background: var(--kraft-accent);
+  border-color: var(--kraft-accent);
+  color: #ffffff;
 }
 
 .installButton:hover:not(:disabled) {
-  background: #0ea5e9;
-  border-color: #0ea5e9;
+  background: var(--kraft-accent-hover);
+  border-color: var(--kraft-accent-hover);
 }
 
 .installButton:disabled,
@@ -191,29 +215,29 @@
 }
 
 .feedback_success {
-  background: #14291c;
-  border: 1px solid #22c55e;
-  color: #86efac;
+  background: var(--kraft-low-bg);
+  border: var(--kraft-hairline) solid var(--kraft-low-border);
+  color: var(--kraft-low-text);
   padding: 12px 14px;
-  border-radius: 6px;
+  border-radius: var(--kraft-radius-sm);
   font-size: 13px;
 }
 
 .feedback_noop {
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #94a3b8;
+  background: var(--kraft-filter-bg);
+  border: var(--kraft-hairline) solid var(--kraft-border);
+  color: var(--kraft-ink-soft);
   padding: 12px 14px;
-  border-radius: 6px;
+  border-radius: var(--kraft-radius-sm);
   font-size: 13px;
 }
 
 .feedback_error {
-  background: #2a1418;
-  border: 1px solid #ef4444;
-  color: #fca5a5;
+  background: var(--kraft-critical-bg);
+  border: var(--kraft-hairline) solid var(--kraft-critical-border);
+  color: var(--kraft-critical-text);
   padding: 12px 14px;
-  border-radius: 6px;
+  border-radius: var(--kraft-radius-sm);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -221,7 +245,7 @@
 .uninstallHint {
   margin: -8px 0 0 0;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--kraft-ink-soft);
   line-height: 1.5;
   max-width: 640px;
 }
