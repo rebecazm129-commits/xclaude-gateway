@@ -1,3 +1,102 @@
+/* ── Fonts (bundled, local-first — no CDN). woff2 in ./assets/fonts/ ── */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/Fraunces-Medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/Inter-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/Inter-Medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/JetBrainsMono-Medium.woff2') format('woff2');
+}
+
+/* ── Kraft design tokens (landed in D.1; not yet consumed — migration is D.2+) ── */
+:root {
+  /* Backgrounds */
+  --kraft-bg: #faf7f2;
+  --kraft-surface: #ffffff;
+  --kraft-filter-bg: #f1ebe1;
+  --kraft-border: #e8e1d4;
+  --kraft-border-strong: #d8d1c2;
+
+  /* Ink */
+  --kraft-ink: #2a241d;
+  --kraft-ink-body: #4a4338;
+  --kraft-ink-soft: #6b655c;
+  --kraft-ink-disabled: #9a9389;
+
+  /* Accents */
+  --kraft-accent: #d86a4d;
+  --kraft-accent-hover: #c45d42;
+  --kraft-status: #6b8e5a;
+
+  /* Severity — Critical */
+  --kraft-critical-bg: #f8dedc;
+  --kraft-critical-text: #8b2d28;
+  --kraft-critical-border: #ecbebb;
+  --kraft-critical-dot: #c8453e;
+
+  /* Severity — High */
+  --kraft-high-bg: #fae6d6;
+  --kraft-high-text: #8e4a20;
+  --kraft-high-border: #efcbaa;
+  --kraft-high-dot: #d87739;
+
+  /* Severity — Medium */
+  --kraft-medium-bg: #faf1dc;
+  --kraft-medium-text: #8a6520;
+  --kraft-medium-border: #efddb6;
+  --kraft-medium-dot: #e0a84d;
+
+  /* Severity — Low */
+  --kraft-low-bg: #eef2ea;
+  --kraft-low-text: #4a6b3f;
+  --kraft-low-border: #d8e0cf;
+  --kraft-low-dot: #6b8e5a;
+
+  /* Typography */
+  --kraft-font-display: 'Fraunces', Georgia, serif;
+  --kraft-font-ui: 'Inter', system-ui, sans-serif;
+  --kraft-font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+
+  /* Shape */
+  --kraft-radius-sm: 6px;
+  --kraft-radius-md: 10px;
+  --kraft-radius-pill: 14px;
+  --kraft-radius-dot: 50%;
+  --kraft-hairline: 0.5px;
+
+  /* Motion */
+  --kraft-transition-fast: 0.12s;
+  --kraft-transition: 0.2s;
+}
+
+/* ── Base reset + body (UNCHANGED in D.1 — dark slate stays until D.2 migration) ── */
 * {
   margin: 0;
   padding: 0;
