@@ -53,3 +53,8 @@
 .option:hover {
   background: var(--kraft-filter-bg);
 }
+
+.option input[type='checkbox'] {
+  accent-color: var(--kraft-accent);
+  cursor: pointer;
+}

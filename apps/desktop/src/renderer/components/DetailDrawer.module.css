@@ -1,0 +1,222 @@
+.drawer {
+  position: fixed;
+  top: 96px; /* debajo del header (56) + tabs (40) */
+  right: 0;
+  bottom: 0;
+  width: 480px;
+  background: var(--kraft-surface);
+  border-top: var(--kraft-hairline) solid var(--kraft-border-strong);
+  border-left: var(--kraft-hairline) solid var(--kraft-border-strong);
+  box-shadow: -8px 0 24px rgba(42, 36, 29, 0.10);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--kraft-font-ui);
+  z-index: 20;
+  animation: slideIn var(--kraft-transition) ease-out;
+}
+
+.drawer:focus {
+  outline: none;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 20px 14px 20px;
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
+  white-space: nowrap;
+}
+
+.timestamp {
+  font-family: var(--kraft-font-mono);
+  font-size: 12px;
+  color: var(--kraft-ink-soft);
+  flex-shrink: 0;
+}
+
+.category {
+  color: var(--kraft-ink);
+  font-size: 13px;
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.closeButton {
+  background: transparent;
+  border: none;
+  color: var(--kraft-ink-soft);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px;
+  font-family: var(--kraft-font-ui);
+  transition: color var(--kraft-transition-fast) ease;
+}
+
+.closeButton:hover {
+  color: var(--kraft-ink);
+}
+
+.closeButton:focus-visible {
+  outline: 2px solid var(--kraft-accent);
+  outline-offset: 2px;
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px 0 20px;
+}
+
+.block {
+  margin-bottom: 18px;
+}
+
+.blockCollapsible {
+  margin-bottom: 18px;
+  border-top: var(--kraft-hairline) solid var(--kraft-border);
+  padding-top: 14px;
+}
+
+.blockLabel {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--kraft-ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+.collapsibleToggle {
+  background: transparent;
+  border: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 0;
+  font-family: var(--kraft-font-ui);
+  user-select: none;
+}
+
+.collapsibleToggle:focus-visible {
+  outline: 2px solid var(--kraft-accent);
+  outline-offset: 2px;
+}
+
+.caret {
+  font-size: 10px;
+  color: var(--kraft-ink-soft);
+  font-family: var(--kraft-font-ui);
+}
+
+.kvList {
+  font-family: var(--kraft-font-mono);
+  font-size: 12px;
+  color: var(--kraft-ink);
+  line-height: 1.7;
+}
+
+.kvRow {
+  display: flex;
+  gap: 8px;
+}
+
+.kvKey {
+  color: var(--kraft-ink-soft);
+  flex-shrink: 0;
+}
+
+.kvValue {
+  color: var(--kraft-ink);
+  word-break: break-all;
+}
+
+.code {
+  background: var(--kraft-filter-bg);
+  border: var(--kraft-hairline) solid var(--kraft-border);
+  border-radius: var(--kraft-radius-sm);
+  padding: 10px 12px;
+  font-family: var(--kraft-font-mono);
+  font-size: 11px;
+  color: var(--kraft-ink);
+  line-height: 1.5;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.findings {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--kraft-font-mono);
+  font-size: 12px;
+}
+
+.finding {
+  display: flex;
+  gap: 10px;
+}
+
+.findingType {
+  color: var(--kraft-ink);
+  flex-shrink: 0;
+}
+
+.findingMatch {
+  color: var(--kraft-ink-soft);
+  word-break: break-all;
+}
+
+.footer {
+  padding: 12px 20px;
+  border-top: var(--kraft-hairline) solid var(--kraft-border);
+  background: var(--kraft-bg);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.copyButton {
+  background: var(--kraft-surface);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  color: var(--kraft-ink);
+  font-family: var(--kraft-font-ui);
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: var(--kraft-radius-pill);
+  cursor: pointer;
+  transition:
+    background var(--kraft-transition-fast) ease,
+    border-color var(--kraft-transition-fast) ease;
+}
+
+.copyButton:hover {
+  background: var(--kraft-filter-bg);
+  border-color: var(--kraft-ink-soft);
+}
+
+.copyButton:focus-visible {
+  outline: 2px solid var(--kraft-accent);
+  outline-offset: 2px;
+}
+
+.emptyFindings {
+  font-family: var(--kraft-font-ui);
+  font-size: 13px;
+  color: var(--kraft-ink-soft);
+  font-style: italic;
+}

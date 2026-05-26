@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FixedSizeList } from 'react-window';
 
 import { usePolledDetections } from '../hooks/usePolledDetections.js';
-import type { Severity, Category } from '../../shared/types.js';
+import type { EnrichableEvent, Severity, Category } from '../../shared/types.js';
 
+import { DetailDrawer } from './DetailDrawer.js';
 import { DetectionRow } from './DetectionRow.js';
 import { FilterDropdown } from './FilterDropdown.js';
 
@@ -20,7 +21,6 @@ const CATEGORY_OPTIONS: readonly Category[] = [
 ];
 
 const ROW_HEIGHT = 32;
-// header (56) + tabs (40) + filters (56) = 152
 const HEADER_AND_FILTERS_HEIGHT = 152;
 
 export function Detections(): JSX.Element {
@@ -29,9 +29,11 @@ export function Detections(): JSX.Element {
     useState<readonly Severity[]>(SEVERITY_OPTIONS);
   const [selectedCategories, setSelectedCategories] =
     useState<readonly Category[]>(CATEGORY_OPTIONS);
+  const [selectedEvent, setSelectedEvent] = useState<EnrichableEvent | null>(null);
   const [listHeight, setListHeight] = useState(
     window.innerHeight - HEADER_AND_FILTERS_HEIGHT,
   );
+  const triggerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     function onResize(): void {
@@ -48,6 +50,20 @@ export function Detections(): JSX.Element {
       (d) => sevSet.has(d.detection.severity) && catSet.has(d.detection.category),
     );
   }, [detections, selectedSeverities, selectedCategories]);
+
+  function handleRowClick(event: EnrichableEvent): void {
+    triggerRef.current = document.activeElement as HTMLElement | null;
+    setSelectedEvent(event);
+  }
+
+  function handleDrawerClose(): void {
+    setSelectedEvent(null);
+    const trigger = triggerRef.current;
+    if (trigger !== null && document.body.contains(trigger)) {
+      trigger.focus();
+    }
+    triggerRef.current = null;
+  }
 
   return (
     <>
@@ -82,11 +98,18 @@ export function Detections(): JSX.Element {
             if (item === undefined) return null;
             return (
               <div style={style}>
-                <DetectionRow event={item} />
+                <DetectionRow
+                  event={item}
+                  selected={selectedEvent?.id === item.id}
+                  onClick={() => handleRowClick(item)}
+                />
               </div>
             );
           }}
         </FixedSizeList>
+      )}
+      {selectedEvent !== null && (
+        <DetailDrawer event={selectedEvent} onClose={handleDrawerClose} />
       )}
     </>
   );

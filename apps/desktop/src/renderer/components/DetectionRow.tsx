@@ -1,3 +1,5 @@
+import type { KeyboardEvent } from 'react';
+
 import type { Category, EnrichableEvent } from '../../shared/types.js';
 import { Badge } from './Badge.js';
 
@@ -28,9 +30,32 @@ function formatTimestamp(iso: string): string {
   return `${day} ${month}, ${hh}:${mm}:${ss}`;
 }
 
-export function DetectionRow({ event }: { event: EnrichableEvent }): JSX.Element {
+interface DetectionRowProps {
+  event: EnrichableEvent;
+  selected: boolean;
+  onClick: () => void;
+}
+
+export function DetectionRow({ event, selected, onClick }: DetectionRowProps): JSX.Element {
+  function handleKeyDown(e: KeyboardEvent<HTMLDivElement>): void {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick();
+    }
+  }
+
+  const className = selected
+    ? `${styles['row']} ${styles['rowSelected']}`
+    : styles['row'];
+
   return (
-    <div className={styles['row']}>
+    <div
+      className={className}
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
+    >
       <span className={styles['timestamp']}>{formatTimestamp(event.ts)}</span>
       <Badge severity={event.detection.severity} />
       <span className={styles['category']}>

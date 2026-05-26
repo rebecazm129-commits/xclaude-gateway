@@ -1,6 +1,6 @@
 .row {
   display: grid;
-  grid-template-columns: 110px 90px 180px 160px 1fr;
+  grid-template-columns: 130px 90px 160px 180px 1fr;
   align-items: center;
   padding: 4px 16px;
   border-bottom: var(--kraft-hairline) solid var(--kraft-border);
@@ -11,10 +11,30 @@
   height: 32px;
   box-sizing: border-box;
   background: var(--kraft-bg);
+  cursor: pointer;
+  transition: background var(--kraft-transition-fast) ease;
+}
+
+.row:hover {
+  background: var(--kraft-filter-bg);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--kraft-accent);
+  outline-offset: -2px;
+}
+
+.rowSelected {
+  background: var(--kraft-filter-bg);
+}
+
+.rowSelected:hover {
+  background: var(--kraft-filter-bg);
 }
 
 .timestamp {
   color: var(--kraft-ink-soft);
+  white-space: nowrap;
 }
 
 .category {
