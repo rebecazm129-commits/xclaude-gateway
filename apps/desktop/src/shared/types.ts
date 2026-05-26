@@ -35,6 +35,12 @@ export interface DetectionEvent {
   // preserva, fidelidad de auditoria). Ausente si no hubo join. Como se
   // muestran dos detecciones en una fila es decision de UI de Fase 7.
   enrichment?: DetectionBlock;
+  // Derivado por el reader cuando method === 'tools/call' y params.name es
+  // string: nombre del tool real invocado (echo, read_file, send_email...).
+  // Es DATO de presentacion, no maquinaria — el reader extrae el campo y lo
+  // expone aqui para que el renderer NO lea params crudo (mantiene la
+  // separacion presentacion vs JSON-RPC machinery: Decision 1 del contrato).
+  toolName?: string;
 }
 
 // Variante 2: línea mcp.detection_enrichment que el orquestador escribe cuando

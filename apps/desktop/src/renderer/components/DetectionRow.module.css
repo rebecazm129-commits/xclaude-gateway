@@ -1,6 +1,6 @@
 .row {
   display: grid;
-  grid-template-columns: 80px 90px 200px 180px 1fr;
+  grid-template-columns: 110px 90px 180px 160px 1fr;
   align-items: center;
   padding: 4px 16px;
   border-bottom: var(--kraft-hairline) solid var(--kraft-border);

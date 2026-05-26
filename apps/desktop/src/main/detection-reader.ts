@@ -110,6 +110,15 @@ export async function readDetections(
       if (isDetectionEvent(parsed)) {
         if (seenIds.has(parsed.id)) continue;
         seenIds.add(parsed.id);
+        // Derivar toolName desde params.name solo cuando method === 'tools/call'
+        // y name es string. Mantiene el renderer libre de maquinaria JSON-RPC
+        // (params shape, optional fields). Decision 1 del contrato preservada.
+        if (parsed.method === 'tools/call') {
+          const raw = parsed as unknown as { params?: { name?: unknown } };
+          if (typeof raw.params?.name === 'string') {
+            parsed.toolName = raw.params.name;
+          }
+        }
         requests.push(parsed);
       } else if (isDetectionEnrichmentEvent(parsed)) {
         if (seenIds.has(parsed.id)) continue;
