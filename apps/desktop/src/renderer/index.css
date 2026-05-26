@@ -96,7 +96,7 @@
   --kraft-transition: 0.2s;
 }
 
-/* ── Base reset + body (UNCHANGED in D.1 — dark slate stays until D.2 migration) ── */
+/* ── Base reset + body ── */
 * {
   margin: 0;
   padding: 0;
@@ -111,8 +111,8 @@ body,
 }
 
 body {
-  background: #0f172a;
-  color: #e2e8f0;
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  background: var(--kraft-bg);
+  color: var(--kraft-ink);
+  font-family: var(--kraft-font-ui);
   font-size: 13px;
 }

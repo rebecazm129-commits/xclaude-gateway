@@ -2,8 +2,8 @@
   display: flex;
   gap: 0;
   padding: 0 20px;
-  background: #1e293b;
-  border-bottom: 1px solid #334155;
+  background: var(--kraft-surface);
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
   height: 40px;
   box-sizing: border-box;
 }
@@ -16,20 +16,23 @@
   height: 40px;
   font-size: 13px;
   font-weight: 500;
-  color: #64748b;
+  font-family: var(--kraft-font-ui);
+  color: var(--kraft-ink-soft);
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition:
+    color var(--kraft-transition-fast) ease,
+    border-color var(--kraft-transition-fast) ease;
 }
 
 .tab:hover {
-  color: #cbd5e1;
+  color: var(--kraft-ink);
 }
 
 .tabActive {
-  color: #38bdf8;
-  border-bottom-color: #38bdf8;
+  color: var(--kraft-ink);
+  border-bottom-color: var(--kraft-accent);
 }
 
 .tabActive:hover {
-  color: #38bdf8;
+  color: var(--kraft-ink);
 }
