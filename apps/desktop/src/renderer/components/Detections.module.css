@@ -2,8 +2,8 @@
   display: flex;
   gap: 8px;
   padding: 12px 20px;
-  background: #0f172a;
-  border-bottom: 1px solid #334155;
+  background: var(--kraft-filter-bg);
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
   height: 56px;
   box-sizing: border-box;
   align-items: center;
@@ -14,8 +14,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #475569;
+  color: var(--kraft-ink-soft);
   font-size: 14px;
+  font-family: var(--kraft-font-ui);
   padding: 40px;
   text-align: center;
 }

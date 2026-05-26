@@ -1,8 +1,35 @@
 .badge {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #fff;
+  padding: 3px 8px;
+  border-radius: var(--kraft-radius-pill);
+  font-size: 9px;
+  font-weight: 500;
+  font-family: var(--kraft-font-ui);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.badge_critical {
+  background: var(--kraft-critical-bg);
+  color: var(--kraft-critical-text);
+  border: var(--kraft-hairline) solid var(--kraft-critical-border);
+}
+
+.badge_high {
+  background: var(--kraft-high-bg);
+  color: var(--kraft-high-text);
+  border: var(--kraft-hairline) solid var(--kraft-high-border);
+}
+
+.badge_medium {
+  background: var(--kraft-medium-bg);
+  color: var(--kraft-medium-text);
+  border: var(--kraft-hairline) solid var(--kraft-medium-border);
+}
+
+.badge_low {
+  background: var(--kraft-low-bg);
+  color: var(--kraft-low-text);
+  border: var(--kraft-hairline) solid var(--kraft-low-border);
 }

@@ -4,45 +4,52 @@
 }
 
 .trigger {
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #e2e8f0;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 13px;
-  padding: 6px 12px;
-  border-radius: 4px;
+  background: var(--kraft-surface);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  color: var(--kraft-ink);
+  font-family: var(--kraft-font-ui);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: var(--kraft-radius-pill);
   cursor: pointer;
+  transition:
+    background var(--kraft-transition-fast) ease,
+    border-color var(--kraft-transition-fast) ease;
 }
 
 .trigger:hover {
-  background: #334155;
+  background: var(--kraft-filter-bg);
+  border-color: var(--kraft-ink-soft);
 }
 
 .menu {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 4px;
-  padding: 4px;
+  background: var(--kraft-surface);
+  border: 0.5px solid var(--kraft-border-strong);
+  border-top: 2px solid var(--kraft-accent);
+  border-radius: var(--kraft-radius-md);
+  padding: 6px 0;
   min-width: 200px;
   z-index: 10;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow:
+    0 6px 20px rgba(42, 36, 29, 0.14),
+    0 2px 4px rgba(42, 36, 29, 0.06);
+  overflow: hidden;
 }
 
 .option {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 8px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 13px;
-  color: #e2e8f0;
+  padding: 6px 14px;
+  font-family: var(--kraft-font-ui);
+  font-size: 12px;
+  color: var(--kraft-ink);
   cursor: pointer;
-  border-radius: 2px;
 }
 
 .option:hover {
-  background: #334155;
+  background: var(--kraft-filter-bg);
 }
