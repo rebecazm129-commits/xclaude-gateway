@@ -114,10 +114,29 @@ export async function readDetections(
         // y name es string. Mantiene el renderer libre de maquinaria JSON-RPC
         // (params shape, optional fields). Decision 1 del contrato preservada.
         if (parsed.method === 'tools/call') {
-          const raw = parsed as unknown as { params?: { name?: unknown } };
+          const raw = parsed as unknown as {
+            params?: { name?: unknown; arguments?: unknown };
+          };
           if (typeof raw.params?.name === 'string') {
             parsed.toolName = raw.params.name;
           }
+          // Derivar argumentsJson: string ya serializado pretty-printed. El
+          // renderer NO toca params crudo. Sin stringify por render.
+          if (raw.params?.arguments !== undefined) {
+            try {
+              parsed.argumentsJson = JSON.stringify(raw.params.arguments, null, 2);
+            } catch {
+              // Referencias circulares u otros casos raros: omitir el campo.
+              // JSON.parse de la linea ya filtró la mayoría, pero defensivo.
+            }
+          }
+        }
+        // Derivar overheadUs si el JSONL lo trae. Aplica a TODOS los
+        // mcp.request (no solo tools/call), porque el overhead se mide
+        // independientemente del method.
+        const rawOverhead = parsed as unknown as { overheadUs?: unknown };
+        if (typeof rawOverhead.overheadUs === 'number') {
+          parsed.overheadUs = rawOverhead.overheadUs;
         }
         requests.push(parsed);
       } else if (isDetectionEnrichmentEvent(parsed)) {

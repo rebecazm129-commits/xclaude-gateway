@@ -41,6 +41,15 @@ export interface DetectionEvent {
   // expone aqui para que el renderer NO lea params crudo (mantiene la
   // separacion presentacion vs JSON-RPC machinery: Decision 1 del contrato).
   toolName?: string;
+  // Derivado por el reader cuando params.arguments existe: JSON.stringify
+  // pretty-printed (indent 2). Mismo principio que toolName: el renderer
+  // recibe string ya serializado, no toca params crudo ni hace stringify
+  // en cada render del drawer (D.3.b.3.a).
+  argumentsJson?: string;
+  // Microsegundos de overhead introducido por el proxy al procesar el
+  // frame. Dato de presentacion para el bloque "Technical details" del
+  // drawer (D.3.b.3.a). Opcional: JSONLs antiguos pueden no traerlo.
+  overheadUs?: number;
 }
 
 // Variante 2: línea mcp.detection_enrichment que el orquestador escribe cuando
