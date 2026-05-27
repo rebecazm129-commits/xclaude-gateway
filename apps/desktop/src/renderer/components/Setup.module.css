@@ -251,3 +251,43 @@
   line-height: 1.5;
   max-width: 640px;
 }
+
+.introBlock {
+  background: var(--kraft-surface);
+  border-top: var(--kraft-hairline) solid var(--kraft-border);
+  border-right: var(--kraft-hairline) solid var(--kraft-border);
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
+  border-left: 3px solid var(--kraft-accent);
+  border-radius: 0 var(--kraft-radius-sm) var(--kraft-radius-sm) 0;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.introHeading {
+  margin: 0;
+  font-family: var(--kraft-font-display);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--kraft-ink);
+  letter-spacing: -0.01em;
+}
+
+.introDetail {
+  margin: 0;
+  font-family: var(--kraft-font-ui);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--kraft-ink-body);
+  line-height: 1.4;
+}
+
+.introTag {
+  margin: 0;
+  font-family: var(--kraft-font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--kraft-ink-soft);
+  letter-spacing: 0.02em;
+}

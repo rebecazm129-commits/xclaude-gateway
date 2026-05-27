@@ -156,6 +156,12 @@ export function Setup({ status, onRefresh }: SetupProps): ReactElement {
             </div>
           )}
 
+          <div className={styles['introBlock']}>
+            <p className={styles['introHeading']}>Every MCP call, classified.</p>
+            <p className={styles['introDetail']}>6 detection categories. 4 severity levels.</p>
+            <p className={styles['introTag']}>Local. No network. No account.</p>
+          </div>
+
           <div className={styles['actions']}>
             <button
               type="button"
