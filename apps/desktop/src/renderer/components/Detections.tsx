@@ -9,6 +9,7 @@ import { DetectionRow } from './DetectionRow.js';
 import { FilterDropdown } from './FilterDropdown.js';
 import { NewEventsPill } from './NewEventsPill.js';
 import { SeverityBreakdown } from './SeverityBreakdown.js';
+import { TimeFilter, type TimeRange } from './TimeFilter.js';
 
 import styles from './Detections.module.css';
 
@@ -33,6 +34,7 @@ export function Detections(): JSX.Element {
     useState<readonly Category[]>(CATEGORY_OPTIONS);
   const [selectedEvent, setSelectedEvent] = useState<EnrichableEvent | null>(null);
   const [openDropdown, setOpenDropdown] = useState<'severity' | 'category' | null>(null);
+  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('all');
   const severityRef = useRef<HTMLDivElement>(null);
   const categoryRef = useRef<HTMLDivElement>(null);
   const [listHeight, setListHeight] = useState(
@@ -73,10 +75,24 @@ export function Detections(): JSX.Element {
     };
   }, [openDropdown]);
 
+  const timeFiltered = useMemo(() => {
+    if (selectedTimeRange === 'all') return detections;
+    const now = Date.now();
+    const windowMs =
+      selectedTimeRange === '1h' ? 60 * 60 * 1000 :
+      selectedTimeRange === '24h' ? 24 * 60 * 60 * 1000 :
+      7 * 24 * 60 * 60 * 1000;
+    const cutoff = now - windowMs;
+    return detections.filter((d) => {
+      const t = Date.parse(d.ts);
+      return !Number.isNaN(t) && t >= cutoff;
+    });
+  }, [detections, selectedTimeRange]);
+
   const categoryFiltered = useMemo(() => {
     const catSet = new Set(selectedCategories);
-    return detections.filter((d) => catSet.has(d.detection.category));
-  }, [detections, selectedCategories]);
+    return timeFiltered.filter((d) => catSet.has(d.detection.category));
+  }, [timeFiltered, selectedCategories]);
 
   const counts = useMemo(() => {
     const result: Record<Severity, number> = { low: 0, medium: 0, high: 0, critical: 0 };
@@ -103,7 +119,7 @@ export function Detections(): JSX.Element {
   useEffect(() => {
     setLastSeenTopId(filtered[0]?.id ?? null);
     setScrollOffset(0);
-  }, [selectedSeverities, selectedCategories]);
+  }, [selectedSeverities, selectedCategories, selectedTimeRange]);
 
   const newCount = useMemo(() => {
     if (lastSeenTopId === null) return 0;
@@ -174,6 +190,9 @@ export function Detections(): JSX.Element {
           onToggle={() => setOpenDropdown((prev) => (prev === 'category' ? null : 'category'))}
           dropdownRef={categoryRef}
         />
+        <div className={styles['timeFilterSpacer']}>
+          <TimeFilter value={selectedTimeRange} onChange={setSelectedTimeRange} />
+        </div>
       </div>
       {filtered.length === 0 ? (
         <div className={styles['empty']}>

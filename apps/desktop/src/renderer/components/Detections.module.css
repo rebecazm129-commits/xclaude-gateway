@@ -44,3 +44,7 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
+
+.timeFilterSpacer {
+  margin-left: auto;
+}

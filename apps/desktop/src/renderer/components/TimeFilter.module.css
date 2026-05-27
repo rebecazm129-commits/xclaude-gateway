@@ -1,0 +1,41 @@
+.segmented {
+  display: inline-flex;
+  background: var(--kraft-surface);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  border-radius: var(--kraft-radius-pill);
+  padding: 2px;
+  gap: 2px;
+}
+
+.option {
+  background: transparent;
+  border: none;
+  color: var(--kraft-ink-soft);
+  font-family: var(--kraft-font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: var(--kraft-radius-pill);
+  cursor: pointer;
+  transition:
+    background var(--kraft-transition-fast) ease,
+    color var(--kraft-transition-fast) ease;
+}
+
+.option:hover:not(.optionActive) {
+  color: var(--kraft-ink);
+}
+
+.option:focus-visible {
+  outline: 2px solid var(--kraft-accent);
+  outline-offset: 2px;
+}
+
+.optionActive {
+  background: var(--kraft-accent);
+  color: var(--kraft-surface);
+}
+
+.optionActive:hover {
+  background: var(--kraft-accent-hover);
+}
