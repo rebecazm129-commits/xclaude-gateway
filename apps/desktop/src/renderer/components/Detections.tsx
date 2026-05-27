@@ -24,7 +24,7 @@ const CATEGORY_OPTIONS: readonly Category[] = [
 ];
 
 const ROW_HEIGHT = 40;
-const HEADER_AND_FILTERS_HEIGHT = 288;
+const HEADER_AND_FILTERS_HEIGHT = 328;
 
 export function Detections(): JSX.Element {
   const detections = usePolledDetections();
@@ -176,6 +176,10 @@ export function Detections(): JSX.Element {
     setSelectedTimeRange('all');
   }
 
+  function handleOpenAuditFolder(): void {
+    void window.xcg.openAuditFolder();
+  }
+
   return (
     <>
       <SeverityBreakdown
@@ -270,6 +274,16 @@ export function Detections(): JSX.Element {
       {selectedEvent !== null && (
         <DetailDrawer event={selectedEvent} onClose={handleDrawerClose} />
       )}
+      <div className={styles['footer']}>
+        <button
+          type="button"
+          className={styles['footerLink']}
+          onClick={handleOpenAuditFolder}
+          disabled={detections.length === 0}
+        >
+          Open audit folder <span aria-hidden="true">↗</span>
+        </button>
+      </div>
     </>
   );
 }

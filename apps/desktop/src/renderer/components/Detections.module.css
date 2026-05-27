@@ -111,3 +111,40 @@
   outline: 2px solid var(--kraft-accent);
   outline-offset: 2px;
 }
+
+.footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px 20px;
+  background: var(--kraft-bg);
+  border-top: var(--kraft-hairline) solid var(--kraft-border);
+  box-sizing: border-box;
+}
+
+.footerLink {
+  background: transparent;
+  border: none;
+  color: var(--kraft-ink-soft);
+  font-family: var(--kraft-font-ui);
+  font-size: 12px;
+  font-weight: 400;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: var(--kraft-radius-sm);
+  transition: color var(--kraft-transition-fast) ease;
+}
+
+.footerLink:hover:not(:disabled) {
+  color: var(--kraft-ink);
+}
+
+.footerLink:focus-visible {
+  outline: 2px solid var(--kraft-accent);
+  outline-offset: 2px;
+}
+
+.footerLink:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

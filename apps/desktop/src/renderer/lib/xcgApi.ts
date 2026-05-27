@@ -14,6 +14,7 @@ export interface XcgApi {
   validateHealth(): Promise<HealthResult>;
   repairWraps(): Promise<RepairResult>;
   runSelfTest(): Promise<SelfTestReport>;
+  openAuditFolder(): Promise<void>;
 }
 
 declare global {

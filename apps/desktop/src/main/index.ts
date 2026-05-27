@@ -1,4 +1,6 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { homedir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -155,4 +157,17 @@ void app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+ipcMain.handle('system:open-audit-folder', async (): Promise<void> => {
+  const dir = join(homedir(), 'Library', 'Application Support', 'xCLAUDE Gateway', 'wrappers');
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch {
+    // ignore mkdir errors; openPath will fail visibly if dir is unreachable
+  }
+  const result = await shell.openPath(dir);
+  if (result !== '') {
+    console.error('openPath failed:', result);
+  }
 });

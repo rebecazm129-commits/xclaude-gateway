@@ -18,4 +18,5 @@ contextBridge.exposeInMainWorld('xcg', {
   validateHealth: (): Promise<HealthResult> => ipcRenderer.invoke('system:health'),
   repairWraps: (): Promise<RepairResult> => ipcRenderer.invoke('system:repair-wraps'),
   runSelfTest: (): Promise<SelfTestReport> => ipcRenderer.invoke('system:self-test:run'),
+  openAuditFolder: (): Promise<void> => ipcRenderer.invoke('system:open-audit-folder'),
 });
