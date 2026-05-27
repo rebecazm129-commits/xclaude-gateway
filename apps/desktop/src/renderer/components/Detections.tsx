@@ -129,6 +129,15 @@ export function Detections(): JSX.Element {
     return idx;
   }, [filtered, lastSeenTopId, scrollOffset]);
 
+  const hasActiveFilters =
+    selectedSeverities.length !== SEVERITY_OPTIONS.length ||
+    selectedCategories.length !== CATEGORY_OPTIONS.length ||
+    selectedTimeRange !== 'all';
+
+  const counterLabel = hasActiveFilters
+    ? `${filtered.length} of ${detections.length}`
+    : `${detections.length} events`;
+
   function handleRowClick(event: EnrichableEvent): void {
     triggerRef.current = document.activeElement as HTMLElement | null;
     setSelectedEvent(event);
@@ -172,6 +181,7 @@ export function Detections(): JSX.Element {
         onSelectSeverity={handleSelectSeverity}
       />
       <div className={styles['filters']}>
+        <span className={styles['smartCounter']}>{counterLabel}</span>
         <FilterDropdown
           label="Severity"
           options={SEVERITY_OPTIONS}

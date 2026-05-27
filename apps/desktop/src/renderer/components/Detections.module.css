@@ -48,3 +48,11 @@
 .timeFilterSpacer {
   margin-left: auto;
 }
+
+.smartCounter {
+  font-family: var(--kraft-font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--kraft-ink-soft);
+  margin-right: 4px;
+}
