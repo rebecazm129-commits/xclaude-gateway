@@ -170,6 +170,12 @@ export function Detections(): JSX.Element {
     setLastSeenTopId(filtered[0]?.id ?? null);
   }
 
+  function handleClearFilters(): void {
+    setSelectedSeverities(SEVERITY_OPTIONS);
+    setSelectedCategories(CATEGORY_OPTIONS);
+    setSelectedTimeRange('all');
+  }
+
   return (
     <>
       <SeverityBreakdown
@@ -205,9 +211,25 @@ export function Detections(): JSX.Element {
         </div>
       </div>
       {filtered.length === 0 ? (
-        <div className={styles['empty']}>
-          No detections yet. Wrap an MCP server with xcg-proxy to start auditing.
-        </div>
+        hasActiveFilters ? (
+          <div className={styles['emptyFiltered']}>
+            <h2 className={styles['emptyFilteredHeading']}>No matches with current filters</h2>
+            <p className={styles['emptyFilteredSubhead']}>
+              Try widening the time range or adding more severities.
+            </p>
+            <button
+              type="button"
+              className={styles['clearFiltersButton']}
+              onClick={handleClearFilters}
+            >
+              Clear filters
+            </button>
+          </div>
+        ) : (
+          <div className={styles['empty']}>
+            No detections yet. Wrap an MCP server with xcg-proxy to start auditing.
+          </div>
+        )
       ) : (
         <div className={styles['listContainer']}>
           <div className={styles['columnHeader']}>
