@@ -1,6 +1,6 @@
 .pill {
   position: absolute;
-  top: 12px;
+  top: 44px;
   left: 50%;
   transform: translateX(-50%);
   background: var(--kraft-accent);

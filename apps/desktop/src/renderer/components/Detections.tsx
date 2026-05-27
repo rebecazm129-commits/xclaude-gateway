@@ -23,7 +23,7 @@ const CATEGORY_OPTIONS: readonly Category[] = [
 ];
 
 const ROW_HEIGHT = 32;
-const HEADER_AND_FILTERS_HEIGHT = 248;
+const HEADER_AND_FILTERS_HEIGHT = 288;
 
 export function Detections(): JSX.Element {
   const detections = usePolledDetections();
@@ -181,6 +181,13 @@ export function Detections(): JSX.Element {
         </div>
       ) : (
         <div className={styles['listContainer']}>
+          <div className={styles['columnHeader']}>
+            <span className={styles['columnHeaderCell']}>Time</span>
+            <span className={styles['columnHeaderCell']}>Severity</span>
+            <span className={styles['columnHeaderCell']}>Category</span>
+            <span className={styles['columnHeaderCell']}>Mcp</span>
+            <span className={styles['columnHeaderCell']}>Tool</span>
+          </div>
           <FixedSizeList
             ref={listRef}
             height={listHeight}

@@ -24,3 +24,23 @@
 .listContainer {
   position: relative;
 }
+
+.columnHeader {
+  display: grid;
+  grid-template-columns: 130px 90px 160px 180px 1fr;
+  align-items: center;
+  padding: 8px 16px;
+  gap: 20px;
+  background: var(--kraft-filter-bg);
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
+  box-sizing: border-box;
+}
+
+.columnHeaderCell {
+  font-family: var(--kraft-font-ui);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--kraft-ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
