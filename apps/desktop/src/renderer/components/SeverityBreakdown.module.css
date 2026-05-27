@@ -1,0 +1,121 @@
+.banda {
+  background: var(--kraft-surface);
+  padding: 14px 20px;
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
+  box-sizing: border-box;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+
+.card {
+  background: transparent;
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  border-radius: var(--kraft-radius-md);
+  padding: 12px 16px;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--kraft-font-ui);
+  transition:
+    opacity var(--kraft-transition-fast) ease,
+    border-color var(--kraft-transition-fast) ease;
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--kraft-accent);
+  outline-offset: 2px;
+}
+
+.card_total {
+  background: var(--kraft-surface);
+}
+
+.card_total .number {
+  color: var(--kraft-ink);
+}
+
+.card_total .label {
+  color: var(--kraft-ink-soft);
+}
+
+.card_low {
+  background: var(--kraft-low-bg);
+  border-color: var(--kraft-low-border);
+}
+
+.card_low .number,
+.card_low .label {
+  color: var(--kraft-low-text);
+}
+
+.card_medium {
+  background: var(--kraft-medium-bg);
+  border-color: var(--kraft-medium-border);
+}
+
+.card_medium .number,
+.card_medium .label {
+  color: var(--kraft-medium-text);
+}
+
+.card_high {
+  background: var(--kraft-high-bg);
+  border-color: var(--kraft-high-border);
+}
+
+.card_high .number,
+.card_high .label {
+  color: var(--kraft-high-text);
+}
+
+.card_critical {
+  background: var(--kraft-critical-bg);
+  border-color: var(--kraft-critical-border);
+}
+
+.card_critical .number,
+.card_critical .label {
+  color: var(--kraft-critical-text);
+}
+
+.cardActive.card_low {
+  border: 2px solid var(--kraft-low-dot);
+  padding: 11px 15px;
+}
+
+.cardActive.card_medium {
+  border: 2px solid var(--kraft-medium-dot);
+  padding: 11px 15px;
+}
+
+.cardActive.card_high {
+  border: 2px solid var(--kraft-high-dot);
+  padding: 11px 15px;
+}
+
+.cardActive.card_critical {
+  border: 2px solid var(--kraft-critical-dot);
+  padding: 11px 15px;
+}
+
+.cardInactive {
+  opacity: 0.55;
+}
+
+.number {
+  font-family: var(--kraft-font-display);
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.label {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-top: 8px;
+}

@@ -7,6 +7,7 @@ import type { EnrichableEvent, Severity, Category } from '../../shared/types.js'
 import { DetailDrawer } from './DetailDrawer.js';
 import { DetectionRow } from './DetectionRow.js';
 import { FilterDropdown } from './FilterDropdown.js';
+import { SeverityBreakdown } from './SeverityBreakdown.js';
 
 import styles from './Detections.module.css';
 
@@ -21,7 +22,7 @@ const CATEGORY_OPTIONS: readonly Category[] = [
 ];
 
 const ROW_HEIGHT = 32;
-const HEADER_AND_FILTERS_HEIGHT = 152;
+const HEADER_AND_FILTERS_HEIGHT = 248;
 
 export function Detections(): JSX.Element {
   const detections = usePolledDetections();
@@ -68,13 +69,23 @@ export function Detections(): JSX.Element {
     };
   }, [openDropdown]);
 
+  const categoryFiltered = useMemo(() => {
+    const catSet = new Set(selectedCategories);
+    return detections.filter((d) => catSet.has(d.detection.category));
+  }, [detections, selectedCategories]);
+
+  const counts = useMemo(() => {
+    const result: Record<Severity, number> = { low: 0, medium: 0, high: 0, critical: 0 };
+    for (const d of categoryFiltered) {
+      result[d.detection.severity] += 1;
+    }
+    return result;
+  }, [categoryFiltered]);
+
   const filtered = useMemo(() => {
     const sevSet = new Set(selectedSeverities);
-    const catSet = new Set(selectedCategories);
-    return detections.filter(
-      (d) => sevSet.has(d.detection.severity) && catSet.has(d.detection.category),
-    );
-  }, [detections, selectedSeverities, selectedCategories]);
+    return categoryFiltered.filter((d) => sevSet.has(d.detection.severity));
+  }, [categoryFiltered, selectedSeverities]);
 
   function handleRowClick(event: EnrichableEvent): void {
     triggerRef.current = document.activeElement as HTMLElement | null;
@@ -90,8 +101,29 @@ export function Detections(): JSX.Element {
     triggerRef.current = null;
   }
 
+  function handleSelectTotal(): void {
+    setSelectedSeverities(SEVERITY_OPTIONS);
+  }
+
+  function handleSelectSeverity(severity: Severity): void {
+    setSelectedSeverities((prev) => {
+      if (prev.length === 1 && prev[0] === severity) {
+        return SEVERITY_OPTIONS;
+      }
+      return [severity];
+    });
+  }
+
   return (
     <>
+      <SeverityBreakdown
+        counts={counts}
+        total={categoryFiltered.length}
+        selectedSeverities={selectedSeverities}
+        totalSeverityOptionsCount={SEVERITY_OPTIONS.length}
+        onSelectTotal={handleSelectTotal}
+        onSelectSeverity={handleSelectSeverity}
+      />
       <div className={styles['filters']}>
         <FilterDropdown
           label="Severity"
