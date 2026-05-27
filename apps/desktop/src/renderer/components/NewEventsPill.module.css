@@ -16,7 +16,7 @@
   align-items: center;
   gap: 6px;
   z-index: 10;
-  box-shadow: 0 4px 12px rgba(42, 36, 29, 0.18);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--kraft-ink) 18%, transparent);
   animation: slideDown var(--kraft-transition) ease-out;
 }
 

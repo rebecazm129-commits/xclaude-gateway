@@ -31,12 +31,12 @@
 
 .pulseHealthy {
   background: var(--kraft-status);
-  box-shadow: 0 0 0 3px rgba(107, 142, 90, 0.15);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--kraft-status) 15%, transparent);
 }
 
 .pulseUnhealthy {
   background: var(--kraft-critical-dot);
-  box-shadow: 0 0 0 3px rgba(200, 69, 62, 0.15);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--kraft-critical-dot) 15%, transparent);
 }
 
 .pulseUnknown {

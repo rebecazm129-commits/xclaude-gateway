@@ -7,7 +7,7 @@
   background: var(--kraft-surface);
   border-top: var(--kraft-hairline) solid var(--kraft-border-strong);
   border-left: var(--kraft-hairline) solid var(--kraft-border-strong);
-  box-shadow: -8px 0 24px rgba(42, 36, 29, 0.10);
+  box-shadow: -8px 0 24px color-mix(in srgb, var(--kraft-ink) 10%, transparent);
   display: flex;
   flex-direction: column;
   font-family: var(--kraft-font-ui);

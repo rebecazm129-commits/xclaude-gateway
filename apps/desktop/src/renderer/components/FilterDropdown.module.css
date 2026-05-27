@@ -34,8 +34,8 @@
   min-width: 200px;
   z-index: 10;
   box-shadow:
-    0 6px 20px rgba(42, 36, 29, 0.14),
-    0 2px 4px rgba(42, 36, 29, 0.06);
+    0 6px 20px color-mix(in srgb, var(--kraft-ink) 14%, transparent),
+    0 2px 4px color-mix(in srgb, var(--kraft-ink) 6%, transparent);
   overflow: hidden;
 }
 
