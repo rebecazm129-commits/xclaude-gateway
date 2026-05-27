@@ -22,7 +22,7 @@ const CATEGORY_OPTIONS: readonly Category[] = [
   'pii_detected',
 ];
 
-const ROW_HEIGHT = 32;
+const ROW_HEIGHT = 40;
 const HEADER_AND_FILTERS_HEIGHT = 288;
 
 export function Detections(): JSX.Element {

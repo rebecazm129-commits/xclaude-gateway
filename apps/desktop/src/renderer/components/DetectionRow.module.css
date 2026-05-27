@@ -2,13 +2,13 @@
   display: grid;
   grid-template-columns: 130px 90px 160px 180px 1fr;
   align-items: center;
-  padding: 4px 16px;
+  padding: 6px 16px;
   border-bottom: var(--kraft-hairline) solid var(--kraft-border);
   font-family: var(--kraft-font-mono);
   font-size: 13px;
   color: var(--kraft-ink);
   gap: 20px;
-  height: 32px;
+  height: 40px;
   box-sizing: border-box;
   background: var(--kraft-bg);
   cursor: pointer;
