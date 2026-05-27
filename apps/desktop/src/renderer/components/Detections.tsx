@@ -7,6 +7,7 @@ import type { EnrichableEvent, Severity, Category } from '../../shared/types.js'
 import { DetailDrawer } from './DetailDrawer.js';
 import { DetectionRow } from './DetectionRow.js';
 import { FilterDropdown } from './FilterDropdown.js';
+import { NewEventsPill } from './NewEventsPill.js';
 import { SeverityBreakdown } from './SeverityBreakdown.js';
 
 import styles from './Detections.module.css';
@@ -38,6 +39,9 @@ export function Detections(): JSX.Element {
     window.innerHeight - HEADER_AND_FILTERS_HEIGHT,
   );
   const triggerRef = useRef<HTMLElement | null>(null);
+  const listRef = useRef<FixedSizeList>(null);
+  const [scrollOffset, setScrollOffset] = useState(0);
+  const [lastSeenTopId, setLastSeenTopId] = useState<string | null>(null);
 
   useEffect(() => {
     function onResize(): void {
@@ -87,6 +91,28 @@ export function Detections(): JSX.Element {
     return categoryFiltered.filter((d) => sevSet.has(d.detection.severity));
   }, [categoryFiltered, selectedSeverities]);
 
+  useEffect(() => {
+    if (scrollOffset === 0 && filtered.length > 0) {
+      const topId = filtered[0]?.id ?? null;
+      if (topId !== null && topId !== lastSeenTopId) {
+        setLastSeenTopId(topId);
+      }
+    }
+  }, [scrollOffset, filtered, lastSeenTopId]);
+
+  useEffect(() => {
+    setLastSeenTopId(filtered[0]?.id ?? null);
+    setScrollOffset(0);
+  }, [selectedSeverities, selectedCategories]);
+
+  const newCount = useMemo(() => {
+    if (lastSeenTopId === null) return 0;
+    if (scrollOffset === 0) return 0;
+    const idx = filtered.findIndex((d) => d.id === lastSeenTopId);
+    if (idx === -1) return 0;
+    return idx;
+  }, [filtered, lastSeenTopId, scrollOffset]);
+
   function handleRowClick(event: EnrichableEvent): void {
     triggerRef.current = document.activeElement as HTMLElement | null;
     setSelectedEvent(event);
@@ -112,6 +138,11 @@ export function Detections(): JSX.Element {
       }
       return [severity];
     });
+  }
+
+  function handlePillClick(): void {
+    listRef.current?.scrollTo(0);
+    setLastSeenTopId(filtered[0]?.id ?? null);
   }
 
   return (
@@ -149,27 +180,34 @@ export function Detections(): JSX.Element {
           No detections yet. Wrap an MCP server with xcg-proxy to start auditing.
         </div>
       ) : (
-        <FixedSizeList
-          height={listHeight}
-          width="100%"
-          itemSize={ROW_HEIGHT}
-          itemCount={filtered.length}
-          itemKey={(index) => filtered[index]?.id ?? index}
-        >
-          {({ index, style }) => {
-            const item = filtered[index];
-            if (item === undefined) return null;
-            return (
-              <div style={style}>
-                <DetectionRow
-                  event={item}
-                  selected={selectedEvent?.id === item.id}
-                  onClick={() => handleRowClick(item)}
-                />
-              </div>
-            );
-          }}
-        </FixedSizeList>
+        <div className={styles['listContainer']}>
+          <FixedSizeList
+            ref={listRef}
+            height={listHeight}
+            width="100%"
+            itemSize={ROW_HEIGHT}
+            itemCount={filtered.length}
+            itemKey={(index) => filtered[index]?.id ?? index}
+            onScroll={({ scrollOffset: offset }) => setScrollOffset(offset)}
+          >
+            {({ index, style }) => {
+              const item = filtered[index];
+              if (item === undefined) return null;
+              return (
+                <div style={style}>
+                  <DetectionRow
+                    event={item}
+                    selected={selectedEvent?.id === item.id}
+                    onClick={() => handleRowClick(item)}
+                  />
+                </div>
+              );
+            }}
+          </FixedSizeList>
+          {newCount > 0 && (
+            <NewEventsPill count={newCount} onClick={handlePillClick} />
+          )}
+        </div>
       )}
       {selectedEvent !== null && (
         <DetailDrawer event={selectedEvent} onClose={handleDrawerClose} />
