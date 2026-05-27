@@ -21,6 +21,9 @@
 }
 
 .pill:hover {
+  /* --kraft-accent-strong intentionally undefined: the fallback to
+     --kraft-accent IS the production value. The :hover state provides
+     the perceived darkening via its own rule. D.4.1 (2026-05-27). */
   background: var(--kraft-accent-strong, var(--kraft-accent));
   filter: brightness(0.92);
 }
