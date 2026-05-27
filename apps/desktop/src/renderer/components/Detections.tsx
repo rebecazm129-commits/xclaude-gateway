@@ -30,6 +30,9 @@ export function Detections(): JSX.Element {
   const [selectedCategories, setSelectedCategories] =
     useState<readonly Category[]>(CATEGORY_OPTIONS);
   const [selectedEvent, setSelectedEvent] = useState<EnrichableEvent | null>(null);
+  const [openDropdown, setOpenDropdown] = useState<'severity' | 'category' | null>(null);
+  const severityRef = useRef<HTMLDivElement>(null);
+  const categoryRef = useRef<HTMLDivElement>(null);
   const [listHeight, setListHeight] = useState(
     window.innerHeight - HEADER_AND_FILTERS_HEIGHT,
   );
@@ -42,6 +45,28 @@ export function Detections(): JSX.Element {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  useEffect(() => {
+    if (openDropdown === null) return;
+    let active = false;
+    const timer = setTimeout(() => {
+      active = true;
+    }, 0);
+    function onMouseDown(e: MouseEvent): void {
+      if (!active) return;
+      const target = e.target as Node;
+      const insideSeverity = severityRef.current?.contains(target) ?? false;
+      const insideCategory = categoryRef.current?.contains(target) ?? false;
+      if (!insideSeverity && !insideCategory) {
+        setOpenDropdown(null);
+      }
+    }
+    document.addEventListener('mousedown', onMouseDown);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', onMouseDown);
+    };
+  }, [openDropdown]);
 
   const filtered = useMemo(() => {
     const sevSet = new Set(selectedSeverities);
@@ -73,12 +98,18 @@ export function Detections(): JSX.Element {
           options={SEVERITY_OPTIONS}
           selected={selectedSeverities}
           onChange={setSelectedSeverities}
+          isOpen={openDropdown === 'severity'}
+          onToggle={() => setOpenDropdown((prev) => (prev === 'severity' ? null : 'severity'))}
+          dropdownRef={severityRef}
         />
         <FilterDropdown
           label="Category"
           options={CATEGORY_OPTIONS}
           selected={selectedCategories}
           onChange={setSelectedCategories}
+          isOpen={openDropdown === 'category'}
+          onToggle={() => setOpenDropdown((prev) => (prev === 'category' ? null : 'category'))}
+          dropdownRef={categoryRef}
         />
       </div>
       {filtered.length === 0 ? (

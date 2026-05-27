@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import type { Ref } from 'react';
 
 import styles from './FilterDropdown.module.css';
 
@@ -7,6 +7,9 @@ interface Props<T extends string> {
   options: readonly T[];
   selected: readonly T[];
   onChange: (next: readonly T[]) => void;
+  isOpen: boolean;
+  onToggle: () => void;
+  dropdownRef?: Ref<HTMLDivElement>;
 }
 
 export function FilterDropdown<T extends string>({
@@ -14,8 +17,10 @@ export function FilterDropdown<T extends string>({
   options,
   selected,
   onChange,
+  isOpen,
+  onToggle,
+  dropdownRef,
 }: Props<T>): JSX.Element {
-  const [open, setOpen] = useState(false);
   const selectedSet = new Set(selected);
 
   function toggle(option: T): void {
@@ -29,15 +34,15 @@ export function FilterDropdown<T extends string>({
   }
 
   return (
-    <div className={styles['dropdown']}>
+    <div className={styles['dropdown']} ref={dropdownRef}>
       <button
         type="button"
         className={styles['trigger']}
-        onClick={() => setOpen((v) => !v)}
+        onClick={onToggle}
       >
-        {label} ({selected.length}/{options.length}) {open ? '▴' : '▾'}
+        {label} ({selected.length}/{options.length}) {isOpen ? '▴' : '▾'}
       </button>
-      {open && (
+      {isOpen && (
         <div className={styles['menu']}>
           {options.map((option) => (
             <label key={option} className={styles['option']}>
