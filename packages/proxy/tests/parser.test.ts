@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 
-import { classify } from '../src/parser.js';
+import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
+
+import { classify, classifyFromMessage } from '../src/parser.js';
 
 describe('classify — request', () => {
   it('classifies a valid numeric-id request with params', () => {
@@ -139,5 +141,99 @@ describe('classify — parse errors', () => {
       kind: 'parse_error',
       reason: 'malformed_jsonrpc',
     });
+  });
+});
+
+describe('classifyFromMessage — http/sse path producer (Fase 2)', () => {
+  it('request: method + id + params → kind:request, claves intactas', () => {
+    const msg: JSONRPCMessage = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'echo' },
+    } as JSONRPCMessage;
+    expect(classifyFromMessage(msg)).toEqual({
+      kind: 'request',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'echo' },
+    });
+  });
+
+  it('notification: method SIN id → kind:notification', () => {
+    const msg: JSONRPCMessage = {
+      jsonrpc: '2.0',
+      method: 'notifications/initialized',
+    } as JSONRPCMessage;
+    const out = classifyFromMessage(msg);
+    expect(out.kind).toBe('notification');
+    if (out.kind !== 'notification') return;
+    expect(out.method).toBe('notifications/initialized');
+    expect(out.params).toBeUndefined();
+  });
+
+  it('response.result → kind:response con result, SIN clave error', () => {
+    const msg: JSONRPCMessage = {
+      jsonrpc: '2.0',
+      id: 42,
+      result: { ok: true },
+    } as JSONRPCMessage;
+    const out = classifyFromMessage(msg);
+    expect(out).toEqual({ kind: 'response', id: 42, result: { ok: true } });
+    // CRÍTICO: la clave 'error' NO debe aparecer (ni como undefined).
+    expect('error' in out).toBe(false);
+  });
+
+  it('response.error → kind:response con error, SIN clave result', () => {
+    const msg: JSONRPCMessage = {
+      jsonrpc: '2.0',
+      id: 42,
+      error: { code: -32601, message: 'method not found' },
+    } as JSONRPCMessage;
+    const out = classifyFromMessage(msg);
+    expect(out.kind).toBe('response');
+    if (out.kind !== 'response') return;
+    expect(out.id).toBe(42);
+    expect(out.error).toEqual({ code: -32601, message: 'method not found' });
+    // CRÍTICO: la clave 'result' NO debe aparecer (ni como undefined).
+    expect('result' in out).toBe(false);
+  });
+
+  it('response.error SIN id (huérfana) → id:null', () => {
+    const msg = {
+      jsonrpc: '2.0',
+      error: { code: -32700, message: 'parse error' },
+    } as unknown as JSONRPCMessage;
+    const out = classifyFromMessage(msg);
+    expect(out.kind).toBe('response');
+    if (out.kind !== 'response') return;
+    expect(out.id).toBeNull();
+    expect('result' in out).toBe(false);
+  });
+
+  it('request con string id → preservado', () => {
+    const msg: JSONRPCMessage = {
+      jsonrpc: '2.0',
+      id: 'abc',
+      method: 'ping',
+    } as JSONRPCMessage;
+    const out = classifyFromMessage(msg);
+    expect(out.kind).toBe('request');
+    if (out.kind !== 'request') return;
+    expect(out.id).toBe('abc');
+    expect(out.params).toBeUndefined();
+  });
+
+  it('paridad con classify(line) en frames bien formados', () => {
+    const frames = [
+      { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'echo' } },
+      { jsonrpc: '2.0', method: 'notifications/initialized' },
+      { jsonrpc: '2.0', id: 42, result: { ok: true } },
+      { jsonrpc: '2.0', id: 42, error: { code: -32601, message: 'x' } },
+    ];
+    for (const f of frames) {
+      expect(classifyFromMessage(f as unknown as JSONRPCMessage))
+        .toEqual(classify(JSON.stringify(f)));
+    }
   });
 });

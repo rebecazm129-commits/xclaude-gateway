@@ -7,6 +7,8 @@
 // Se re-exporta aquí porque parser.ts es donde nace el tipo para el proxy:
 // latency.ts y events.ts lo importan desde './parser.js' sin conocer la
 // topología del monorepo. La fuente de verdad es @xcg/shared; fachada explícita.
+import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
+
 import type { RpcId } from '@xcg/shared';
 export type { RpcId };
 
@@ -70,4 +72,59 @@ export function classify(line: string): ClassifiedFrame {
   }
 
   return { kind: 'parse_error', reason: 'malformed_jsonrpc' };
+}
+
+// --- HTTP/SSE path producer (Hito 6 Fase 2) ----------------------------------
+//
+// classifyFromMessage(msg): ClassifiedFrame
+//
+// Segundo productor de ClassifiedFrame, en paralelo a classify(line). El SDK
+// (StreamableHTTPClientTransport) entrega onmessage(msg: JSONRPCMessage) ya
+// parseado y validado — no hay JSON.parse aquí, ni se ve la representación
+// textual del frame (eso lo gestiona el call-site HTTP de Fase 3 si necesita
+// un `line` para frame-processor).
+//
+// La discriminación replica la de classify(line) pero sobre el objeto:
+//   - method  +  id  → request
+//   - method  + ¬id  → notification
+//   - ¬method + (result | error) → response
+// parse_error NO se emite por este path: el SDK valida al parsear, así que
+// cualquier ill-formed message muere antes de llegar aquí.
+//
+// Compatibilidad con frame-processor.ts: la construcción usa asignación
+// condicional (objeto literal con la clave solo cuando corresponde), así que
+// NUNCA se introduce una clave con valor undefined. El operador `in` que usa
+// frame-processor sobre `result`/`error` devuelve la respuesta correcta
+// (presente vs ausente).
+//
+// Edge — JSONRPCErrorResponse permite id ausente (spec): si la respuesta no
+// trae id (servidor no pudo asociarla a una request — error pre-parse), se
+// mapea a id: null, que el tipo RpcId del proxy permite.
+//
+// Divergencia intencional con classify(line): una error-response sin `id`
+// que classify marcaría como parse_error('malformed_jsonrpc') aquí se mapea
+// a response{ id: null }, que es la lectura correcta de JSON-RPC. El SDK ya
+// valida, así que parse_error no aplica a este path.
+export function classifyFromMessage(msg: JSONRPCMessage): ClassifiedFrame {
+  if ('method' in msg) {
+    if ('id' in msg) {
+      return {
+        kind: 'request',
+        id: (msg as { id: RpcId }).id,
+        method: (msg as { method: string }).method,
+        params: (msg as { params?: unknown }).params,
+      };
+    }
+    return {
+      kind: 'notification',
+      method: (msg as { method: string }).method,
+      params: (msg as { params?: unknown }).params,
+    };
+  }
+  // No method → response (result | error). id puede faltar en ErrorResponse.
+  const id: RpcId = 'id' in msg ? ((msg as { id?: RpcId }).id ?? null) : null;
+  if ('result' in msg) {
+    return { kind: 'response', id, result: (msg as { result: unknown }).result };
+  }
+  return { kind: 'response', id, error: (msg as { error: unknown }).error };
 }
