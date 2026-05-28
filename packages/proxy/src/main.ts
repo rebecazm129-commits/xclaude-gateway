@@ -22,7 +22,7 @@ import { resolveSocketPath } from './socket-path.js';
 import { LineSplitter } from './splitter.js';
 import { elapsedUs } from './timing.js';
 
-interface ParsedArgs {
+export interface ParsedArgs {
   wrap: string;
   name: string;
   childArgs: readonly string[];
@@ -66,8 +66,8 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
   return { wrap, name, childArgs: argv.slice(i) };
 }
 
-function main(): void {
-  const { wrap, name, childArgs } = parseArgs(process.argv.slice(2));
+export function runStdio(opts: ParsedArgs): void {
+  const { wrap, name, childArgs } = opts;
 
   const session = ulid();
   const baseDir = join(homedir(), 'Library', 'Application Support', 'xCLAUDE Gateway');
@@ -286,6 +286,10 @@ function main(): void {
   process.on('SIGTERM', () => {
     void gracefulShutdown('signal_received');
   });
+}
+
+function main(): void {
+  runStdio(parseArgs(process.argv.slice(2)));
 }
 
 main();
