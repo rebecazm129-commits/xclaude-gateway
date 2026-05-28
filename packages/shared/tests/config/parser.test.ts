@@ -48,6 +48,25 @@ describe('parseConfig — read-only classifier (Milestone 4 Phase 1)', () => {
     ]);
   });
 
+  it('classifies a NEW-shape wrapped entry (post 2.b) as already-wrapped', () => {
+    const path = writeConfig({
+      mcpServers: {
+        wrapped_new: {
+          command: '/Applications/X.app/Contents/Resources/proxy/bin/xcg-proxy',
+          args: ['stdio', '--wrap', 'npx', '--name', 'wrapped_new', '--', '@mcpf/fs'],
+        },
+      },
+    });
+    const r = parseConfig(path);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.plan.entries[0]).toEqual({
+      kind: 'skipped',
+      name: 'wrapped_new',
+      reason: 'already-wrapped',
+    });
+  });
+
   it('preserves env and cwd on a wrappable entry', () => {
     const path = writeConfig({
       mcpServers: {

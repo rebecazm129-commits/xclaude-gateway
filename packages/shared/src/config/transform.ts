@@ -31,17 +31,19 @@ function wrapEntry(name: string, original: Record<string, unknown>, xcgPath: str
   return {
     ...original,
     command: xcgPath,
-    args: ['--wrap', origCommand, '--name', name, '--', ...origArgs],
+    args: ['stdio', '--wrap', origCommand, '--name', name, '--', ...origArgs],
   };
 }
 
 // Inverse of wrapEntry. Reads the wrapper contract from args, restores the
 // original command and args, preserves env/cwd/extras. Caller must verify
-// isAlreadyWrapped(command, args) before invoking.
+// isAlreadyWrapped(command, args) before invoking. Handles both the legacy
+// pre-2.b form (--wrap as args[0]) and the current form (stdio as args[0]).
 function unwrapEntry(entry: Record<string, unknown>): Record<string, unknown> {
   const args = isStringArray(entry.args) ? entry.args : [];
-  const origCommand = args[1] ?? '';
-  const origArgs = args.slice(5);
+  const offset = args[0] === 'stdio' ? 1 : 0;
+  const origCommand = args[offset + 1] ?? '';
+  const origArgs = args.slice(offset + 5);
   // Strip the wrapper-injected command/args; spread the rest to preserve extras.
   const { command: _c, args: _a, ...rest } = entry;
   return { ...rest, command: origCommand, args: origArgs };

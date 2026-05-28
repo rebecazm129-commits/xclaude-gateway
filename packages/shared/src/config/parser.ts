@@ -26,12 +26,24 @@ function isStringArray(v: unknown): v is string[] {
 // --- Idempotency: is this entry already wrapped by xcg-proxy? ---
 
 // An entry is "already wrapped" iff command's basename is xcg-proxy AND args
-// start with the exact wrapper contract: --wrap <x> --name <y> -- ...
+// start with the wrapper contract in either of the two recognized forms:
+//   Current (post Hito 6 sub-step 2.b):  stdio --wrap <x> --name <y> -- ...
+//   Legacy  (pre Hito 6 sub-step 2.b):   --wrap <x> --name <y> -- ...
+// Both are recognized so that uninstall can clean up entries on disk written
+// by older versions of xcg-config, and so install does not double-wrap them.
 // Basename alone is not enough (false positives from an unrelated binary
 // named xcg-proxy; and post gamma-fix the command is the stable symlink,
 // also named xcg-proxy). Checking the arg shape removes both false cases.
 export function isAlreadyWrapped(command: string, args: readonly string[]): boolean {
   if (basename(command) !== 'xcg-proxy') return false;
+  if (args[0] === 'stdio') {
+    return (
+      args.length >= 6 &&
+      args[1] === '--wrap' &&
+      args[3] === '--name' &&
+      args[5] === '--'
+    );
+  }
   return (
     args.length >= 5 &&
     args[0] === '--wrap' &&

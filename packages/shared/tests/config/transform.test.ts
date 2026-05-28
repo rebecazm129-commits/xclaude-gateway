@@ -21,7 +21,7 @@ describe('applyWrap — pure transformation (Milestone 4 Phase 2)', () => {
     const out = applyWrap(raw, plan('fs'), XCG) as any;
     expect(out.mcpServers.fs).toEqual({
       command: XCG,
-      args: ['--wrap', '/usr/local/bin/npx', '--name', 'fs', '--', '@mcpf/filesystem', '/x'],
+      args: ['stdio', '--wrap', '/usr/local/bin/npx', '--name', 'fs', '--', '@mcpf/filesystem', '/x'],
     });
   });
 
@@ -126,5 +126,23 @@ describe('unwrap — inverse of applyWrap', () => {
     const raw = { mcpServers: { tricky: { command: '/some/xcg-proxy', args: ['serve', '--port', '9'] } } };
     const out = unwrap(raw) as any;
     expect(out.mcpServers.tricky).toEqual({ command: '/some/xcg-proxy', args: ['serve', '--port', '9'] });
+  });
+
+  it('unwraps a legacy pre-2.b wrap shape (back-compat)', () => {
+    // Input was wrapped by an older xcg-config (before the 'stdio' subcommand).
+    // The new unwrap recognizes both forms; this verifies the legacy path.
+    const legacy = {
+      mcpServers: {
+        fs: {
+          command: XCG,
+          args: ['--wrap', '/usr/local/bin/npx', '--name', 'fs', '--', '@mcpf/filesystem', '/x'],
+        },
+      },
+    };
+    const back = unwrap(legacy) as any;
+    expect(back.mcpServers.fs).toEqual({
+      command: '/usr/local/bin/npx',
+      args: ['@mcpf/filesystem', '/x'],
+    });
   });
 });

@@ -25,9 +25,13 @@ import { elapsedUs } from './timing.js';
 
 // --- Exit codes (alineados con xcg-config) ---
 const EXIT_OK = 0;
+const EXIT_GENERIC_ERROR = 1;
 const EXIT_USAGE_OR_CORRUPT = 2;
 
-const USAGE = 'usage: xcg-proxy --wrap <command> --name <id> -- [args...]\n';
+const USAGE =
+  'usage: xcg-proxy <stdio|http> [options]\n' +
+  '  stdio --wrap <command> --name <id> -- [args...]\n' +
+  '  http  --url <url> --name <id>            (not implemented yet)\n';
 
 export interface ParsedArgs {
   wrap: string;
@@ -257,11 +261,11 @@ export function runStdio(opts: ParsedArgs): void {
   });
 }
 
-export function main(argv: string[]): number | null {
+function runStdioMain(rest: string[]): number | null {
   let parsed;
   try {
     parsed = parseArgs({
-      args: argv,
+      args: rest,
       options: {
         wrap: { type: 'string' },
         name: { type: 'string' },
@@ -294,4 +298,24 @@ export function main(argv: string[]): number | null {
   // triggers gracefulShutdown internally. Return null tells cli-entry
   // to NOT call process.exit (which would kill the wrapper prematurely).
   return null;
+}
+
+function dieUnknownSubcommand(arg: string | undefined): number {
+  process.stderr.write(`xcg-proxy: unknown subcommand: ${arg ?? '(none)'}\n`);
+  process.stderr.write(USAGE);
+  return EXIT_USAGE_OR_CORRUPT;
+}
+
+export function main(argv: string[]): number | null {
+  const subcommand = argv[0];
+  const rest = argv.slice(1);
+  switch (subcommand) {
+    case 'stdio':
+      return runStdioMain(rest);
+    case 'http':
+      process.stderr.write('xcg-proxy http: not implemented yet\n');
+      return EXIT_GENERIC_ERROR;
+    default:
+      return dieUnknownSubcommand(subcommand);
+  }
 }

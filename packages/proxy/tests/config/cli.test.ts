@@ -221,6 +221,7 @@ describe('xcg-config CLI handlers (Milestone 4 Phase 4.3)', () => {
       };
       expect(written.mcpServers.filesystem.command).toBe(FAKE_XCG);
       expect(written.mcpServers.filesystem.args).toEqual([
+        'stdio',
         '--wrap', '/usr/local/bin/npx',
         '--name', 'filesystem',
         '--',
