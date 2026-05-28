@@ -5,6 +5,7 @@
 import { spawn } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { parseArgs } from 'node:util';
 
 import { ulid } from 'ulid';
 
@@ -22,48 +23,16 @@ import { resolveSocketPath } from './socket-path.js';
 import { LineSplitter } from './splitter.js';
 import { elapsedUs } from './timing.js';
 
+// --- Exit codes (alineados con xcg-config) ---
+const EXIT_OK = 0;
+const EXIT_USAGE_OR_CORRUPT = 2;
+
+const USAGE = 'usage: xcg-proxy --wrap <command> --name <id> -- [args...]\n';
+
 export interface ParsedArgs {
   wrap: string;
   name: string;
   childArgs: readonly string[];
-}
-
-function die(message: string): never {
-  process.stderr.write(`xcg-proxy: ${message}\n`);
-  process.stderr.write('usage: xcg-proxy --wrap <command> --name <id> -- [args...]\n');
-  process.exit(2);
-}
-
-function parseArgs(argv: readonly string[]): ParsedArgs {
-  let wrap: string | undefined;
-  let name: string | undefined;
-  let i = 0;
-  while (i < argv.length) {
-    const arg = argv[i];
-    if (arg === undefined) break;
-    if (arg === '--wrap') {
-      const value = argv[i + 1];
-      if (value === undefined) die('--wrap requires a value');
-      wrap = value;
-      i += 2;
-      continue;
-    }
-    if (arg === '--name') {
-      const value = argv[i + 1];
-      if (value === undefined) die('--name requires a value');
-      name = value;
-      i += 2;
-      continue;
-    }
-    if (arg === '--') {
-      i += 1;
-      break;
-    }
-    die(`unexpected argument: ${arg}`);
-  }
-  if (wrap === undefined) die('--wrap is required');
-  if (name === undefined) die('--name is required');
-  return { wrap, name, childArgs: argv.slice(i) };
 }
 
 export function runStdio(opts: ParsedArgs): void {
@@ -288,8 +257,41 @@ export function runStdio(opts: ParsedArgs): void {
   });
 }
 
-function main(): void {
-  runStdio(parseArgs(process.argv.slice(2)));
-}
+export function main(argv: string[]): number | null {
+  let parsed;
+  try {
+    parsed = parseArgs({
+      args: argv,
+      options: {
+        wrap: { type: 'string' },
+        name: { type: 'string' },
+      },
+      strict: true,
+      allowPositionals: true,
+    });
+  } catch (err) {
+    process.stderr.write(`xcg-proxy: ${(err as Error).message}\n`);
+    process.stderr.write(USAGE);
+    return EXIT_USAGE_OR_CORRUPT;
+  }
 
-main();
+  const wrap = parsed.values.wrap;
+  const name = parsed.values.name;
+  if (typeof wrap !== 'string') {
+    process.stderr.write('xcg-proxy: --wrap is required\n');
+    process.stderr.write(USAGE);
+    return EXIT_USAGE_OR_CORRUPT;
+  }
+  if (typeof name !== 'string') {
+    process.stderr.write('xcg-proxy: --name is required\n');
+    process.stderr.write(USAGE);
+    return EXIT_USAGE_OR_CORRUPT;
+  }
+
+  runStdio({ wrap, name, childArgs: parsed.positionals });
+  // Happy path: runStdio established its event listeners. The process
+  // stays alive in the event loop until child exit / SIGINT / SIGTERM
+  // triggers gracefulShutdown internally. Return null tells cli-entry
+  // to NOT call process.exit (which would kill the wrapper prematurely).
+  return null;
+}
