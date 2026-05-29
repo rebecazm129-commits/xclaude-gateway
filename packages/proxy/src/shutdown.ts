@@ -11,7 +11,11 @@
 //     estado de shuttingDown encapsulado. Sin singleton: tests crean
 //     instancias frescas.
 
-export type ShutdownReason = 'parent_closed_stdin' | 'signal_received' | 'child_exited';
+export type ShutdownReason =
+  | 'parent_closed_stdin'
+  | 'signal_received'
+  | 'child_exited'
+  | 'remote_closed';
 
 /** Ventana de espera entre child.stdin.end() y el envío de SIGTERM. */
 export const SHUTDOWN_GRACE_MS = 2000;

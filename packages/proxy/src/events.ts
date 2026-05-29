@@ -64,8 +64,15 @@ export type EventBody =
     }
   | {
       type: 'proxy.shutdown';
-      reason: 'child_exited' | 'parent_closed_stdin' | 'signal_received';
+      reason: 'child_exited' | 'parent_closed_stdin' | 'signal_received' | 'remote_closed';
       exitCode: number;
+    }
+  | {
+      type: 'proxy.http_closed';
+      runtimeMs: number;
+      side: 'remote' | 'client';
+      framesIn: number;
+      framesOut: number;
     }
   | {
       type: 'proxy.socket_dropped';

@@ -20,7 +20,15 @@ import { EventSink, createEnrichmentSink, type Direction } from './events.js';
 import { createFrameProcessor, type FrameProcessor } from './frame-processor.js';
 import { InflightTracker } from './latency.js';
 import { classify, classifyFromMessage, type ClassifiedFrame } from './parser.js';
-import { createGracefulShutdown, type ChildExitInfo } from './shutdown.js';
+import {
+  createGracefulShutdown,
+  computeExitCode,
+  FSYNC_TIMEOUT_MS,
+  SIGTERM_GRACE_MS,
+  SOCKET_END_TIMEOUT_MS,
+  type ChildExitInfo,
+  type ShutdownReason,
+} from './shutdown.js';
 import { SocketWriter } from './socket.js';
 import { resolveSocketPath } from './socket-path.js';
 import { LineSplitter } from './splitter.js';
@@ -315,6 +323,8 @@ async function runHttp(opts: HttpArgs): Promise<void> {
   sink = new EventSink(name, [writer, socketWriter], session);
   process.stderr.write(`xcg-proxy: socket mirror at ${socketPath}\n`);
 
+  const startMs = Date.now();
+
   const tracker = new InflightTracker();
   const engine = new DetectionEngine(ACTIVE_DETECTORS);
   const asyncDetector = new AsyncDetectorNer({
@@ -328,12 +338,17 @@ async function runHttp(opts: HttpArgs): Promise<void> {
   const httpClient = new StreamableHTTPClientTransport(new URL(url));
   const stdioServer = new StdioServerTransport();
 
+  let framesIn = 0;
+  let framesOut = 0;
+
   const observe = (msg: JSONRPCMessage, direction: Direction): void => {
     const tsObservedNs = process.hrtime.bigint();
     const tsWallMs = Date.now();
     const line = JSON.stringify(msg);
     const bytes = Buffer.byteLength(line, 'utf8'); // sin +1: el SDK entrega el objeto, no la línea con \n
     emitFrame(sink, processFrame, classifyFromMessage(msg), direction, bytes, line, tsObservedNs, tsWallMs);
+    if (direction === 'client_to_server') framesIn++;
+    else framesOut++;
   };
 
   stdioServer.onmessage = (msg) => {
@@ -356,8 +371,105 @@ async function runHttp(opts: HttpArgs): Promise<void> {
     sink.emit({ type: 'proxy.error', kind: 'unexpected', message: err.message });
   };
 
-  await httpClient.start();
-  await stdioServer.start();
+  // --- Lifecycle: shutdown HTTP-shaped (espejo de createGracefulShutdown
+  // pasos 6-10; reimplementación ligera porque deps.child es REQUIRED en el
+  // orquestador child-shaped y HTTP no tiene equivalente).
+  let shuttingDown: Promise<void> | null = null;
+
+  const tearDownTail = async (exitCode: number): Promise<void> => {
+    // Paso 6b: worker.terminate → drena onDrop pendientes vía sink antes
+    // del socket.end.
+    await asyncDetector.terminate(SIGTERM_GRACE_MS);
+    // Paso 7: socket end/timeout/destroy.
+    if (socketWriter.isAlive()) {
+      await Promise.race([
+        socketWriter.end(),
+        new Promise<void>((resolve) => setTimeout(() => { socketWriter.destroy(); resolve(); }, SOCKET_END_TIMEOUT_MS)),
+      ]);
+    }
+    // Paso 8: jsonl.fsync con timeout.
+    await Promise.race([
+      writer.fsync(),
+      new Promise<void>((resolve) => setTimeout(() => {
+        process.stderr.write('[xcg] fsync timeout, exiting anyway\n');
+        resolve();
+      }, FSYNC_TIMEOUT_MS)),
+    ]);
+    // Paso 9
+    writer.close();
+    // Paso 10
+    process.exit(exitCode);
+  };
+
+  const runHttpShutdown = (reason: ShutdownReason): Promise<void> => {
+    if (shuttingDown !== null) return shuttingDown;
+    shuttingDown = (async (): Promise<void> => {
+      const exitCode = computeExitCode(reason, false, { code: null, signal: null });
+      sink.emit({ type: 'proxy.shutdown', reason, exitCode });
+      await tearDownTail(exitCode);
+    })();
+    return shuttingDown;
+  };
+
+  // Triggers: TODOS instalados antes de await httpClient.start() — el SDK
+  // exige que onmessage/onerror/onclose estén seteados antes del start.
+  // Guard "primer-cierre-gana" en stdin.end y httpClient.onclose: si la
+  // sesión ya está cerrando, no se emite un segundo proxy.http_closed
+  // (runHttpShutdown ya es idempotente, pero queremos un único registro
+  // del peer que disparó el cierre).
+  process.stdin.on('end', () => {
+    if (shuttingDown !== null) return;
+    sink.emit({
+      type: 'proxy.http_closed',
+      runtimeMs: Date.now() - startMs,
+      side: 'client',
+      framesIn,
+      framesOut,
+    });
+    void runHttpShutdown('parent_closed_stdin');
+  });
+
+  // El SDK NO invoca onclose al CAER el remoto (solo en un close() explícito; las
+  // caídas las gestiona su reconexión interna y/o emergen como onerror). Este hook
+  // cubre el cierre de transporte genuino; la caída remota queda auditada vía
+  // proxy.error (onerror) y la sesión la cierra el lado cliente (stdin EOF). Verificado
+  // empíricamente en el smoke de 3.c.2.
+  httpClient.onclose = () => {
+    if (shuttingDown !== null) return;
+    sink.emit({
+      type: 'proxy.http_closed',
+      runtimeMs: Date.now() - startMs,
+      side: 'remote',
+      framesIn,
+      framesOut,
+    });
+    void runHttpShutdown('remote_closed');
+  };
+
+  process.on('SIGINT', () => { void runHttpShutdown('signal_received'); });
+  process.on('SIGTERM', () => { void runHttpShutdown('signal_received'); });
+
+  // Start failure: la sesión NO abrió. Emitimos proxy.error y hacemos
+  // teardown directo sin proxy.shutdown ni proxy.http_closed (espejo del
+  // comportamiento de runStdio en spawn_failed, que tampoco emite shutdown).
+  try {
+    await httpClient.start();
+  } catch (err) {
+    const e = err as Error;
+    sink.emit({ type: 'proxy.error', kind: classifyHttpClientError(e), message: e.message });
+    if (shuttingDown === null) shuttingDown = tearDownTail(EXIT_GENERIC_ERROR);
+    await shuttingDown;
+    return;
+  }
+  try {
+    await stdioServer.start();
+  } catch (err) {
+    const e = err as Error;
+    sink.emit({ type: 'proxy.error', kind: 'unexpected', message: e.message });
+    if (shuttingDown === null) shuttingDown = tearDownTail(EXIT_GENERIC_ERROR);
+    await shuttingDown;
+    return;
+  }
 }
 
 function runStdioMain(rest: string[]): number | null {
