@@ -13,10 +13,10 @@ import { JsonlWriter } from './audit.js';
 import { DetectionEngine } from './detection/engine.js';
 import { ACTIVE_DETECTORS } from './detection/detectors/index.js';
 import { AsyncDetectorNer } from './detection/ner/async-detector.js';
-import { EventSink, createEnrichmentSink } from './events.js';
-import { createFrameProcessor } from './frame-processor.js';
+import { EventSink, createEnrichmentSink, type Direction } from './events.js';
+import { createFrameProcessor, type FrameProcessor } from './frame-processor.js';
 import { InflightTracker } from './latency.js';
-import { classify } from './parser.js';
+import { classify, type ClassifiedFrame } from './parser.js';
 import { createGracefulShutdown, type ChildExitInfo } from './shutdown.js';
 import { SocketWriter } from './socket.js';
 import { resolveSocketPath } from './socket-path.js';
@@ -37,6 +37,44 @@ export interface ParsedArgs {
   wrap: string;
   name: string;
   childArgs: readonly string[];
+}
+
+// --- Cola compartida de observación (Hito 6 Fase 3 sub-paso 3.a) -------------
+// Extraída del cuerpo de runStdio para que el path HTTP (Fase 3) la reutilice
+// con classifyFromMessage. emitFrame es el sumidero único que aplica
+// processFrame → sink.emit por evento emitido. processStdioChunk es la
+// variante stdio: splitter + classify(line) por cada línea del chunk.
+
+function emitFrame(
+  sink: EventSink,
+  processFrame: FrameProcessor,
+  frame: ClassifiedFrame,
+  direction: Direction,
+  bytes: number,
+  line: string,
+  tsObservedNs: bigint,
+  tsWallMs: number,
+): void {
+  for (const ev of processFrame(frame, direction, bytes, line, tsObservedNs, tsWallMs)) {
+    sink.emit(ev);
+  }
+}
+
+function processStdioChunk(
+  chunk: Buffer,
+  direction: Direction,
+  splitter: LineSplitter,
+  sink: EventSink,
+  processFrame: FrameProcessor,
+): number {
+  const tsObservedNs = process.hrtime.bigint();
+  const tsWallMs = Date.now();
+  const lines = splitter.feed(chunk);
+  for (const line of lines) {
+    const bytes = Buffer.byteLength(line, 'utf8') + 1; // +1 por el \n consumido por el splitter
+    emitFrame(sink, processFrame, classify(line), direction, bytes, line, tsObservedNs, tsWallMs);
+  }
+  return lines.length;
 }
 
 export function runStdio(opts: ParsedArgs): void {
@@ -134,41 +172,11 @@ export function runStdio(opts: ParsedArgs): void {
   let framesStderr = 0;
 
   process.stdin.on('data', (chunk: Buffer) => {
-    const tsObservedNs = process.hrtime.bigint();
-    const tsWallMs = Date.now();
-    const lines = stdinSplitter.feed(chunk);
-    framesIn += lines.length;
-    for (const line of lines) {
-      const bytes = Buffer.byteLength(line, 'utf8') + 1; // +1 por el \n consumido por el splitter
-      const events = processFrame(
-        classify(line),
-        'client_to_server',
-        bytes,
-        line,
-        tsObservedNs,
-        tsWallMs,
-      );
-      for (const ev of events) sink.emit(ev);
-    }
+    framesIn += processStdioChunk(chunk, 'client_to_server', stdinSplitter, sink, processFrame);
   });
 
   childStdout.on('data', (chunk: Buffer) => {
-    const tsObservedNs = process.hrtime.bigint();
-    const tsWallMs = Date.now();
-    const lines = stdoutSplitter.feed(chunk);
-    framesOut += lines.length;
-    for (const line of lines) {
-      const bytes = Buffer.byteLength(line, 'utf8') + 1;
-      const events = processFrame(
-        classify(line),
-        'server_to_client',
-        bytes,
-        line,
-        tsObservedNs,
-        tsWallMs,
-      );
-      for (const ev of events) sink.emit(ev);
-    }
+    framesOut += processStdioChunk(chunk, 'server_to_client', stdoutSplitter, sink, processFrame);
   });
 
   childStderr.on('data', (chunk: Buffer) => {
