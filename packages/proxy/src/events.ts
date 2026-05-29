@@ -40,7 +40,13 @@ export type EventBody =
     }
   | {
       type: 'proxy.error';
-      kind: 'spawn_failed' | 'parse_error' | 'unexpected';
+      kind:
+        | 'spawn_failed'
+        | 'parse_error'
+        | 'unexpected'
+        | 'http_connect_failed'
+        | 'http_status_error'
+        | 'oauth_failed';
       message: string;
       reason?: ParseErrorReason;
       frameSnippet?: string;

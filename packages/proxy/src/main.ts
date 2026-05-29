@@ -283,6 +283,14 @@ export function runStdio(opts: ParsedArgs): void {
 // observaciones se inyectan en el mismo emitFrame compartido vía
 // classifyFromMessage. NO hay splitter — el SDK entrega JSONRPCMessage ya
 // parseado por ambos lados. Sin graceful shutdown todavía (3.c lo cablea).
+
+// El SDK lanza StreamableHTTPError con `code` numérico (status HTTP) en fallos de
+// status; un fallo de conexión (fetch rechazado, ECONNREFUSED, DNS) no trae code
+// numérico. oauth_failed lo emitirá Fase 4 (UnauthorizedError del authProvider).
+function classifyHttpClientError(err: Error): 'http_connect_failed' | 'http_status_error' {
+  return typeof (err as { code?: unknown }).code === 'number' ? 'http_status_error' : 'http_connect_failed';
+}
+
 async function runHttp(opts: HttpArgs): Promise<void> {
   const { url, name } = opts;
 
@@ -341,9 +349,12 @@ async function runHttp(opts: HttpArgs): Promise<void> {
     });
   };
 
-  // STUBS de 3.b — 3.c los sustituye por proxy.error.kind y onclose→exited:
-  httpClient.onerror = (err) => { process.stderr.write(`xcg-proxy: http client error: ${err.message}\n`); };
-  stdioServer.onerror = (err) => { process.stderr.write(`xcg-proxy: stdio server error: ${err.message}\n`); };
+  httpClient.onerror = (err) => {
+    sink.emit({ type: 'proxy.error', kind: classifyHttpClientError(err), message: err.message });
+  };
+  stdioServer.onerror = (err) => {
+    sink.emit({ type: 'proxy.error', kind: 'unexpected', message: err.message });
+  };
 
   await httpClient.start();
   await stdioServer.start();
