@@ -31,9 +31,18 @@ describe('xcg-proxy main(argv) dispatcher (Hito 6 sub-step 2.b)', () => {
     expect(stderrChunks.join('')).toContain('unknown subcommand: bogus');
   });
 
-  it('returns EXIT_GENERIC_ERROR for the http subcommand (not implemented)', () => {
-    expect(main(['http'])).toBe(1);
-    expect(stderrChunks.join('')).toContain('http: not implemented yet');
+  it('http without --url: EXIT_USAGE_OR_CORRUPT', () => {
+    expect(main(['http'])).toBe(2);
+    expect(stderrChunks.join('')).toContain('--url is required');
+  });
+
+  it('http with --url but without --name: EXIT_USAGE_OR_CORRUPT', () => {
+    expect(main(['http', '--url', 'http://example.com'])).toBe(2);
+    expect(stderrChunks.join('')).toContain('--name is required');
+  });
+
+  it('http with an unknown flag: EXIT_USAGE_OR_CORRUPT', () => {
+    expect(main(['http', '--unknown'])).toBe(2);
   });
 
   it('stdio without --wrap: EXIT_USAGE_OR_CORRUPT', () => {

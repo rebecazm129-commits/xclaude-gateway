@@ -7,6 +7,9 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { ulid } from 'ulid';
 
 import { JsonlWriter } from './audit.js';
@@ -16,7 +19,7 @@ import { AsyncDetectorNer } from './detection/ner/async-detector.js';
 import { EventSink, createEnrichmentSink, type Direction } from './events.js';
 import { createFrameProcessor, type FrameProcessor } from './frame-processor.js';
 import { InflightTracker } from './latency.js';
-import { classify, type ClassifiedFrame } from './parser.js';
+import { classify, classifyFromMessage, type ClassifiedFrame } from './parser.js';
 import { createGracefulShutdown, type ChildExitInfo } from './shutdown.js';
 import { SocketWriter } from './socket.js';
 import { resolveSocketPath } from './socket-path.js';
@@ -31,12 +34,17 @@ const EXIT_USAGE_OR_CORRUPT = 2;
 const USAGE =
   'usage: xcg-proxy <stdio|http> [options]\n' +
   '  stdio --wrap <command> --name <id> -- [args...]\n' +
-  '  http  --url <url> --name <id>            (not implemented yet)\n';
+  '  http  --url <url> --name <id>\n';
 
 export interface ParsedArgs {
   wrap: string;
   name: string;
   childArgs: readonly string[];
+}
+
+export interface HttpArgs {
+  url: string;
+  name: string;
 }
 
 // --- Cola compartida de observación (Hito 6 Fase 3 sub-paso 3.a) -------------
@@ -269,6 +277,78 @@ export function runStdio(opts: ParsedArgs): void {
   });
 }
 
+// --- HTTP transport (Hito 6 Fase 3 sub-paso 3.b) ----------------------------
+// Bridge stdio ↔ HTTP: el lado Claude habla con un StdioServerTransport del
+// SDK; el lado remoto se conecta con StreamableHTTPClientTransport. Las dos
+// observaciones se inyectan en el mismo emitFrame compartido vía
+// classifyFromMessage. NO hay splitter — el SDK entrega JSONRPCMessage ya
+// parseado por ambos lados. Sin graceful shutdown todavía (3.c lo cablea).
+async function runHttp(opts: HttpArgs): Promise<void> {
+  const { url, name } = opts;
+
+  const session = ulid();
+  const baseDir = join(homedir(), 'Library', 'Application Support', 'xCLAUDE Gateway');
+  const auditFile = join(baseDir, 'wrappers', `${session}.jsonl`);
+
+  let writer: JsonlWriter;
+  try {
+    writer = new JsonlWriter(auditFile);
+  } catch (err) {
+    process.stderr.write(`xcg-proxy: cannot open audit file ${auditFile}: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(1);
+  }
+  process.stderr.write(`xcg-proxy: session ${session} auditing to ${auditFile}\n`);
+
+  let sink!: EventSink;
+  const socketPath = resolveSocketPath();
+  const socketWriter = new SocketWriter(socketPath, (reason, message) => {
+    sink.emit({ type: 'proxy.socket_dropped', reason, message });
+  });
+  sink = new EventSink(name, [writer, socketWriter], session);
+  process.stderr.write(`xcg-proxy: socket mirror at ${socketPath}\n`);
+
+  const tracker = new InflightTracker();
+  const engine = new DetectionEngine(ACTIVE_DETECTORS);
+  const asyncDetector = new AsyncDetectorNer({
+    workerScript: join(__dirname, 'xcg-ner-worker.cjs'),
+    enrichmentSink: createEnrichmentSink(sink),
+    onDrop: (reason, jobId, rpcId) => { sink.emit({ type: 'proxy.ner_dropped', reason, jobId, rpcId }); },
+    onWorkerDied: (cause, pendingDropped) => { sink.emit({ type: 'proxy.ner_worker_died', cause, pendingDropped }); },
+  });
+  const processFrame = createFrameProcessor({ tracker, engine, asyncDetector, mcp: name, session });
+
+  const httpClient = new StreamableHTTPClientTransport(new URL(url));
+  const stdioServer = new StdioServerTransport();
+
+  const observe = (msg: JSONRPCMessage, direction: Direction): void => {
+    const tsObservedNs = process.hrtime.bigint();
+    const tsWallMs = Date.now();
+    const line = JSON.stringify(msg);
+    const bytes = Buffer.byteLength(line, 'utf8'); // sin +1: el SDK entrega el objeto, no la línea con \n
+    emitFrame(sink, processFrame, classifyFromMessage(msg), direction, bytes, line, tsObservedNs, tsWallMs);
+  };
+
+  stdioServer.onmessage = (msg) => {
+    observe(msg, 'client_to_server');
+    void httpClient.send(msg).catch((err: unknown) => {
+      process.stderr.write(`xcg-proxy: forward to remote failed: ${err instanceof Error ? err.message : String(err)}\n`);
+    });
+  };
+  httpClient.onmessage = (msg) => {
+    observe(msg, 'server_to_client');
+    void stdioServer.send(msg).catch((err: unknown) => {
+      process.stderr.write(`xcg-proxy: forward to client failed: ${err instanceof Error ? err.message : String(err)}\n`);
+    });
+  };
+
+  // STUBS de 3.b — 3.c los sustituye por proxy.error.kind y onclose→exited:
+  httpClient.onerror = (err) => { process.stderr.write(`xcg-proxy: http client error: ${err.message}\n`); };
+  stdioServer.onerror = (err) => { process.stderr.write(`xcg-proxy: stdio server error: ${err.message}\n`); };
+
+  await httpClient.start();
+  await stdioServer.start();
+}
+
 function runStdioMain(rest: string[]): number | null {
   let parsed;
   try {
@@ -308,6 +388,28 @@ function runStdioMain(rest: string[]): number | null {
   return null;
 }
 
+function runHttpMain(rest: string[]): number | null {
+  let parsed;
+  try {
+    parsed = parseArgs({ args: rest, options: { url: { type: 'string' }, name: { type: 'string' } }, strict: true, allowPositionals: false });
+  } catch (err) {
+    process.stderr.write(`xcg-proxy: ${(err as Error).message}\n`);
+    process.stderr.write(USAGE);
+    return EXIT_USAGE_OR_CORRUPT;
+  }
+  const url = parsed.values.url;
+  const name = parsed.values.name;
+  if (typeof url !== 'string') { process.stderr.write('xcg-proxy: --url is required\n'); process.stderr.write(USAGE); return EXIT_USAGE_OR_CORRUPT; }
+  if (typeof name !== 'string') { process.stderr.write('xcg-proxy: --name is required\n'); process.stderr.write(USAGE); return EXIT_USAGE_OR_CORRUPT; }
+  try { new URL(url); } catch { process.stderr.write(`xcg-proxy: invalid --url: ${url}\n`); return EXIT_USAGE_OR_CORRUPT; }
+
+  void runHttp({ url, name }).catch((err: unknown) => {
+    process.stderr.write(`xcg-proxy: http transport failed to start: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(EXIT_GENERIC_ERROR);
+  });
+  return null;
+}
+
 function dieUnknownSubcommand(arg: string | undefined): number {
   process.stderr.write(`xcg-proxy: unknown subcommand: ${arg ?? '(none)'}\n`);
   process.stderr.write(USAGE);
@@ -321,8 +423,7 @@ export function main(argv: string[]): number | null {
     case 'stdio':
       return runStdioMain(rest);
     case 'http':
-      process.stderr.write('xcg-proxy http: not implemented yet\n');
-      return EXIT_GENERIC_ERROR;
+      return runHttpMain(rest);
     default:
       return dieUnknownSubcommand(subcommand);
   }
