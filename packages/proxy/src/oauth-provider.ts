@@ -1,3 +1,5 @@
+import { spawn } from 'node:child_process';
+
 import { keychainGet, keychainSet, keychainDelete } from './keychain.js';
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import type {
@@ -76,7 +78,7 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
     return raw;
   }
 
-  redirectToAuthorization(_authorizationUrl: URL): never {
+  redirectToAuthorization(_authorizationUrl: URL): void {
     throw new ReauthRequiredError(this.mcp);
   }
 
@@ -87,5 +89,17 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
     }
     if (scope === 'all' || scope === 'client') await keychainDelete(this.acct('client'));
     if (scope === 'all' || scope === 'verifier') await keychainDelete(this.acct('verifier'));
+  }
+}
+
+// Provider para el login interactivo: abre el navegador en vez de rechazar. El
+// listener loopback (login.ts) captura el callback. Hereda redirectUrl/clientMetadata
+// (el placeholder 51703 ES la URI de loopback real) y todo el almacenamiento Keychain.
+export class LoginOAuthProvider extends KeychainOAuthProvider {
+  redirectToAuthorization(authorizationUrl: URL): void {
+    spawn('/usr/bin/open', [authorizationUrl.toString()], {
+      stdio: 'ignore',
+      detached: true,
+    }).unref();
   }
 }

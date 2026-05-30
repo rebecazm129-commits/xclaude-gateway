@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mocks = vi.hoisted(() => ({
   store: new Map<string, string>(),
   getCalls: 0,
+  spawnCalls: [] as Array<{ command: string; args: readonly string[] }>,
 }));
 
 vi.mock('../src/keychain.js', () => ({
@@ -22,14 +23,25 @@ vi.mock('../src/keychain.js', () => ({
   },
 }));
 
+// node:child_process se mockea porque LoginOAuthProvider.redirectToAuthorization
+// invoca /usr/bin/open. KeychainOAuthProvider no llama a spawn, así que sus tests
+// no se ven afectados; los tests existentes pasan idénticos.
+vi.mock('node:child_process', () => ({
+  spawn: (command: string, args: readonly string[]) => {
+    mocks.spawnCalls.push({ command, args });
+    return { unref: (): void => undefined };
+  },
+}));
+
 // Import AFTER the mock (vitest hoists vi.mock regardless, but order is clearer).
-import { KeychainOAuthProvider, ReauthRequiredError } from '../src/oauth-provider.js';
+import { KeychainOAuthProvider, LoginOAuthProvider, ReauthRequiredError } from '../src/oauth-provider.js';
 import type { OAuthClientInformationFull, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 
 describe('KeychainOAuthProvider', () => {
   beforeEach(() => {
     mocks.store.clear();
     mocks.getCalls = 0;
+    mocks.spawnCalls.length = 0;
   });
 
   describe('redirectUrl + clientMetadata', () => {
@@ -253,6 +265,32 @@ describe('KeychainOAuthProvider', () => {
       await p.invalidateCredentials('all');
       const t = await p.tokens();
       expect(t).toBeUndefined();
+    });
+  });
+
+  describe('LoginOAuthProvider', () => {
+    it('redirectToAuthorization invokes spawn with /usr/bin/open and the URL string, does NOT throw', () => {
+      const p = new LoginOAuthProvider('notion');
+      const url = new URL('https://example.com/authorize?client_id=x&state=abc');
+      expect(() => p.redirectToAuthorization(url)).not.toThrow();
+      expect(mocks.spawnCalls).toHaveLength(1);
+      const [call] = mocks.spawnCalls;
+      expect(call).toBeDefined();
+      if (!call) return;
+      expect(call.command).toBe('/usr/bin/open');
+      expect(call.args).toEqual([url.toString()]);
+    });
+
+    it('inherits the Keychain backing: saveTokens persists under "<mcp>:tokens"', async () => {
+      const p = new LoginOAuthProvider('linear');
+      await p.saveTokens({ access_token: 'xx', token_type: 'Bearer' });
+      expect(mocks.store.has('linear:tokens')).toBe(true);
+    });
+
+    it('inherits redirectUrl from KeychainOAuthProvider (same loopback URI)', () => {
+      const a = new KeychainOAuthProvider('notion');
+      const b = new LoginOAuthProvider('notion');
+      expect(b.redirectUrl).toBe(a.redirectUrl);
     });
   });
 });

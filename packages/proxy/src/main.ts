@@ -13,6 +13,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { ulid } from 'ulid';
 
+import { runLogin } from './login.js';
 import { KeychainOAuthProvider, ReauthRequiredError } from './oauth-provider.js';
 
 import { JsonlWriter } from './audit.js';
@@ -43,9 +44,10 @@ const EXIT_GENERIC_ERROR = 1;
 const EXIT_USAGE_OR_CORRUPT = 2;
 
 const USAGE =
-  'usage: xcg-proxy <stdio|http> [options]\n' +
+  'usage: xcg-proxy <stdio|http|login> [options]\n' +
   '  stdio --wrap <command> --name <id> -- [args...]\n' +
-  '  http  --url <url> --name <id>\n';
+  '  http  --url <url> --name <id>\n' +
+  '  login --url <url> --name <id>\n';
 
 export interface ParsedArgs {
   wrap: string;
@@ -552,6 +554,33 @@ function runHttpMain(rest: string[]): number | null {
   return null;
 }
 
+function runLoginMain(rest: string[]): number | null {
+  let parsed;
+  try {
+    parsed = parseArgs({ args: rest, options: { url: { type: 'string' }, name: { type: 'string' } }, strict: true, allowPositionals: false });
+  } catch (err) {
+    process.stderr.write(`xcg-proxy: ${(err as Error).message}\n`);
+    process.stderr.write(USAGE);
+    return EXIT_USAGE_OR_CORRUPT;
+  }
+  const url = parsed.values.url;
+  const name = parsed.values.name;
+  if (typeof url !== 'string') { process.stderr.write('xcg-proxy: --url is required\n'); process.stderr.write(USAGE); return EXIT_USAGE_OR_CORRUPT; }
+  if (typeof name !== 'string') { process.stderr.write('xcg-proxy: --name is required\n'); process.stderr.write(USAGE); return EXIT_USAGE_OR_CORRUPT; }
+  try { new URL(url); } catch { process.stderr.write(`xcg-proxy: invalid --url: ${url}\n`); return EXIT_USAGE_OR_CORRUPT; }
+
+  // login termina (a diferencia de http, que vive en el event loop): salida
+  // explícita en ambas ramas para no depender de que todos los handles
+  // (server, transport) cierren limpiamente y Node salga por su cuenta.
+  void runLogin({ url, name })
+    .then(() => process.exit(EXIT_OK))
+    .catch((err: unknown) => {
+      process.stderr.write(`xcg-proxy: login failed: ${err instanceof Error ? err.message : String(err)}\n`);
+      process.exit(EXIT_GENERIC_ERROR);
+    });
+  return null;
+}
+
 function dieUnknownSubcommand(arg: string | undefined): number {
   process.stderr.write(`xcg-proxy: unknown subcommand: ${arg ?? '(none)'}\n`);
   process.stderr.write(USAGE);
@@ -566,6 +595,8 @@ export function main(argv: string[]): number | null {
       return runStdioMain(rest);
     case 'http':
       return runHttpMain(rest);
+    case 'login':
+      return runLoginMain(rest);
     default:
       return dieUnknownSubcommand(subcommand);
   }
