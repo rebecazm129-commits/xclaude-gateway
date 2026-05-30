@@ -8,9 +8,12 @@ import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { ulid } from 'ulid';
+
+import { KeychainOAuthProvider, ReauthRequiredError } from './oauth-provider.js';
 
 import { JsonlWriter } from './audit.js';
 import { DetectionEngine } from './detection/engine.js';
@@ -335,7 +338,14 @@ async function runHttp(opts: HttpArgs): Promise<void> {
   });
   const processFrame = createFrameProcessor({ tracker, engine, asyncDetector, mcp: name, session });
 
-  const httpClient = new StreamableHTTPClientTransport(new URL(url));
+  // Auth provider always attached (probe 4.b.2 confirma: si el remoto no pide
+  // auth, el SDK no invoca auth() → tokens() devuelve undefined cacheado y
+  // ningún Authorization header se envía; comportamiento token-less limpio).
+  const authProvider = new KeychainOAuthProvider(name);
+  const isAuthError = (e: unknown): boolean =>
+    e instanceof ReauthRequiredError || e instanceof UnauthorizedError;
+
+  const httpClient = new StreamableHTTPClientTransport(new URL(url), { authProvider });
   const stdioServer = new StdioServerTransport();
 
   let framesIn = 0;
@@ -354,7 +364,15 @@ async function runHttp(opts: HttpArgs): Promise<void> {
   stdioServer.onmessage = (msg) => {
     observe(msg, 'client_to_server');
     void httpClient.send(msg).catch((err: unknown) => {
-      process.stderr.write(`xcg-proxy: forward to remote failed: ${err instanceof Error ? err.message : String(err)}\n`);
+      if (isAuthError(err)) {
+        sink.emit({
+          type: 'proxy.error',
+          kind: 'oauth_failed',
+          message: err instanceof Error ? err.message : String(err),
+        });
+      } else {
+        process.stderr.write(`xcg-proxy: forward to remote failed: ${err instanceof Error ? err.message : String(err)}\n`);
+      }
     });
   };
   httpClient.onmessage = (msg) => {
@@ -456,7 +474,8 @@ async function runHttp(opts: HttpArgs): Promise<void> {
     await httpClient.start();
   } catch (err) {
     const e = err as Error;
-    sink.emit({ type: 'proxy.error', kind: classifyHttpClientError(e), message: e.message });
+    const kind = isAuthError(e) ? 'oauth_failed' : classifyHttpClientError(e);
+    sink.emit({ type: 'proxy.error', kind, message: e.message });
     if (shuttingDown === null) shuttingDown = tearDownTail(EXIT_GENERIC_ERROR);
     await shuttingDown;
     return;

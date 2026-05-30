@@ -16,6 +16,14 @@ export class ReauthRequiredError extends Error {
 export class KeychainOAuthProvider implements OAuthClientProvider {
   private static readonly REDIRECT_URI = 'http://127.0.0.1:51703/xcg-callback';
 
+  // Caché en memoria del token: streamableHttp._commonHeaders llama a tokens()
+  // en CADA request, así que sin caché habría un spawn de /usr/bin/security por
+  // frame. null = aún no cargado; { v: undefined } = cargado y ausente. La caché
+  // se invalida en saveTokens y en invalidateCredentials('all'|'tokens').
+  // clientInformation y codeVerifier NO se cachean: solo se leen durante auth(),
+  // no por-request, así que el spawn ocasional es aceptable.
+  private tokensCache: { v: OAuthTokens | undefined } | null = null;
+
   constructor(private readonly mcp: string) {}
 
   private acct(kind: 'tokens' | 'client' | 'verifier'): string {
@@ -46,12 +54,16 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
   }
 
   async tokens(): Promise<OAuthTokens | undefined> {
-    const raw = await keychainGet(this.acct('tokens'));
-    return raw == null ? undefined : (JSON.parse(raw) as OAuthTokens);
+    if (this.tokensCache === null) {
+      const raw = await keychainGet(this.acct('tokens'));
+      this.tokensCache = { v: raw == null ? undefined : (JSON.parse(raw) as OAuthTokens) };
+    }
+    return this.tokensCache.v;
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
     await keychainSet(this.acct('tokens'), JSON.stringify(tokens));
+    this.tokensCache = { v: tokens };
   }
 
   async saveCodeVerifier(verifier: string): Promise<void> {
@@ -69,7 +81,10 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
   }
 
   async invalidateCredentials(scope: 'all' | 'client' | 'tokens' | 'verifier' | 'discovery'): Promise<void> {
-    if (scope === 'all' || scope === 'tokens') await keychainDelete(this.acct('tokens'));
+    if (scope === 'all' || scope === 'tokens') {
+      await keychainDelete(this.acct('tokens'));
+      this.tokensCache = { v: undefined };
+    }
     if (scope === 'all' || scope === 'client') await keychainDelete(this.acct('client'));
     if (scope === 'all' || scope === 'verifier') await keychainDelete(this.acct('verifier'));
   }

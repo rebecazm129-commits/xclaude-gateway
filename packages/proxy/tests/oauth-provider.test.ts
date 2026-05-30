@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   store: new Map<string, string>(),
+  getCalls: 0,
 }));
 
 vi.mock('../src/keychain.js', () => ({
@@ -13,6 +14,7 @@ vi.mock('../src/keychain.js', () => ({
     mocks.store.set(account, value);
   },
   keychainGet: async (account: string): Promise<string | null> => {
+    mocks.getCalls++;
     return mocks.store.has(account) ? (mocks.store.get(account) as string) : null;
   },
   keychainDelete: async (account: string): Promise<void> => {
@@ -27,6 +29,7 @@ import type { OAuthClientInformationFull, OAuthTokens } from '@modelcontextproto
 describe('KeychainOAuthProvider', () => {
   beforeEach(() => {
     mocks.store.clear();
+    mocks.getCalls = 0;
   });
 
   describe('redirectUrl + clientMetadata', () => {
@@ -175,6 +178,81 @@ describe('KeychainOAuthProvider', () => {
       expect(mocks.store.has('notion:tokens')).toBe(true);
       expect(mocks.store.has('notion:client')).toBe(true);
       expect(mocks.store.has('notion:verifier')).toBe(true);
+    });
+  });
+
+  describe('tokens() cache (avoid per-request /usr/bin/security spawn)', () => {
+    it('after saveTokens, consecutive tokens() calls do NOT hit keychainGet', async () => {
+      const p = new KeychainOAuthProvider('notion');
+      await p.saveTokens({ access_token: 'cached', token_type: 'Bearer' });
+      const before = mocks.getCalls;
+      const t1 = await p.tokens();
+      const t2 = await p.tokens();
+      const after = mocks.getCalls;
+      expect(t1).toEqual({ access_token: 'cached', token_type: 'Bearer' });
+      expect(t2).toEqual({ access_token: 'cached', token_type: 'Bearer' });
+      expect(after - before).toBe(0);
+    });
+
+    it('first tokens() reads Keychain once; subsequent calls reuse the cache', async () => {
+      // Pre-seed directly (simulating tokens previously stored on disk).
+      mocks.store.set(
+        'notion:tokens',
+        JSON.stringify({ access_token: 'preloaded', token_type: 'Bearer' }),
+      );
+      const p = new KeychainOAuthProvider('notion');
+      const before = mocks.getCalls;
+      const t1 = await p.tokens();
+      const t2 = await p.tokens();
+      const t3 = await p.tokens();
+      const after = mocks.getCalls;
+      expect(t1).toEqual({ access_token: 'preloaded', token_type: 'Bearer' });
+      expect(t2).toEqual(t1);
+      expect(t3).toEqual(t1);
+      expect(after - before).toBe(1);
+    });
+
+    it('absent token cached as undefined; second tokens() does NOT re-hit keychainGet', async () => {
+      const p = new KeychainOAuthProvider('notion');
+      const before = mocks.getCalls;
+      const t1 = await p.tokens();
+      const t2 = await p.tokens();
+      const after = mocks.getCalls;
+      expect(t1).toBeUndefined();
+      expect(t2).toBeUndefined();
+      expect(after - before).toBe(1);
+    });
+
+    it('saveTokens primes the cache: tokens() reflects the new value with no keychainGet', async () => {
+      const p = new KeychainOAuthProvider('notion');
+      // Force initial load of "absent" into the cache.
+      await p.tokens();
+      const before = mocks.getCalls;
+      await p.saveTokens({ access_token: 'fresh', token_type: 'Bearer' });
+      const t = await p.tokens();
+      const after = mocks.getCalls;
+      expect(t).toEqual({ access_token: 'fresh', token_type: 'Bearer' });
+      expect(after - before).toBe(0);
+    });
+
+    it("invalidateCredentials('tokens') clears the cache: next tokens() returns undefined without re-reading", async () => {
+      const p = new KeychainOAuthProvider('notion');
+      await p.saveTokens({ access_token: 'will-be-gone', token_type: 'Bearer' });
+      await p.invalidateCredentials('tokens');
+      const before = mocks.getCalls;
+      const t = await p.tokens();
+      const after = mocks.getCalls;
+      expect(t).toBeUndefined();
+      expect(mocks.store.has('notion:tokens')).toBe(false);
+      expect(after - before).toBe(0); // cache cleared to {v:undefined}, no Keychain read needed
+    });
+
+    it("invalidateCredentials('all') also clears the tokens cache", async () => {
+      const p = new KeychainOAuthProvider('notion');
+      await p.saveTokens({ access_token: 'will-be-gone', token_type: 'Bearer' });
+      await p.invalidateCredentials('all');
+      const t = await p.tokens();
+      expect(t).toBeUndefined();
     });
   });
 });
