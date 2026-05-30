@@ -23,6 +23,19 @@ function isStringArray(v: unknown): v is string[] {
   return Array.isArray(v) && v.every((x) => typeof x === 'string');
 }
 
+/**
+ * Whether a name is safe to use as a remote entry's mcpServers key AND as the
+ * `--name` passed to `xcg-proxy http/login` (which becomes the Keychain account
+ * `${name}:tokens` etc., written via /usr/bin/security without shell-escaping).
+ * Unlike stdio names (which come from the user's existing config and are trusted
+ * by construction), remote names are chosen by xCLAUDE, so they must be validated
+ * before they reach the Keychain CLI or the args array.
+ * Conservative allowlist: ASCII letters, digits, dot, underscore, hyphen; 1–64 chars.
+ */
+export function isSafeRemoteName(name: string): boolean {
+  return /^[A-Za-z0-9._-]{1,64}$/.test(name);
+}
+
 // --- Idempotency: is this entry already wrapped by xcg-proxy? ---
 
 // An entry is "already wrapped" iff command's basename is xcg-proxy AND args

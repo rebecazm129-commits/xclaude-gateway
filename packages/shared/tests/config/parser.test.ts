@@ -3,7 +3,7 @@ import { tmpdir as osTmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { parseConfig } from '../../src/config/parser.js';
+import { isSafeRemoteName, parseConfig } from '../../src/config/parser.js';
 
 describe('parseConfig — read-only classifier (Milestone 4 Phase 1)', () => {
   let tmp: string;
@@ -157,5 +157,27 @@ describe('parseConfig — read-only classifier (Milestone 4 Phase 1)', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.plan.entries[0]).toEqual({ kind: 'skipped', name: 'bad', reason: 'no-command' });
+  });
+});
+
+describe('isSafeRemoteName — validates xCLAUDE-chosen remote names (Hito 6 Phase 5)', () => {
+  it('accepts normal names', () => {
+    for (const n of ['notion', 'github', 'my-server', 'srv_1', 'a.b']) {
+      expect(isSafeRemoteName(n)).toBe(true);
+    }
+  });
+
+  it('rejects empty and names with unsafe characters', () => {
+    for (const n of ['', 'a b', 'a\nb', 'a"b', 'a/b', 'a;b']) {
+      expect(isSafeRemoteName(n)).toBe(false);
+    }
+  });
+
+  it('rejects a 65-char name (over the limit)', () => {
+    expect(isSafeRemoteName('a'.repeat(65))).toBe(false);
+  });
+
+  it('accepts a 64-char name (at the limit)', () => {
+    expect(isSafeRemoteName('a'.repeat(64))).toBe(true);
   });
 });
