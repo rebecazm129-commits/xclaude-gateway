@@ -6,7 +6,7 @@
 
 export { isAlreadyWrapped, isSafeRemoteName, parseConfig } from './parser.js';
 export { addRemoteToConfig, applyWrap, removeRemoteFromConfig, unwrap } from './transform.js';
-export type { CreateRemoteResult, RemoveRemoteResult } from './transform.js';
+export type { AddRemoteToConfigResult, RemoveRemoteFromConfigResult } from './transform.js';
 export { CLAUDE_DESKTOP_CONFIG_PATH, STABLE_XCG_PROXY_PATH } from './paths.js';
 export { writeAtomic } from './io.js';
 export type { WriteAtomicError, WriteAtomicResult } from './io.js';

@@ -98,7 +98,7 @@ export function unwrap(raw: unknown): unknown {
 // carried INSIDE args (opaque to Desktop). xCLAUDE creates this entry from
 // scratch (the user never has it), so name and url must be validated here.
 
-export type CreateRemoteResult =
+export type AddRemoteToConfigResult =
   | { ok: true; config: Record<string, unknown> }
   | { ok: false; error: 'invalid-name' | 'invalid-url' | 'name-exists' | 'bad-config' };
 
@@ -110,7 +110,7 @@ export function createRemoteEntry(name: string, url: string, xcgPath: string): R
 // Inserts a new remote bridge entry under mcpServers[name], preserving everything
 // else (other entries, unknown top-level keys) via spread. Does NOT overwrite an
 // existing key (returns 'name-exists'). Returns the full config object for writeAtomic.
-export function addRemoteToConfig(raw: unknown, name: string, url: string, xcgPath: string): CreateRemoteResult {
+export function addRemoteToConfig(raw: unknown, name: string, url: string, xcgPath: string): AddRemoteToConfigResult {
   if (!isSafeRemoteName(name)) return { ok: false, error: 'invalid-name' };
   try { new URL(url); } catch { return { ok: false, error: 'invalid-url' }; }
   if (!isPlainObject(raw)) return { ok: false, error: 'bad-config' };
@@ -128,11 +128,11 @@ export function addRemoteToConfig(raw: unknown, name: string, url: string, xcgPa
 // entry IS one of ours: command basename xcg-proxy + http bridge args
 // (isAlreadyWrapped recognizes that shape since pieza 3). Returns the full
 // config object for writeAtomic.
-export type RemoveRemoteResult =
+export type RemoveRemoteFromConfigResult =
   | { ok: true; config: Record<string, unknown>; removed: boolean }
   | { ok: false; error: 'bad-config' };
 
-export function removeRemoteFromConfig(raw: unknown, name: string): RemoveRemoteResult {
+export function removeRemoteFromConfig(raw: unknown, name: string): RemoveRemoteFromConfigResult {
   if (!isPlainObject(raw)) return { ok: false, error: 'bad-config' };
   const mcp = isPlainObject(raw.mcpServers) ? raw.mcpServers : {};
   const entry = mcp[name];
