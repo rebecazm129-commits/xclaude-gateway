@@ -119,3 +119,37 @@ export function addRemoteToConfig(raw: unknown, name: string, url: string, xcgPa
   const newMcp = { ...mcp, [name]: createRemoteEntry(name, url, xcgPath) };
   return { ok: true, config: { ...raw, mcpServers: newMcp } };
 }
+
+// Removes a remote bridge entry under mcpServers[name]. Symmetric to
+// addRemoteToConfig. Unlike unwrap (which restores a wrapped stdio entry's
+// original), a remote entry has no pre-existing original to restore — the user
+// never had it — so removal just deletes the key. To avoid clobbering an
+// unrelated entry that happens to share the name, deletion only happens if the
+// entry IS one of ours: command basename xcg-proxy + http bridge args
+// (isAlreadyWrapped recognizes that shape since pieza 3). Returns the full
+// config object for writeAtomic.
+export type RemoveRemoteResult =
+  | { ok: true; config: Record<string, unknown>; removed: boolean }
+  | { ok: false; error: 'bad-config' };
+
+export function removeRemoteFromConfig(raw: unknown, name: string): RemoveRemoteResult {
+  if (!isPlainObject(raw)) return { ok: false, error: 'bad-config' };
+  const mcp = isPlainObject(raw.mcpServers) ? raw.mcpServers : {};
+  const entry = mcp[name];
+  if (!isPlainObject(entry)) return { ok: true, config: { ...raw }, removed: false };
+  const cmd = typeof entry.command === 'string' ? entry.command : '';
+  const args = isStringArray(entry.args) ? entry.args : [];
+  // isAlreadyWrapped matches BOTH the http and stdio/legacy shapes. That is
+  // intentional here: if the name points to any xcg-proxy-wrapped entry of
+  // ours, it is ours and removing it is valid (the remote use case is http,
+  // but a stdio-wrapped match is still legitimately ours to delete).
+  if (!isAlreadyWrapped(cmd, args)) {
+    // Not one of ours (or not a recognized bridge) — leave it untouched.
+    return { ok: true, config: { ...raw }, removed: false };
+  }
+  const newMcp: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(mcp)) {
+    if (k !== name) newMcp[k] = v;
+  }
+  return { ok: true, config: { ...raw, mcpServers: newMcp }, removed: true };
+}

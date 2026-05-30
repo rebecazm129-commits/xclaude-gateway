@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest';
 
 import { parseConfig } from '../../src/config/parser.js';
-import { addRemoteToConfig, applyWrap, createRemoteEntry, unwrap } from '../../src/config/transform.js';
+import {
+  addRemoteToConfig,
+  applyWrap,
+  createRemoteEntry,
+  removeRemoteFromConfig,
+  unwrap,
+} from '../../src/config/transform.js';
 import type { WrapPlan } from '../../src/config/types.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir as osTmpdir } from 'node:os';
@@ -222,5 +228,68 @@ describe('createRemoteEntry / addRemoteToConfig — remote bridge (Hito 6 Phase 
       ok: false,
       error: 'bad-config',
     });
+  });
+});
+
+describe('removeRemoteFromConfig — delete a remote bridge (Hito 6 Phase 5)', () => {
+  const URL_OK = 'https://mcp.notion.com/mcp';
+  const ours = () => ({
+    command: '/x/xcg-proxy',
+    args: ['http', '--url', URL_OK, '--name', 'notion'],
+  });
+
+  it('removes one of our remote entries', () => {
+    const raw = { mcpServers: { notion: ours(), fs: { command: 'npx', args: ['-y', 'fs'] } } };
+    const res = removeRemoteFromConfig(raw, 'notion');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.removed).toBe(true);
+    const cfg = res.config as any;
+    expect('notion' in cfg.mcpServers).toBe(false);
+    expect(cfg.mcpServers.fs).toEqual({ command: 'npx', args: ['-y', 'fs'] });
+  });
+
+  it('does NOT remove an entry that is not ours', () => {
+    const raw = { mcpServers: { notion: { command: 'npx', args: ['-y', 'foo'] } } };
+    const res = removeRemoteFromConfig(raw, 'notion');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.removed).toBe(false);
+    expect((res.config as any).mcpServers.notion).toEqual({ command: 'npx', args: ['-y', 'foo'] });
+  });
+
+  it('non-existent name: removed false, config intact', () => {
+    const raw = { mcpServers: { fs: { command: 'npx' } } };
+    const res = removeRemoteFromConfig(raw, 'notion');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.removed).toBe(false);
+    expect((res.config as any).mcpServers.fs).toEqual({ command: 'npx' });
+  });
+
+  it('preserves other entries and unknown top-level keys on removal', () => {
+    const raw = {
+      theme: 'dark',
+      mcpServers: { notion: ours(), fs: { command: 'npx', args: ['-y', 'fs'] } },
+    };
+    const res = removeRemoteFromConfig(raw, 'notion');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const cfg = res.config as any;
+    expect(cfg.theme).toBe('dark');
+    expect('notion' in cfg.mcpServers).toBe(false);
+    expect(cfg.mcpServers.fs).toEqual({ command: 'npx', args: ['-y', 'fs'] });
+  });
+
+  it('does not mutate the input', () => {
+    const raw = { theme: 'dark', mcpServers: { notion: ours() } };
+    const before = JSON.stringify(raw);
+    removeRemoteFromConfig(raw, 'notion');
+    expect(JSON.stringify(raw)).toBe(before);
+  });
+
+  it('rejects a non-object raw', () => {
+    expect(removeRemoteFromConfig(null, 'notion')).toEqual({ ok: false, error: 'bad-config' });
+    expect(removeRemoteFromConfig([], 'notion')).toEqual({ ok: false, error: 'bad-config' });
   });
 });
