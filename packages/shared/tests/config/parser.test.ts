@@ -158,6 +158,53 @@ describe('parseConfig — read-only classifier (Milestone 4 Phase 1)', () => {
     if (!r.ok) return;
     expect(r.plan.entries[0]).toEqual({ kind: 'skipped', name: 'bad', reason: 'no-command' });
   });
+
+  it('a remote http-bridge entry is detected as already-wrapped (Hito 6 Phase 5)', () => {
+    const path = writeConfig({
+      mcpServers: {
+        notion: {
+          command: '/x/xcg-proxy',
+          args: ['http', '--url', 'https://mcp.notion.com/mcp', '--name', 'notion'],
+        },
+      },
+    });
+    const r = parseConfig(path);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.plan.entries[0]).toEqual({ kind: 'skipped', name: 'notion', reason: 'already-wrapped' });
+  });
+
+  it('xcg-proxy + http but incomplete form: wrappable (no false positive)', () => {
+    const path = writeConfig({
+      mcpServers: {
+        partial: { command: '/x/xcg-proxy', args: ['http', '--url', 'https://x'] },
+      },
+    });
+    const r = parseConfig(path);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.plan.entries[0]).toEqual({
+      kind: 'wrappable',
+      name: 'partial',
+      original: { command: '/x/xcg-proxy', args: ['http', '--url', 'https://x'] },
+    });
+  });
+
+  it('http form but command is NOT xcg-proxy: wrappable (not ours)', () => {
+    const path = writeConfig({
+      mcpServers: {
+        other: { command: '/usr/bin/other', args: ['http', '--url', 'https://x', '--name', 'other'] },
+      },
+    });
+    const r = parseConfig(path);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.plan.entries[0]).toEqual({
+      kind: 'wrappable',
+      name: 'other',
+      original: { command: '/usr/bin/other', args: ['http', '--url', 'https://x', '--name', 'other'] },
+    });
+  });
 });
 
 describe('isSafeRemoteName — validates xCLAUDE-chosen remote names (Hito 6 Phase 5)', () => {

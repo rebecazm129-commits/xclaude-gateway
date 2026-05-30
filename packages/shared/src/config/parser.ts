@@ -49,6 +49,13 @@ export function isSafeRemoteName(name: string): boolean {
 // also named xcg-proxy). Checking the arg shape removes both false cases.
 export function isAlreadyWrapped(command: string, args: readonly string[]): boolean {
   if (basename(command) !== 'xcg-proxy') return false;
+  if (args[0] === 'http') {
+    return (
+      args.length >= 5 &&
+      args[1] === '--url' &&
+      args[3] === '--name'
+    );
+  }
   if (args[0] === 'stdio') {
     return (
       args.length >= 6 &&
