@@ -3,7 +3,7 @@
 // ClaudeConfig type) so unknown keys are preserved verbatim. No IO, no
 // mutation: every function returns a new value; the input is untouched.
 
-import { isAlreadyWrapped } from './parser.js';
+import { isAlreadyWrapped, isSafeRemoteName } from './parser.js';
 import type { WrapPlan } from './types.js';
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -89,4 +89,33 @@ export function unwrap(raw: unknown): unknown {
     }
   }
   return { ...raw, mcpServers: newMcp };
+}
+
+// --- Remote entries (Hito 6 Phase 5): create from scratch, not wrap-existing ---
+// Remote MCP servers cannot live in claude_desktop_config.json as `url` entries
+// (Claude Desktop silently deletes them — issue #37286). The only viable form is
+// a stdio-bridge entry whose command is xcg-proxy in `http` mode, with the URL
+// carried INSIDE args (opaque to Desktop). xCLAUDE creates this entry from
+// scratch (the user never has it), so name and url must be validated here.
+
+export type CreateRemoteResult =
+  | { ok: true; config: Record<string, unknown> }
+  | { ok: false; error: 'invalid-name' | 'invalid-url' | 'name-exists' | 'bad-config' };
+
+// Builds the bridge entry object. Exported for unit testing the exact shape.
+export function createRemoteEntry(name: string, url: string, xcgPath: string): Record<string, unknown> {
+  return { command: xcgPath, args: ['http', '--url', url, '--name', name] };
+}
+
+// Inserts a new remote bridge entry under mcpServers[name], preserving everything
+// else (other entries, unknown top-level keys) via spread. Does NOT overwrite an
+// existing key (returns 'name-exists'). Returns the full config object for writeAtomic.
+export function addRemoteToConfig(raw: unknown, name: string, url: string, xcgPath: string): CreateRemoteResult {
+  if (!isSafeRemoteName(name)) return { ok: false, error: 'invalid-name' };
+  try { new URL(url); } catch { return { ok: false, error: 'invalid-url' }; }
+  if (!isPlainObject(raw)) return { ok: false, error: 'bad-config' };
+  const mcp = isPlainObject(raw.mcpServers) ? raw.mcpServers : {};
+  if (name in mcp) return { ok: false, error: 'name-exists' };
+  const newMcp = { ...mcp, [name]: createRemoteEntry(name, url, xcgPath) };
+  return { ok: true, config: { ...raw, mcpServers: newMcp } };
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { parseConfig } from '../../src/config/parser.js';
-import { applyWrap, unwrap } from '../../src/config/transform.js';
+import { addRemoteToConfig, applyWrap, createRemoteEntry, unwrap } from '../../src/config/transform.js';
 import type { WrapPlan } from '../../src/config/types.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir as osTmpdir } from 'node:os';
@@ -143,6 +143,84 @@ describe('unwrap — inverse of applyWrap', () => {
     expect(back.mcpServers.fs).toEqual({
       command: '/usr/local/bin/npx',
       args: ['@mcpf/filesystem', '/x'],
+    });
+  });
+});
+
+describe('createRemoteEntry / addRemoteToConfig — remote bridge (Hito 6 Phase 5)', () => {
+  const URL_OK = 'https://mcp.notion.com/mcp';
+
+  it('createRemoteEntry: exact bridge shape', () => {
+    expect(createRemoteEntry('notion', URL_OK, '/x/xcg-proxy')).toEqual({
+      command: '/x/xcg-proxy',
+      args: ['http', '--url', URL_OK, '--name', 'notion'],
+    });
+  });
+
+  it('inserts into an empty config', () => {
+    const res = addRemoteToConfig({}, 'notion', URL_OK, '/x/xcg-proxy');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect((res.config as any).mcpServers.notion).toEqual({
+      command: '/x/xcg-proxy',
+      args: ['http', '--url', URL_OK, '--name', 'notion'],
+    });
+  });
+
+  it('preserves existing entries and unknown top-level keys', () => {
+    const raw = {
+      theme: 'dark',
+      mcpServers: { fs: { command: 'npx', args: ['-y', 'fs'] } },
+    };
+    const res = addRemoteToConfig(raw, 'notion', URL_OK, '/x/xcg-proxy');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const cfg = res.config as any;
+    expect(cfg.theme).toBe('dark');
+    expect(cfg.mcpServers.fs).toEqual({ command: 'npx', args: ['-y', 'fs'] });
+    expect(cfg.mcpServers.notion).toEqual({
+      command: '/x/xcg-proxy',
+      args: ['http', '--url', URL_OK, '--name', 'notion'],
+    });
+  });
+
+  it('does not mutate the input', () => {
+    const raw = { theme: 'dark', mcpServers: { fs: { command: 'npx' } } };
+    const before = JSON.stringify(raw);
+    addRemoteToConfig(raw, 'notion', URL_OK, '/x/xcg-proxy');
+    expect(JSON.stringify(raw)).toBe(before);
+  });
+
+  it('rejects an invalid name', () => {
+    expect(addRemoteToConfig({}, 'a b', URL_OK, '/x/xcg-proxy')).toEqual({
+      ok: false,
+      error: 'invalid-name',
+    });
+  });
+
+  it('rejects an invalid url', () => {
+    expect(addRemoteToConfig({}, 'notion', 'not-a-url', '/x/xcg-proxy')).toEqual({
+      ok: false,
+      error: 'invalid-url',
+    });
+  });
+
+  it('rejects a name that already exists', () => {
+    const raw = { mcpServers: { notion: { command: 'x' } } };
+    expect(addRemoteToConfig(raw, 'notion', URL_OK, '/x/xcg-proxy')).toEqual({
+      ok: false,
+      error: 'name-exists',
+    });
+  });
+
+  it('rejects a non-object raw (null / array)', () => {
+    expect(addRemoteToConfig(null, 'notion', URL_OK, '/x/xcg-proxy')).toEqual({
+      ok: false,
+      error: 'bad-config',
+    });
+    expect(addRemoteToConfig([], 'notion', URL_OK, '/x/xcg-proxy')).toEqual({
+      ok: false,
+      error: 'bad-config',
     });
   });
 });
