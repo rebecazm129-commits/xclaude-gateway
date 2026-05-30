@@ -11,7 +11,9 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  runConfigAddRemote,
   runConfigInstall,
+  runConfigRemoveRemote,
   runConfigStatus,
   runConfigUninstall,
   type ConfigHandlerOptions,
@@ -341,6 +343,95 @@ describe('config IPC handlers (Milestone 4 Phase 5.1 sub-step C2)', () => {
 
       const r2 = runConfigUninstall(opts(), 'yes');
       expect(r2).toMatchObject({ outcome: 'noop' });
+    });
+  });
+
+  // --- runConfigAddRemote (Hito 6 Fase 5) ---
+
+  describe('runConfigAddRemote', () => {
+    const URL_OK = 'https://mcp.notion.com/mcp';
+
+    it('adds a remote bridge entry, outcome wrote', () => {
+      writeConfig({
+        mcpServers: {
+          filesystem: { command: '/usr/local/bin/npx', args: ['-y', 'fs'] },
+        },
+      });
+      const result = runConfigAddRemote(opts(), { name: 'notion', url: URL_OK });
+      expect(result).toMatchObject({ ok: true, op: 'add-remote', outcome: 'wrote' });
+
+      const written = readConfigParsed() as {
+        mcpServers: { notion: { command: string; args: string[] } };
+      };
+      expect(written.mcpServers.notion.command).toBe(FAKE_XCG);
+      expect(written.mcpServers.notion.args).toEqual([
+        'http', '--url', URL_OK, '--name', 'notion',
+      ]);
+    });
+
+    it('rejects an invalid name', () => {
+      writeConfig({ mcpServers: {} });
+      const result = runConfigAddRemote(opts(), { name: 'bad name', url: URL_OK });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.kind).toBe('invalid-name');
+    });
+
+    it('rejects an invalid url', () => {
+      writeConfig({ mcpServers: {} });
+      const result = runConfigAddRemote(opts(), { name: 'notion', url: 'not-a-url' });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.kind).toBe('invalid-url');
+    });
+
+    it('rejects a name that already exists', () => {
+      writeConfig({
+        mcpServers: { notion: { command: '/usr/local/bin/npx', args: ['-y', 'fs'] } },
+      });
+      const result = runConfigAddRemote(opts(), { name: 'notion', url: URL_OK });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.kind).toBe('name-exists');
+    });
+
+    it('returns not-found when the config does not exist', () => {
+      const result = runConfigAddRemote(opts(), { name: 'notion', url: URL_OK });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.kind).toBe('not-found');
+    });
+  });
+
+  // --- runConfigRemoveRemote (Hito 6 Fase 5) ---
+
+  describe('runConfigRemoveRemote', () => {
+    const URL_OK = 'https://mcp.notion.com/mcp';
+
+    it('removes one of our remote entries, outcome wrote', () => {
+      writeConfig({ mcpServers: {} });
+      runConfigAddRemote(opts(), { name: 'notion', url: URL_OK });
+
+      const result = runConfigRemoveRemote(opts(), { name: 'notion' });
+      expect(result).toMatchObject({ ok: true, op: 'remove-remote', outcome: 'wrote' });
+
+      const written = readConfigParsed() as { mcpServers: Record<string, unknown> };
+      expect('notion' in written.mcpServers).toBe(false);
+    });
+
+    it('does not remove a non-ours entry: outcome noop, entry stays', () => {
+      writeConfig({
+        mcpServers: { notion: { command: '/usr/local/bin/npx', args: ['-y', 'fs'] } },
+      });
+      const result = runConfigRemoveRemote(opts(), { name: 'notion' });
+      expect(result).toMatchObject({ ok: true, op: 'remove-remote', outcome: 'noop' });
+
+      const written = readConfigParsed() as {
+        mcpServers: { notion: { command: string; args: string[] } };
+      };
+      expect(written.mcpServers.notion).toEqual({ command: '/usr/local/bin/npx', args: ['-y', 'fs'] });
+    });
+
+    it('non-existent name: outcome noop', () => {
+      writeConfig({ mcpServers: {} });
+      const result = runConfigRemoveRemote(opts(), { name: 'notion' });
+      expect(result).toMatchObject({ ok: true, op: 'remove-remote', outcome: 'noop' });
     });
   });
 });

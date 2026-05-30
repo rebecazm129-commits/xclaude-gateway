@@ -13,16 +13,20 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  addRemoteToConfig,
   applyWrap,
   parseConfig,
+  removeRemoteFromConfig,
   STABLE_XCG_PROXY_PATH,
   unwrap,
   writeAtomic,
+  type AddRemoteResult,
   type InstallResult,
   type IpcConfigEntry,
   type IpcConfigError,
   type IpcConfigSummary,
   type ParseError,
+  type RemoveRemoteResult,
   type StatusResult,
   type UninstallResult,
   type WrapPlanEntry,
@@ -108,6 +112,26 @@ function writeAtomicErrorToIpc(err: WriteAtomicError): IpcConfigError {
     ok: false,
     error: { kind: 'unreadable', detail: `${err.kind}: ${err.detail}` },
   };
+}
+
+// Maps the validation errors from addRemoteToConfig/removeRemoteFromConfig to the
+// IPC error space. The first three map 1:1 to the kinds added in estrato 2a (the
+// renderer can show specific onboarding messages); 'bad-config' is effectively
+// unreachable after a successful parseConfig (which already rejects non-object
+// configs as unexpected-shape), but is mapped defensively to unexpected-shape.
+function createRemoteErrorToIpc(
+  e: 'invalid-name' | 'invalid-url' | 'name-exists' | 'bad-config',
+): IpcConfigError {
+  switch (e) {
+    case 'invalid-name':
+      return { ok: false, error: { kind: 'invalid-name', detail: 'Name must be 1-64 chars: letters, digits, dot, underscore, hyphen.' } };
+    case 'invalid-url':
+      return { ok: false, error: { kind: 'invalid-url', detail: 'The server URL is not a valid URL.' } };
+    case 'name-exists':
+      return { ok: false, error: { kind: 'name-exists', detail: 'A connector with that name already exists.' } };
+    case 'bad-config':
+      return { ok: false, error: { kind: 'unexpected-shape', detail: 'config has an unexpected shape.' } };
+  }
 }
 
 // --- Pure handlers (D-C2-5) ---
@@ -245,4 +269,31 @@ export function runConfigUninstall(
     outcome,
     summary,
   };
+}
+
+export function runConfigAddRemote(
+  opts: ConfigHandlerOptions,
+  params: { name: string; url: string },
+): AddRemoteResult {
+  const parsed = parseConfig(opts.configPath);
+  if (!parsed.ok) return parseErrorToIpc(parsed.error);
+  const res = addRemoteToConfig(parsed.raw, params.name, params.url, opts.xcgPath);
+  if (!res.ok) return createRemoteErrorToIpc(res.error);
+  const wr = writeAtomic(opts.configPath, res.config);
+  if (!wr.ok) return writeAtomicErrorToIpc(wr.error);
+  return { ok: true, op: 'add-remote', configPath: opts.configPath, name: params.name, outcome: 'wrote' };
+}
+
+export function runConfigRemoveRemote(
+  opts: ConfigHandlerOptions,
+  params: { name: string },
+): RemoveRemoteResult {
+  const parsed = parseConfig(opts.configPath);
+  if (!parsed.ok) return parseErrorToIpc(parsed.error);
+  const res = removeRemoteFromConfig(parsed.raw, params.name);
+  if (!res.ok) return createRemoteErrorToIpc(res.error);
+  if (!res.removed) return { ok: true, op: 'remove-remote', configPath: opts.configPath, name: params.name, outcome: 'noop' };
+  const wr = writeAtomic(opts.configPath, res.config);
+  if (!wr.ok) return writeAtomicErrorToIpc(wr.error);
+  return { ok: true, op: 'remove-remote', configPath: opts.configPath, name: params.name, outcome: 'wrote' };
 }
