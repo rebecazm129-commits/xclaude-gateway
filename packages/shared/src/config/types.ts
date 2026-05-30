@@ -88,7 +88,10 @@ export type IpcConfigError =
   | { ok: false; error: { kind: 'not-found' } }
   | { ok: false; error: { kind: 'unreadable'; detail: string } }
   | { ok: false; error: { kind: 'invalid-json'; detail: string } }
-  | { ok: false; error: { kind: 'unexpected-shape'; detail: string } };
+  | { ok: false; error: { kind: 'unexpected-shape'; detail: string } }
+  | { ok: false; error: { kind: 'invalid-name'; detail: string } }
+  | { ok: false; error: { kind: 'invalid-url'; detail: string } }
+  | { ok: false; error: { kind: 'name-exists'; detail: string } };
 
 export interface IpcConfigSummary {
   wrappable: number;
@@ -126,6 +129,24 @@ export interface UninstallOk {
   summary: IpcConfigSummary;
 }
 
+export interface AddRemoteOk {
+  ok: true;
+  op: 'add-remote';
+  configPath: string;
+  name: string;
+  outcome: 'wrote';
+}
+
+export interface RemoveRemoteOk {
+  ok: true;
+  op: 'remove-remote';
+  configPath: string;
+  name: string;
+  outcome: 'wrote' | 'noop';
+}
+
 export type StatusResult = StatusOk | IpcConfigError;
 export type InstallResult = InstallOk | IpcConfigError;
 export type UninstallResult = UninstallOk | IpcConfigError;
+export type AddRemoteResult = AddRemoteOk | IpcConfigError;
+export type RemoveRemoteResult = RemoveRemoteOk | IpcConfigError;

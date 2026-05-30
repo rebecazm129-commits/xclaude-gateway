@@ -11,6 +11,8 @@ export { CLAUDE_DESKTOP_CONFIG_PATH, STABLE_XCG_PROXY_PATH } from './paths.js';
 export { writeAtomic } from './io.js';
 export type { WriteAtomicError, WriteAtomicResult } from './io.js';
 export type {
+  AddRemoteOk,
+  AddRemoteResult,
   ClaudeConfig,
   InstallOk,
   InstallResult,
@@ -20,6 +22,8 @@ export type {
   McpEntry,
   ParseError,
   ParseResult,
+  RemoveRemoteOk,
+  RemoveRemoteResult,
   SkipReason,
   StatusOk,
   StatusResult,
