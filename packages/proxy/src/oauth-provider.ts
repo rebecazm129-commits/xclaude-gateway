@@ -97,6 +97,9 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
 // (el placeholder 51703 ES la URI de loopback real) y todo el almacenamiento Keychain.
 export class LoginOAuthProvider extends KeychainOAuthProvider {
   redirectToAuthorization(authorizationUrl: URL): void {
+    process.stderr.write(
+      `\nxcg-proxy login: open this URL in your browser to authorize:\n\n  ${authorizationUrl.toString()}\n\n`,
+    );
     spawn('/usr/bin/open', [authorizationUrl.toString()], {
       stdio: 'ignore',
       detached: true,
