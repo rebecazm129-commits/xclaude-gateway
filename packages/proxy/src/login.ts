@@ -73,8 +73,22 @@ export async function runLogin({ url, name }: LoginArgs): Promise<void> {
   const transport = new StreamableHTTPClientTransport(new URL(url), { authProvider: provider });
   let timer: NodeJS.Timeout | undefined;
   try {
+    // start() crea el AbortController pero es no-op de auth en este SDK; quien
+    // dispara el 401 -> discovery -> DCR -> redirectToAuthorization es el primer
+    // send(). Mandamos un initialize: el provider abrirá el navegador / imprimirá
+    // la URL y luego el SDK lanza el UnauthorizedError esperado (REDIRECT).
     try {
       await transport.start();
+      await transport.send({
+        jsonrpc: '2.0',
+        id: 0,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-06-18',
+          capabilities: {},
+          clientInfo: { name: 'xcg-proxy-login', version: '0.0.0' },
+        },
+      });
     } catch (err) {
       // Tras abrir el navegador, el SDK lanza UnauthorizedError (REDIRECT): esperado.
       // Cualquier otra cosa (fallo de discovery/DCR) es un error real.
