@@ -14,7 +14,9 @@ import {
 import {
   resolveXcgPathFromMain,
   resolveXcgTargetPathFromMain,
+  runConfigAddRemote,
   runConfigInstall,
+  runConfigRemoveRemote,
   runConfigStatus,
   runConfigUninstall,
 } from './config-handlers.js';
@@ -69,6 +71,26 @@ ipcMain.handle('config:uninstall', (_event, mode: 'dry-run' | 'yes') => {
       xcgPath: resolveXcgPathFromMain(),
     },
     mode,
+  );
+});
+
+ipcMain.handle('config:add-remote', (_event, params: { name: string; url: string }) => {
+  return runConfigAddRemote(
+    {
+      configPath: CLAUDE_DESKTOP_CONFIG_PATH,
+      xcgPath: resolveXcgPathFromMain(),
+    },
+    params,
+  );
+});
+
+ipcMain.handle('config:remove-remote', (_event, params: { name: string }) => {
+  return runConfigRemoveRemote(
+    {
+      configPath: CLAUDE_DESKTOP_CONFIG_PATH,
+      xcgPath: resolveXcgPathFromMain(),
+    },
+    params,
   );
 });
 
