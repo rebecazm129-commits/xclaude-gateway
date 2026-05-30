@@ -2,7 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 import type { HealthResult, RepairResult, SelfTestReport } from '@xcg/shared';
 import type {
+  AddRemoteResult,
   InstallResult,
+  RemoveRemoteResult,
   StatusResult,
   UninstallResult,
 } from '@xcg/shared/config';
@@ -15,6 +17,10 @@ contextBridge.exposeInMainWorld('xcg', {
     ipcRenderer.invoke('config:install', mode),
   configUninstall: (mode: 'dry-run' | 'yes'): Promise<UninstallResult> =>
     ipcRenderer.invoke('config:uninstall', mode),
+  configAddRemote: (name: string, url: string): Promise<AddRemoteResult> =>
+    ipcRenderer.invoke('config:add-remote', { name, url }),
+  configRemoveRemote: (name: string): Promise<RemoveRemoteResult> =>
+    ipcRenderer.invoke('config:remove-remote', { name }),
   validateHealth: (): Promise<HealthResult> => ipcRenderer.invoke('system:health'),
   repairWraps: (): Promise<RepairResult> => ipcRenderer.invoke('system:repair-wraps'),
   runSelfTest: (): Promise<SelfTestReport> => ipcRenderer.invoke('system:self-test:run'),
