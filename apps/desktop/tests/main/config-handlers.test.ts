@@ -215,6 +215,7 @@ describe('config IPC handlers (Milestone 4 Phase 5.1 sub-step C2)', () => {
       };
       expect(written.mcpServers.filesystem.command).toBe(FAKE_XCG);
       expect(written.mcpServers.filesystem.args).toEqual([
+        'stdio',
         '--wrap', '/usr/local/bin/npx',
         '--name', 'filesystem',
         '--',
