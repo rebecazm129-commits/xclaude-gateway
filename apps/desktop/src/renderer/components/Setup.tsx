@@ -158,9 +158,9 @@ export function Setup({ status, onRefresh }: SetupProps): ReactElement {
           )}
 
           <div className={styles['introBlock']}>
-            <p className={styles['introHeading']}>Every MCP call, classified.</p>
-            <p className={styles['introDetail']}>6 detection categories. 4 severity levels.</p>
-            <p className={styles['introTag']}>Local. No network. No account.</p>
+            <p className={styles['introHeading']}>See what Claude does.</p>
+            <p className={styles['introDetail']}>Every tool call Claude makes, classified by risk. 6 categories, 4 severity levels.</p>
+            <p className={styles['introTag']}>Audited locally. No account.</p>
           </div>
 
           <div className={styles['actions']}>
