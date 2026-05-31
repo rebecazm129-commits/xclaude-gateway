@@ -91,7 +91,9 @@ export type IpcConfigError =
   | { ok: false; error: { kind: 'unexpected-shape'; detail: string } }
   | { ok: false; error: { kind: 'invalid-name'; detail: string } }
   | { ok: false; error: { kind: 'invalid-url'; detail: string } }
-  | { ok: false; error: { kind: 'name-exists'; detail: string } };
+  | { ok: false; error: { kind: 'name-exists'; detail: string } }
+  | { ok: false; error: { kind: 'login-failed'; detail: string } }
+  | { ok: false; error: { kind: 'login-invalid-args'; detail: string } };
 
 export interface IpcConfigSummary {
   wrappable: number;
@@ -145,8 +147,17 @@ export interface RemoveRemoteOk {
   outcome: 'wrote' | 'noop';
 }
 
+export interface ConnectOk {
+  ok: true;
+  op: 'connect';
+  configPath: string;
+  name: string;
+  outcome: 'wrote';
+}
+
 export type StatusResult = StatusOk | IpcConfigError;
 export type InstallResult = InstallOk | IpcConfigError;
 export type UninstallResult = UninstallOk | IpcConfigError;
 export type AddRemoteResult = AddRemoteOk | IpcConfigError;
 export type RemoveRemoteResult = RemoveRemoteOk | IpcConfigError;
+export type ConnectResult = ConnectOk | IpcConfigError;

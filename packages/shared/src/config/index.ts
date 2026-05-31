@@ -14,6 +14,8 @@ export type {
   AddRemoteOk,
   AddRemoteResult,
   ClaudeConfig,
+  ConnectOk,
+  ConnectResult,
   InstallOk,
   InstallResult,
   IpcConfigEntry,
