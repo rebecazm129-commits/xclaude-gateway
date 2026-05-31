@@ -114,7 +114,7 @@ export function RemoteConnectors(): ReactElement {
         <div className={styles['heading']}>
           <p className={styles['title']}>Remote connectors</p>
           <p className={styles['subtitle']}>
-            Connect a remote MCP server through xCLAUDE so its traffic is audited locally.
+            Connect a remote MCP server through xCLAUDE to audit every call Claude makes to it.
           </p>
         </div>
       </div>
