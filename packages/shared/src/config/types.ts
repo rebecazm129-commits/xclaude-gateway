@@ -155,9 +155,15 @@ export interface ConnectOk {
   outcome: 'wrote';
 }
 
+export interface IsConnectedOk {
+  ok: true;
+  connected: boolean;
+}
+
 export type StatusResult = StatusOk | IpcConfigError;
 export type InstallResult = InstallOk | IpcConfigError;
 export type UninstallResult = UninstallOk | IpcConfigError;
 export type AddRemoteResult = AddRemoteOk | IpcConfigError;
 export type RemoveRemoteResult = RemoveRemoteOk | IpcConfigError;
 export type ConnectResult = ConnectOk | IpcConfigError;
+export type IsConnectedResult = IsConnectedOk | IpcConfigError;

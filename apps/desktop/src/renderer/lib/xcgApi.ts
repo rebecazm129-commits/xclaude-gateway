@@ -3,6 +3,7 @@ import type {
   AddRemoteResult,
   ConnectResult,
   InstallResult,
+  IsConnectedResult,
   RemoveRemoteResult,
   StatusResult,
   UninstallResult,
@@ -17,6 +18,7 @@ export interface XcgApi {
   configAddRemote(name: string, url: string): Promise<AddRemoteResult>;
   configRemoveRemote(name: string): Promise<RemoveRemoteResult>;
   configConnect(name: string, url: string): Promise<ConnectResult>;
+  configIsConnected(name: string): Promise<IsConnectedResult>;
   validateHealth(): Promise<HealthResult>;
   repairWraps(): Promise<RepairResult>;
   runSelfTest(): Promise<SelfTestReport>;

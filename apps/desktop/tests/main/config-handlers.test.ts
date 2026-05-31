@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   runConfigAddRemote,
   runConfigInstall,
+  runConfigIsConnected,
   runConfigRemoveRemote,
   runConfigStatus,
   runConfigUninstall,
@@ -432,6 +433,58 @@ describe('config IPC handlers (Milestone 4 Phase 5.1 sub-step C2)', () => {
       writeConfig({ mcpServers: {} });
       const result = runConfigRemoveRemote(opts(), { name: 'notion' });
       expect(result).toMatchObject({ ok: true, op: 'remove-remote', outcome: 'noop' });
+    });
+  });
+
+  // --- runConfigIsConnected (Hito 6 Fase 5, Pieza B) ---
+
+  describe('runConfigIsConnected', () => {
+    const URL_OK = 'https://mcp.notion.com/mcp';
+
+    it('connected: true for our http connector', () => {
+      writeConfig({
+        mcpServers: {
+          notion: { command: FAKE_XCG, args: ['http', '--url', URL_OK, '--name', 'notion'] },
+        },
+      });
+      const result = runConfigIsConnected(opts(), { name: 'notion' });
+      expect(result).toEqual({ ok: true, connected: true });
+    });
+
+    it('connected: false for our stdio wrap (ours but not http)', () => {
+      writeConfig({
+        mcpServers: {
+          fs: { command: FAKE_XCG, args: ['stdio', '--wrap', '/usr/local/bin/npx', '--name', 'fs', '--', '-y', 'fs'] },
+        },
+      });
+      const result = runConfigIsConnected(opts(), { name: 'fs' });
+      expect(result).toEqual({ ok: true, connected: false });
+    });
+
+    it('connected: false for a foreign entry', () => {
+      writeConfig({
+        mcpServers: { notion: { command: 'npx', args: ['-y', 'foo'] } },
+      });
+      const result = runConfigIsConnected(opts(), { name: 'notion' });
+      expect(result).toEqual({ ok: true, connected: false });
+    });
+
+    it('connected: false when the key is absent', () => {
+      writeConfig({ mcpServers: { other: { command: 'npx' } } });
+      const result = runConfigIsConnected(opts(), { name: 'notion' });
+      expect(result).toEqual({ ok: true, connected: false });
+    });
+
+    it('config not-found: ok true, connected false (not an error)', () => {
+      const result = runConfigIsConnected(opts(), { name: 'notion' });
+      expect(result).toEqual({ ok: true, connected: false });
+    });
+
+    it('corrupt JSON: ok false, error.kind invalid-json', () => {
+      writeConfig('{not valid json}');
+      const result = runConfigIsConnected(opts(), { name: 'notion' });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.kind).toBe('invalid-json');
     });
   });
 });

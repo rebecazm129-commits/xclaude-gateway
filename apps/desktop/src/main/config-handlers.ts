@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import {
   addRemoteToConfig,
   applyWrap,
+  isAlreadyWrapped,
   parseConfig,
   removeRemoteFromConfig,
   STABLE_XCG_PROXY_PATH,
@@ -25,6 +26,7 @@ import {
   type IpcConfigEntry,
   type IpcConfigError,
   type IpcConfigSummary,
+  type IsConnectedResult,
   type ParseError,
   type RemoveRemoteResult,
   type StatusResult,
@@ -296,4 +298,39 @@ export function runConfigRemoveRemote(
   const wr = writeAtomic(opts.configPath, res.config);
   if (!wr.ok) return writeAtomicErrorToIpc(wr.error);
   return { ok: true, op: 'remove-remote', configPath: opts.configPath, name: params.name, outcome: 'wrote' };
+}
+
+// Narrows a raw mcpServers entry to the shape isAlreadyWrapped needs. Private
+// copy of the same guard in health-handlers.ts (one tiny guard is not worth a
+// cross-module export).
+function isWrapShape(value: unknown): value is { command: string; args: string[] } {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as { command?: unknown; args?: unknown };
+  if (typeof v.command !== 'string') return false;
+  if (!Array.isArray(v.args)) return false;
+  if (!v.args.every((a) => typeof a === 'string')) return false;
+  return true;
+}
+
+// Status query (not an operation): is there a remote (http) connector of ours
+// under mcpServers[name]? A missing config means unambiguously "not connected"
+// (connected:false, NOT an error) — unlike runConfigAddRemote, where not-found
+// is an error. Only a corrupt/unreadable config is reported as IpcConfigError.
+export function runConfigIsConnected(
+  opts: ConfigHandlerOptions,
+  params: { name: string },
+): IsConnectedResult {
+  const parsed = parseConfig(opts.configPath);
+  if (!parsed.ok) {
+    if (parsed.error.kind === 'not-found') return { ok: true, connected: false };
+    return parseErrorToIpc(parsed.error);
+  }
+  const raw = parsed.raw;
+  if (typeof raw !== 'object' || raw === null) return { ok: true, connected: false };
+  const mcpServers = (raw as { mcpServers?: unknown }).mcpServers;
+  if (typeof mcpServers !== 'object' || mcpServers === null) return { ok: true, connected: false };
+  const entry = (mcpServers as Record<string, unknown>)[params.name];
+  if (!isWrapShape(entry)) return { ok: true, connected: false };
+  const connected = isAlreadyWrapped(entry.command, entry.args) && entry.args[0] === 'http';
+  return { ok: true, connected };
 }

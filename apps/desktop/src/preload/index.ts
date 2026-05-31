@@ -5,6 +5,7 @@ import type {
   AddRemoteResult,
   ConnectResult,
   InstallResult,
+  IsConnectedResult,
   RemoveRemoteResult,
   StatusResult,
   UninstallResult,
@@ -24,6 +25,8 @@ contextBridge.exposeInMainWorld('xcg', {
     ipcRenderer.invoke('config:remove-remote', { name }),
   configConnect: (name: string, url: string): Promise<ConnectResult> =>
     ipcRenderer.invoke('config:connect', { name, url }),
+  configIsConnected: (name: string): Promise<IsConnectedResult> =>
+    ipcRenderer.invoke('config:is-connected', { name }),
   validateHealth: (): Promise<HealthResult> => ipcRenderer.invoke('system:health'),
   repairWraps: (): Promise<RepairResult> => ipcRenderer.invoke('system:repair-wraps'),
   runSelfTest: (): Promise<SelfTestReport> => ipcRenderer.invoke('system:self-test:run'),

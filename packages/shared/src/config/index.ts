@@ -21,6 +21,8 @@ export type {
   IpcConfigEntry,
   IpcConfigError,
   IpcConfigSummary,
+  IsConnectedOk,
+  IsConnectedResult,
   McpEntry,
   ParseError,
   ParseResult,

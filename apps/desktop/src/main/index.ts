@@ -16,6 +16,7 @@ import {
   resolveXcgTargetPathFromMain,
   runConfigAddRemote,
   runConfigInstall,
+  runConfigIsConnected,
   runConfigRemoveRemote,
   runConfigStatus,
   runConfigUninstall,
@@ -107,6 +108,16 @@ ipcMain.handle('config:connect', (_event, params: { name: string; url: string })
       url: params.url,
       timeoutMs: 360_000,
     },
+  );
+});
+
+ipcMain.handle('config:is-connected', (_event, params: { name: string }) => {
+  return runConfigIsConnected(
+    {
+      configPath: CLAUDE_DESKTOP_CONFIG_PATH,
+      xcgPath: resolveXcgPathFromMain(),
+    },
+    { name: params.name },
   );
 });
 
