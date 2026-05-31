@@ -1,6 +1,6 @@
 # xCLAUDE Gateway
 
-A local MCP traffic observer for Claude Desktop. Wraps your existing local MCP servers, records every JSON-RPC frame to a per-session log on your Mac, classifies sensitive patterns with severity tags, and never sends anything off your machine.
+A local MCP traffic observer for Claude Desktop. Wraps your existing local MCP servers, records every JSON-RPC frame to a per-session log on your Mac, and classifies sensitive patterns with severity tags. The audit happens locally; the traffic still reaches the MCP server it's addressed to.
 
 ## What it does
 
@@ -18,8 +18,9 @@ When you use Claude Desktop with local MCP servers (filesystem, custom scripts, 
 - **Captures the wrapped server's stderr output** as separate events.
 - **Shows the classified events in a Detections view** inside the `xCLAUDE Gateway.app` window, with severity and category filters.
 - **Auto-configures `claude_desktop_config.json`** from a Setup UI: one click installs the wrappers, another reverts them, with a backup of your original config preserved.
+- **Audits remote MCP servers you connect through it.** Connect a service (like Notion) via xCLAUDE instead of as a native Connector, and Claude's calls to it are bridged through your Mac, where every frame is recorded and classified — same as a local server.
 
-Everything runs on your Mac. No network calls. No telemetry. No external services.
+The audit runs entirely on your Mac: no telemetry, no account, no data sent to us. Note that wrapped servers still talk to their destination — a local MCP server to your filesystem, a remote connector to its provider over the network. xCLAUDE observes that traffic; it doesn't reroute or withhold it.
 
 ## What this proxy is, and what it is not
 
@@ -39,6 +40,7 @@ If you're looking for a tool that prevents Claude from making sensitive tool cal
 
 - **No active blocking of tool calls.** The detectors tag with severity; they do not stop the operation.
 - **PII detection is in progress** (transformers.js NER, validation pending).
+- **No auditing of native Connectors.** Services you connect with one click in Claude Desktop's settings are brokered through Anthropic's servers; their traffic never reaches your Mac, so xCLAUDE can't see it. To audit such a service, connect it through xCLAUDE instead (see "Remote connectors" below).
 - **No Gatekeeper-friendly install on machines other than the build machine.** The `.app` is signed with a Developer ID but not yet notarized by Apple. On the build machine it opens cleanly; on other Macs, right-click → Open is required the first time.
 
 These come in upcoming milestones. See the project roadmap for details.
@@ -49,18 +51,19 @@ xCLAUDE Gateway in its current state **covers a specific subset** of the Claude 
 
 ### What is covered
 
-- **Claude Desktop** with **local MCP servers** that are wrapped via the Setup UI (or manually in `claude_desktop_config.json` by pointing them to `xcg-proxy`). This is the single supported and validated use case.
+- **Claude Desktop** with **local MCP servers** that are wrapped via the Setup UI (or manually in `claude_desktop_config.json` by pointing them to `xcg-proxy`).
+- **Remote MCP servers connected through xCLAUDE** (Notion today; more to come). You connect them in the app's Remote Connectors panel, which signs you in and bridges the traffic through your machine for auditing.
 
 ### What is NOT covered
 
-- **Remote Connectors in Claude Desktop** (Notion, Google Drive, Canva, Gmail, Calendar, "Claude in Chrome", and similar). These use HTTP/SSE transport against remote servers. xCLAUDE Gateway intercepts stdio-based local MCP servers only. Intercepting remote Connectors would require breaking TLS, which is incompatible with the privacy-first goals of this project.
+- **Claude Desktop's native Connectors** (the ones you enable with one click in Settings). xCLAUDE cannot audit those: they are brokered through Anthropic's servers, so their traffic never reaches your machine — intercepting it would require breaking TLS, which this project will not do. **What xCLAUDE offers instead is its own audited path to the same services:** connect a remote MCP server *through* xCLAUDE (see "Remote connectors" below) and its traffic is bridged via your machine, where xCLAUDE can observe it. To audit a service this way, connect it through xCLAUDE rather than as a native Connector.
 - **Claude Code** (the CLI). It is a separate MCP client with its own configuration. The wrapper itself might work technically if pointed there, but this has not been tested or documented.
 - **Cowork.** Same reasoning as Claude Code: separate client, separate configuration, not currently tested.
 - **Anthropic's API directly** (any SDK integration). No MCP client model applies; out of scope by design.
 - **Skills** (markdown files used by the model as context). They are not JSON-RPC traffic; they are not interceptable by a stdio proxy. The proxy does capture any tool calls a skill ends up making, but not the skill content itself.
 - **Claude's native tools** (web search, computer use, code execution, etc.). These are internal model tools, not MCP servers. They never traverse the proxy.
 
-If you're using Claude Desktop with local MCP servers, you're in scope. If your main use is anything else, this tool will not give you what you expect today.
+If you're using Claude Desktop with local MCP servers, or you connect a remote service through xCLAUDE, you're in scope. If your main use is anything else, this tool will not give you what you expect today.
 
 ## Requirements
 
@@ -81,6 +84,19 @@ Open `xCLAUDE Gateway.app`. The Setup tab shows your current `claude_desktop_con
 The first time you click Install, xCLAUDE Gateway makes a one-time backup of your config at `~/Library/Application Support/Claude/claude_desktop_config.json.bak` which is never overwritten by subsequent operations.
 
 If you prefer manual configuration, see "Manual configuration" below.
+
+## Remote connectors
+
+xCLAUDE can audit remote MCP services (starting with Notion) by acting as your connection to them, instead of Claude Desktop connecting directly.
+
+To audit a service this way:
+
+1. If you already have it enabled as a native Connector in Claude Desktop, disconnect it there first. xCLAUDE audits its own bridged connection, not the native one.
+2. In xCLAUDE, open the Setup tab and find the service under **Remote connectors**. Click **Connect**.
+3. A browser window opens to authorize the service (standard OAuth). Approve it; the tab will say the login is complete.
+4. Restart Claude Desktop. Claude now reaches the service through xCLAUDE, and every call is recorded and classified like any other MCP traffic.
+
+Your authorization token is stored in the macOS Keychain, not in plain text. xCLAUDE never sees your password. The traffic still reaches the provider — xCLAUDE observes it on its way through, it does not withhold or reroute it.
 
 ## Verification
 
@@ -175,6 +191,21 @@ After (wrapped through xCLAUDE Gateway):
 ```
 
 The path under `~/Library/Application Support/xCLAUDE Gateway/bin/xcg-proxy` is a stable symlink created by the `.app` on first launch; it resurfaces correctly after the `.app` is replaced by an updated version. Arguments after `--` are passed verbatim to the wrapped server. Use `--name` to set a label that identifies this MCP in the logs and in the dashboard.
+
+For a remote MCP server, the wrapped entry uses the `http` subcommand instead, with the service URL passed as an argument:
+
+```json
+{
+  "mcpServers": {
+    "notion": {
+      "command": "/Users/<you>/Library/Application Support/xCLAUDE Gateway/bin/xcg-proxy",
+      "args": ["http", "--url", "https://mcp.notion.com/mcp", "--name", "notion"]
+    }
+  }
+}
+```
+
+You must run the OAuth login once before this works — the Remote connectors panel does this for you.
 
 Restart Claude Desktop after editing the config.
 
