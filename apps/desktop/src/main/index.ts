@@ -24,6 +24,8 @@ import { runValidateHealth, runRepairWraps } from './health-handlers.js';
 import { readDetections } from './detection-reader.js';
 import { spawnWrapper, readDetectionsFromAudit, resolveNpxPath } from './selftest-runner.js';
 import { runSelfTest } from './selftest-handler.js';
+import { runConfigConnect } from './connect-handler.js';
+import { runLoginProcess } from './login-runner.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -91,6 +93,20 @@ ipcMain.handle('config:remove-remote', (_event, params: { name: string }) => {
       xcgPath: resolveXcgPathFromMain(),
     },
     params,
+  );
+});
+
+ipcMain.handle('config:connect', (_event, params: { name: string; url: string }) => {
+  return runConfigConnect(
+    { login: runLoginProcess },
+    {
+      configPath: CLAUDE_DESKTOP_CONFIG_PATH,
+      xcgPath: resolveXcgPathFromMain(),
+      proxyBinPath: resolveXcgTargetPathFromMain(),
+      name: params.name,
+      url: params.url,
+      timeoutMs: 360_000,
+    },
   );
 });
 

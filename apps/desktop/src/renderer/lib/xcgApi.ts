@@ -1,6 +1,7 @@
 import type { HealthResult, RepairResult, SelfTestReport } from '@xcg/shared';
 import type {
   AddRemoteResult,
+  ConnectResult,
   InstallResult,
   RemoveRemoteResult,
   StatusResult,
@@ -15,6 +16,7 @@ export interface XcgApi {
   configUninstall(mode: 'dry-run' | 'yes'): Promise<UninstallResult>;
   configAddRemote(name: string, url: string): Promise<AddRemoteResult>;
   configRemoveRemote(name: string): Promise<RemoveRemoteResult>;
+  configConnect(name: string, url: string): Promise<ConnectResult>;
   validateHealth(): Promise<HealthResult>;
   repairWraps(): Promise<RepairResult>;
   runSelfTest(): Promise<SelfTestReport>;
