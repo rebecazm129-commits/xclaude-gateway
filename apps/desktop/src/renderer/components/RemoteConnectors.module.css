@@ -1,6 +1,6 @@
 .container {
   background: var(--kraft-surface);
-  border: var(--kraft-hairline) solid var(--kraft-border);
+  border: 1.5px solid var(--kraft-accent);
   border-radius: var(--kraft-radius-md);
   padding: 18px 20px;
   display: flex;
