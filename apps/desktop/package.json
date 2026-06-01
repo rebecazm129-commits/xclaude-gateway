@@ -1,6 +1,6 @@
 {
   "name": "@xcg/desktop",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Local-first MCP audit gateway for Claude Desktop",
   "author": {
