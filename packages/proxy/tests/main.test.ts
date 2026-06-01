@@ -59,6 +59,11 @@ describe('xcg-proxy main(argv) dispatcher (Hito 6 sub-step 2.b)', () => {
     expect(main(['stdio', '--unknown'])).toBe(2);
   });
 
+  it('legacy --wrap form dispatches to stdio (back-compat)', () => {
+    expect(main(['--wrap', '/bin/echo'])).toBe(2);
+    expect(stderrChunks.join('')).toContain('--name is required');
+  });
+
   // Happy path (`stdio --wrap X --name Y -- args`) is NOT unit-tested: it
   // would invoke runStdio which spawns a child process and attaches event
   // listeners. The smoke (npm) covers it: see sub-step 2.a verification.

@@ -588,8 +588,18 @@ function dieUnknownSubcommand(arg: string | undefined): number {
 }
 
 export function main(argv: string[]): number | null {
-  const subcommand = argv[0];
-  const rest = argv.slice(1);
+  // Back-compat: pre-2.b wrap entries used the bare `--wrap ...` form with no
+  // subcommand. Treat a leading `--wrap` as the stdio subcommand so config
+  // entries written by old installs keep working after an upgrade (Hito 6).
+  let normalized = argv;
+  if (argv[0] === '--wrap') {
+    process.stderr.write(
+      'xcg-proxy: legacy --wrap invocation detected; please reinstall via xCLAUDE Gateway to migrate this entry.\n',
+    );
+    normalized = ['stdio', ...argv];
+  }
+  const subcommand = normalized[0];
+  const rest = normalized.slice(1);
   switch (subcommand) {
     case 'stdio':
       return runStdioMain(rest);
