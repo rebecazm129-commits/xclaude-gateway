@@ -2,4 +2,14 @@
 # Launcher xcg-config. Delegates to _xcg-launcher (shared with xcg-proxy).
 # See _xcg-launcher for path resolution and dev/packaged detection logic.
 
-exec "$(dirname "$0")/_xcg-launcher" xcg-config "$@"
+# Resolve $0 through symlinks (e.g. the stable symlink) before computing DIR,
+# so _xcg-launcher is found next to the REAL script, not next to the symlink.
+SELF="$0"
+while [ -L "$SELF" ]; do
+  TARGET="$(readlink "$SELF")"
+  case "$TARGET" in
+    /*) SELF="$TARGET" ;;
+    *)  SELF="$(dirname "$SELF")/$TARGET" ;;
+  esac
+done
+exec "$(dirname "$SELF")/_xcg-launcher" xcg-config "$@"
