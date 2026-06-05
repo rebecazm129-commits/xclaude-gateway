@@ -12,6 +12,7 @@ interface CatalogEntry {
 
 const CONNECTORS: readonly CatalogEntry[] = [
   { label: 'Notion', name: 'notion', url: 'https://mcp.notion.com/mcp' },
+  { label: 'Linear', name: 'linear', url: 'https://mcp.linear.app/mcp' },
 ];
 
 // Map a ConnectResult to a user-facing banner. NOTE: success says "Added" /
