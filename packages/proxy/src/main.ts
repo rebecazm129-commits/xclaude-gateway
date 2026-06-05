@@ -600,7 +600,7 @@ export function main(argv: string[]): number | null {
   let normalized = argv;
   if (argv[0] === '--wrap') {
     process.stderr.write(
-      'xcg-proxy: legacy --wrap invocation detected; please reinstall via xCLAUDE Gateway to migrate this entry.\n',
+      'xcg-proxy: legacy --wrap invocation detected; still supported via a compatibility shim and may be removed in a future release.\n',
     );
     normalized = ['stdio', ...argv];
   }
