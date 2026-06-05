@@ -74,6 +74,9 @@
 
 .connectButton {
   flex-shrink: 0;
+  min-width: 110px;
+  text-align: center;
+  white-space: nowrap;
   background: var(--kraft-accent);
   color: #ffffff;
   border: none;
