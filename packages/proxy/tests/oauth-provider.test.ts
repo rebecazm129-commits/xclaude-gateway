@@ -34,7 +34,7 @@ vi.mock('node:child_process', () => ({
 }));
 
 // Import AFTER the mock (vitest hoists vi.mock regardless, but order is clearer).
-import { KeychainOAuthProvider, LoginOAuthProvider, ReauthRequiredError } from '../src/oauth-provider.js';
+import { KeychainOAuthProvider, LoginOAuthProvider, ReauthRequiredError, RECENT_REFRESH_MS } from '../src/oauth-provider.js';
 import type { OAuthClientInformationFull, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 
 describe('KeychainOAuthProvider', () => {
@@ -156,11 +156,26 @@ describe('KeychainOAuthProvider', () => {
       expect(mocks.store.has('notion:verifier')).toBe(false);
     });
 
-    it("'tokens' deletes only tokens", async () => {
+    it("'tokens' deletes only tokens (outside the recent-refresh window)", async () => {
+      vi.useFakeTimers();
+      try {
+        const p = new KeychainOAuthProvider('notion');
+        await seedAll(p);
+        vi.advanceTimersByTime(RECENT_REFRESH_MS + 1_000); // past the guard window
+        await p.invalidateCredentials('tokens');
+        expect(mocks.store.has('notion:tokens')).toBe(false);
+        expect(mocks.store.has('notion:client')).toBe(true);
+        expect(mocks.store.has('notion:verifier')).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("'tokens' within the recent-refresh window keeps the shared token (Notion refresh-rotation race)", async () => {
       const p = new KeychainOAuthProvider('notion');
-      await seedAll(p);
-      await p.invalidateCredentials('tokens');
-      expect(mocks.store.has('notion:tokens')).toBe(false);
+      await seedAll(p); // saveTokens sets lastTokensSaveAt = now
+      await p.invalidateCredentials('tokens'); // dentro de 10s → guard, no borra
+      expect(mocks.store.has('notion:tokens')).toBe(true);
       expect(mocks.store.has('notion:client')).toBe(true);
       expect(mocks.store.has('notion:verifier')).toBe(true);
     });
@@ -247,16 +262,33 @@ describe('KeychainOAuthProvider', () => {
       expect(after - before).toBe(0);
     });
 
-    it("invalidateCredentials('tokens') clears the cache: next tokens() returns undefined without re-reading", async () => {
+    it("invalidateCredentials('tokens') outside the recent-refresh window clears cache: next tokens() returns undefined without re-reading", async () => {
+      vi.useFakeTimers();
+      try {
+        const p = new KeychainOAuthProvider('notion');
+        await p.saveTokens({ access_token: 'will-be-gone', token_type: 'Bearer' });
+        vi.advanceTimersByTime(RECENT_REFRESH_MS + 1_000);
+        await p.invalidateCredentials('tokens');
+        const before = mocks.getCalls;
+        const t = await p.tokens();
+        const after = mocks.getCalls;
+        expect(t).toBeUndefined();
+        expect(mocks.store.has('notion:tokens')).toBe(false);
+        expect(after - before).toBe(0); // cache cleared to {v:undefined}, no Keychain read needed
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("'tokens' guard resets the cache so the next tokens() re-reads the fresh shared token", async () => {
       const p = new KeychainOAuthProvider('notion');
-      await p.saveTokens({ access_token: 'will-be-gone', token_type: 'Bearer' });
-      await p.invalidateCredentials('tokens');
+      await p.saveTokens({ access_token: 'fresh', token_type: 'Bearer' });
+      await p.invalidateCredentials('tokens'); // within 10s → cache=null, no delete
       const before = mocks.getCalls;
-      const t = await p.tokens();
+      const t = await p.tokens();              // cache null → one keychainGet, returns fresh token
       const after = mocks.getCalls;
-      expect(t).toBeUndefined();
-      expect(mocks.store.has('notion:tokens')).toBe(false);
-      expect(after - before).toBe(0); // cache cleared to {v:undefined}, no Keychain read needed
+      expect(t).toEqual({ access_token: 'fresh', token_type: 'Bearer' });
+      expect(after - before).toBe(1);
     });
 
     it("invalidateCredentials('all') also clears the tokens cache", async () => {

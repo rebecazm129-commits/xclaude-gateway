@@ -8,6 +8,8 @@ import type {
   OAuthTokens,
 } from '@modelcontextprotocol/sdk/shared/auth.js';
 
+export const RECENT_REFRESH_MS = 10_000;
+
 export class ReauthRequiredError extends Error {
   constructor(public readonly mcp: string) {
     super(`interactive login required for "${mcp}" — run the xCLAUDE login flow`);
@@ -25,6 +27,7 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
   // clientInformation y codeVerifier NO se cachean: solo se leen durante auth(),
   // no por-request, así que el spawn ocasional es aceptable.
   private tokensCache: { v: OAuthTokens | undefined } | null = null;
+  private lastTokensSaveAt = 0;
 
   constructor(private readonly mcp: string) {}
 
@@ -66,6 +69,7 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
   async saveTokens(tokens: OAuthTokens): Promise<void> {
     await keychainSet(this.acct('tokens'), JSON.stringify(tokens));
     this.tokensCache = { v: tokens };
+    this.lastTokensSaveAt = Date.now();
   }
 
   async saveCodeVerifier(verifier: string): Promise<void> {
@@ -83,6 +87,14 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
   }
 
   async invalidateCredentials(scope: 'all' | 'client' | 'tokens' | 'verifier' | 'discovery'): Promise<void> {
+    if (scope === 'tokens' && Date.now() - this.lastTokensSaveAt < RECENT_REFRESH_MS) {
+      // Notion rota refresh tokens: en una ráfaga concurrente al expirar, un refresh
+      // "perdedor" recibe invalid_grant aunque otro acabe de refrescar con éxito.
+      // Si hubo saveTokens reciente, NO borramos el token compartido; reseteamos la
+      // caché para que el reintento del SDK relee el token fresco y se autorice.
+      this.tokensCache = null;
+      return;
+    }
     if (scope === 'all' || scope === 'tokens') {
       await keychainDelete(this.acct('tokens'));
       this.tokensCache = { v: undefined };
