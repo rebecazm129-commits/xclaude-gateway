@@ -10,7 +10,7 @@ import type {
   EnrichmentSink,
   RpcId,
 } from '../types.js';
-import type { WorkerJobRequest, WorkerJobResponse } from './worker.js';
+import type { WorkerJobRequest, WorkerJobResponse } from './worker-pure.js';
 
 // Razon por la que un job NER se descarta. Exportado para que events.ts tipe
 // la variante proxy.ner_dropped sin duplicar el literal (paralelo a

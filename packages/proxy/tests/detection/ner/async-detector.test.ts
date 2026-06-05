@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { AsyncDetectorNer } from '../../../src/detection/ner/async-detector.js';
 import type { DetectorInput } from '../../../src/detection/types.js';
-import type { WorkerJobResponse } from '../../../src/detection/ner/worker.js';
+import type { WorkerJobResponse } from '../../../src/detection/ner/worker-pure.js';
 
 function fakeChild() {
   const ee = new EventEmitter() as EventEmitter & {

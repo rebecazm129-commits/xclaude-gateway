@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   mapTokensToFindings,
   stripBio,
-} from '../../../src/detection/ner/worker.js';
+} from '../../../src/detection/ner/worker-pure.js';
 
 describe('stripBio', () => {
   it('strips B- prefix', () => {
