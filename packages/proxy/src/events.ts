@@ -91,6 +91,17 @@ export type EventBody =
       pendingDropped: number;
     }
   | {
+      // Ciclo de vida del token OAuth (solo runtime http). 'refreshed': el SDK
+      // refrescó y persistió (rotated = el refresh_token cambió). 'race_recovered':
+      // la recency-guard evitó borrar el token compartido ante un invalid_grant de
+      // carrera. 'invalidated': borrado real del token (grant muerto); scope
+      // distingue invalid_grant ('tokens') de invalid_client ('all').
+      type: 'proxy.token';
+      event: 'refreshed' | 'race_recovered' | 'invalidated';
+      rotated?: boolean;
+      scope?: 'tokens' | 'all';
+    }
+  | {
       type: 'mcp.request';
       direction: Direction;
       rpcId: RpcId;

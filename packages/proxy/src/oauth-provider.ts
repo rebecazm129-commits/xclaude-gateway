@@ -10,6 +10,11 @@ import type {
 
 export const RECENT_REFRESH_MS = 10_000;
 
+export type TokenEvent =
+  | { event: 'refreshed'; rotated: boolean }
+  | { event: 'race_recovered' }
+  | { event: 'invalidated'; scope: 'tokens' | 'all' };
+
 export class ReauthRequiredError extends Error {
   constructor(public readonly mcp: string) {
     super(`interactive login required for "${mcp}" — run the xCLAUDE login flow`);
@@ -29,7 +34,10 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
   private tokensCache: { v: OAuthTokens | undefined } | null = null;
   private lastTokensSaveAt = 0;
 
-  constructor(private readonly mcp: string) {}
+  constructor(
+    private readonly mcp: string,
+    private readonly onEvent?: (e: TokenEvent) => void,
+  ) {}
 
   private acct(kind: 'tokens' | 'client' | 'verifier'): string {
     return `${this.mcp}:${kind}`;
@@ -67,9 +75,11 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
+    const prev = this.tokensCache?.v?.refresh_token;
     await keychainSet(this.acct('tokens'), JSON.stringify(tokens));
     this.tokensCache = { v: tokens };
     this.lastTokensSaveAt = Date.now();
+    this.onEvent?.({ event: 'refreshed', rotated: prev !== undefined && prev !== tokens.refresh_token });
   }
 
   async saveCodeVerifier(verifier: string): Promise<void> {
@@ -93,11 +103,13 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
       // Si hubo saveTokens reciente, NO borramos el token compartido; reseteamos la
       // caché para que el reintento del SDK relee el token fresco y se autorice.
       this.tokensCache = null;
+      this.onEvent?.({ event: 'race_recovered' });
       return;
     }
     if (scope === 'all' || scope === 'tokens') {
       await keychainDelete(this.acct('tokens'));
       this.tokensCache = { v: undefined };
+      this.onEvent?.({ event: 'invalidated', scope });
     }
     if (scope === 'all' || scope === 'client') await keychainDelete(this.acct('client'));
     if (scope === 'all' || scope === 'verifier') await keychainDelete(this.acct('verifier'));

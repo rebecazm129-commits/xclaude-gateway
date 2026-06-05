@@ -343,7 +343,9 @@ async function runHttp(opts: HttpArgs): Promise<void> {
   // Auth provider always attached (probe 4.b.2 confirma: si el remoto no pide
   // auth, el SDK no invoca auth() → tokens() devuelve undefined cacheado y
   // ningún Authorization header se envía; comportamiento token-less limpio).
-  const authProvider = new KeychainOAuthProvider(name);
+  const authProvider = new KeychainOAuthProvider(name, (e) => {
+    sink.emit({ type: 'proxy.token', ...e });
+  });
   const isAuthError = (e: unknown): boolean =>
     e instanceof ReauthRequiredError || e instanceof UnauthorizedError;
 
