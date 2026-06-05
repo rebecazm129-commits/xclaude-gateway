@@ -64,7 +64,7 @@ export type EventBody =
     }
   | {
       type: 'proxy.shutdown';
-      reason: 'child_exited' | 'parent_closed_stdin' | 'signal_received' | 'remote_closed';
+      reason: 'child_exited' | 'parent_closed_stdin' | 'signal_received' | 'remote_closed' | 'auth_failed';
       exitCode: number;
     }
   | {

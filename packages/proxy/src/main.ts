@@ -375,9 +375,9 @@ async function runHttp(opts: HttpArgs): Promise<void> {
           message: err instanceof Error ? err.message : String(err),
         });
         // fail-fast: error de auth en runtime = re-login necesario (runtime no
-        // puede hacerlo). Cerrar la sesión para que el cliente no espere 60s.
-        if (shuttingDown === null) shuttingDown = tearDownTail(EXIT_GENERIC_ERROR);
-        void shuttingDown;
+        // puede hacerlo). Cerrar la sesión (proxy.shutdown reason=auth_failed)
+        // para que el cliente no espere 60s.
+        void runHttpShutdown('auth_failed');
       } else {
         process.stderr.write(`xcg-proxy: forward to remote failed: ${err instanceof Error ? err.message : String(err)}\n`);
       }

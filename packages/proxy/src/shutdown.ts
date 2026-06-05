@@ -15,7 +15,8 @@ export type ShutdownReason =
   | 'parent_closed_stdin'
   | 'signal_received'
   | 'child_exited'
-  | 'remote_closed';
+  | 'remote_closed'
+  | 'auth_failed';
 
 /** Ventana de espera entre child.stdin.end() y el envío de SIGTERM. */
 export const SHUTDOWN_GRACE_MS = 2000;
@@ -79,6 +80,9 @@ export function computeExitCode(
       return 128 + signalToNumber(childExitInfo.signal);
     }
     return childExitInfo.code ?? 0;
+  }
+  if (reason === 'auth_failed') {
+    return 1;
   }
   return neededSigkill ? 1 : 0;
 }
