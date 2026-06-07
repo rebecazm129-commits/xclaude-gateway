@@ -1,10 +1,10 @@
 # xCLAUDE Gateway
 
-A local MCP traffic observer for Claude Desktop. Wraps your existing local MCP servers, records every JSON-RPC frame to a per-session log on your Mac, and classifies sensitive patterns with severity tags. The audit happens locally; the traffic still reaches the MCP server it's addressed to.
+A local audit layer for Claude Desktop's MCP traffic. It sits between Claude Desktop and the services it talks to — remote connectors like Notion and Linear, or the local MCP servers you already run — records every JSON-RPC frame to a per-session log on your Mac, and classifies sensitive patterns with severity tags. The audit happens locally; the traffic still reaches the service it's addressed to.
 
 ## What it does
 
-When you use Claude Desktop with local MCP servers (filesystem, custom scripts, anything you launch via `npx` or a local binary), xCLAUDE Gateway sits transparently between Claude Desktop and each MCP server you choose to wrap:
+Whether you connect a remote service through xCLAUDE (Notion, Linear, with more on the way) or wrap a local MCP server you already run (filesystem, custom scripts, anything you launch via `npx` or a local binary), xCLAUDE Gateway sits transparently between Claude Desktop and that server:
 
 - **Wraps your existing MCP servers transparently** — no changes to the servers themselves.
 - **Records every JSON-RPC frame** (requests, responses, notifications) to a per-session JSONL log under `~/Library/Application Support/xCLAUDE Gateway/wrappers/`.
@@ -52,7 +52,7 @@ xCLAUDE Gateway in its current state **covers a specific subset** of the Claude 
 ### What is covered
 
 - **Claude Desktop** with **local MCP servers** that are wrapped via the Setup UI (or manually in `claude_desktop_config.json` by pointing them to `xcg-proxy`).
-- **Remote MCP servers connected through xCLAUDE** (Notion today; more to come). You connect them in the app's Remote Connectors panel, which signs you in and bridges the traffic through your machine for auditing.
+- **Remote MCP servers connected through xCLAUDE** (Notion and Linear today; more on the way). You connect them in the app's Remote Connectors panel, which signs you in and bridges the traffic through your machine for auditing.
 
 ### What is NOT covered
 
@@ -87,7 +87,7 @@ If you prefer manual configuration, see "Manual configuration" below.
 
 ## Remote connectors
 
-xCLAUDE can audit remote MCP services (starting with Notion) by acting as your connection to them, instead of Claude Desktop connecting directly.
+xCLAUDE can audit remote MCP services (Notion and Linear today, with more on the way) by acting as your connection to them, instead of Claude Desktop connecting directly.
 
 To audit a service this way:
 
@@ -204,6 +204,8 @@ For a remote MCP server, the wrapped entry uses the `http` subcommand instead, w
   }
 }
 ```
+
+The same pattern applies to other remote connectors — for example Linear, with `"--url", "https://mcp.linear.app/mcp", "--name", "linear"`.
 
 You must run the OAuth login once before this works — the Remote connectors panel does this for you.
 
