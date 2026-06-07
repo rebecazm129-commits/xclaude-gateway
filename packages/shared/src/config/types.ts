@@ -36,17 +36,31 @@ export type SkipReason =
   | 'no-command'        // remote/url entry or malformed: no `command` field
   | 'already-wrapped';  // command already resolves to xcg-proxy (idempotent)
 
+// Transport of the entry's underlying server, derived from its on-disk shape
+// (additive enrichment; null = underivable, i.e. no-command entries).
+export type EntryTransport = 'http' | 'stdio';
+
 // One decision per mcpServers entry. Discriminated by `kind`.
+// transport/endpoint are derived, optional enrichment (never consumed by the
+// writer, which only reads `original`):
+//   already-wrapped http   → transport 'http',  endpoint = remote url
+//   already-wrapped stdio  → transport 'stdio', endpoint = wrapped command
+//   wrappable (unwrapped)  → transport 'stdio', endpoint = command
+//   no-command             → transport null,    endpoint null
 export type WrapPlanEntry =
   | {
       kind: 'wrappable';
       name: string;          // the mcpServers key
       original: McpEntry;    // entry as read, untouched
+      transport?: EntryTransport | null;
+      endpoint?: string | null;
     }
   | {
       kind: 'skipped';
       name: string;
       reason: SkipReason;
+      transport?: EntryTransport | null;
+      endpoint?: string | null;
     };
 
 // Result of reading + classifying the config. Descriptive only.
@@ -102,8 +116,8 @@ export interface IpcConfigSummary {
 }
 
 export type IpcConfigEntry =
-  | { kind: 'wrappable'; name: string }
-  | { kind: 'skipped'; name: string; reason: SkipReason };
+  | { kind: 'wrappable'; name: string; transport?: EntryTransport | null; endpoint?: string | null }
+  | { kind: 'skipped'; name: string; reason: SkipReason; transport?: EntryTransport | null; endpoint?: string | null };
 
 export interface StatusOk {
   ok: true;

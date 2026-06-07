@@ -42,9 +42,11 @@ describe('parseConfig — read-only classifier (Milestone 4 Phase 1)', () => {
         kind: 'wrappable',
         name: 'fs',
         original: { command: '/usr/local/bin/npx', args: ['@mcpf/filesystem', '/x'] },
+        transport: 'stdio',
+        endpoint: '/usr/local/bin/npx',
       },
-      { kind: 'skipped', name: 'wrapped', reason: 'already-wrapped' },
-      { kind: 'skipped', name: 'remote', reason: 'no-command' },
+      { kind: 'skipped', name: 'wrapped', reason: 'already-wrapped', transport: 'stdio', endpoint: 'npx' },
+      { kind: 'skipped', name: 'remote', reason: 'no-command', transport: null, endpoint: null },
     ]);
   });
 
@@ -64,6 +66,8 @@ describe('parseConfig — read-only classifier (Milestone 4 Phase 1)', () => {
       kind: 'skipped',
       name: 'wrapped_new',
       reason: 'already-wrapped',
+      transport: 'stdio',
+      endpoint: 'npx',
     });
   });
 
@@ -85,6 +89,8 @@ describe('parseConfig — read-only classifier (Milestone 4 Phase 1)', () => {
       kind: 'wrappable',
       name: 'g',
       original: { command: 'node', args: ['srv.js'], env: { TOKEN: 'abc' }, cwd: '/work' },
+      transport: 'stdio',
+      endpoint: 'node',
     });
   });
 
@@ -148,6 +154,8 @@ describe('parseConfig — read-only classifier (Milestone 4 Phase 1)', () => {
       kind: 'wrappable',
       name: 'tricky',
       original: { command: '/some/where/xcg-proxy', args: ['serve', '--port', '9'] },
+      transport: 'stdio',
+      endpoint: '/some/where/xcg-proxy',
     });
   });
 
@@ -156,7 +164,7 @@ describe('parseConfig — read-only classifier (Milestone 4 Phase 1)', () => {
     const r = parseConfig(path);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.plan.entries[0]).toEqual({ kind: 'skipped', name: 'bad', reason: 'no-command' });
+    expect(r.plan.entries[0]).toEqual({ kind: 'skipped', name: 'bad', reason: 'no-command', transport: null, endpoint: null });
   });
 
   it('a remote http-bridge entry is detected as already-wrapped (Hito 6 Phase 5)', () => {
@@ -171,7 +179,13 @@ describe('parseConfig — read-only classifier (Milestone 4 Phase 1)', () => {
     const r = parseConfig(path);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.plan.entries[0]).toEqual({ kind: 'skipped', name: 'notion', reason: 'already-wrapped' });
+    expect(r.plan.entries[0]).toEqual({
+      kind: 'skipped',
+      name: 'notion',
+      reason: 'already-wrapped',
+      transport: 'http',
+      endpoint: 'https://mcp.notion.com/mcp',
+    });
   });
 
   it('xcg-proxy + http but incomplete form: wrappable (no false positive)', () => {
@@ -187,6 +201,8 @@ describe('parseConfig — read-only classifier (Milestone 4 Phase 1)', () => {
       kind: 'wrappable',
       name: 'partial',
       original: { command: '/x/xcg-proxy', args: ['http', '--url', 'https://x'] },
+      transport: 'stdio',
+      endpoint: '/x/xcg-proxy',
     });
   });
 
@@ -203,7 +219,68 @@ describe('parseConfig — read-only classifier (Milestone 4 Phase 1)', () => {
       kind: 'wrappable',
       name: 'other',
       original: { command: '/usr/bin/other', args: ['http', '--url', 'https://x', '--name', 'other'] },
+      transport: 'stdio',
+      endpoint: '/usr/bin/other',
     });
+  });
+});
+
+describe('classifyEntry transport/endpoint enrichment (Connectors Fase 1)', () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(osTmpdir(), 'xcg-config-test-'));
+  });
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  function entryFor(entry: object): { transport?: string | null; endpoint?: string | null } {
+    const p = join(tmp, 'claude_desktop_config.json');
+    writeFileSync(p, JSON.stringify({ mcpServers: { e: entry } }));
+    const r = parseConfig(p);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error('unreachable');
+    return r.plan.entries[0] as { transport?: string | null; endpoint?: string | null };
+  }
+
+  it('already-wrapped http: transport http, endpoint = the remote url', () => {
+    const e = entryFor({
+      command: '/x/xcg-proxy',
+      args: ['http', '--url', 'https://mcp.linear.app/mcp', '--name', 'linear'],
+    });
+    expect(e.transport).toBe('http');
+    expect(e.endpoint).toBe('https://mcp.linear.app/mcp');
+  });
+
+  it('already-wrapped stdio: transport stdio, endpoint = the wrapped command', () => {
+    const e = entryFor({
+      command: '/x/xcg-proxy',
+      args: ['stdio', '--wrap', '/usr/local/bin/npx', '--name', 'fs', '--', '-y', '@mcpf/fs'],
+    });
+    expect(e.transport).toBe('stdio');
+    expect(e.endpoint).toBe('/usr/local/bin/npx');
+  });
+
+  it('already-wrapped legacy --wrap: transport stdio, endpoint = the wrapped command', () => {
+    const e = entryFor({
+      command: '/x/xcg-proxy',
+      args: ['--wrap', '/usr/local/bin/npx', '--name', 'fs', '--', '-y', '@mcpf/fs'],
+    });
+    expect(e.transport).toBe('stdio');
+    expect(e.endpoint).toBe('/usr/local/bin/npx');
+  });
+
+  it('wrappable (unwrapped local): transport stdio, endpoint = command', () => {
+    const e = entryFor({ command: 'node', args: ['server.js'] });
+    expect(e.transport).toBe('stdio');
+    expect(e.endpoint).toBe('node');
+  });
+
+  it('no-command: transport null, endpoint null', () => {
+    const e = entryFor({ url: 'https://example.com/sse' });
+    expect(e.transport).toBeNull();
+    expect(e.endpoint).toBeNull();
   });
 });
 

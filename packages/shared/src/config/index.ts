@@ -5,6 +5,8 @@
 // analogous pattern with symlink helpers.
 
 export { isAlreadyWrapped, isSafeRemoteName, parseConfig } from './parser.js';
+export { toConnectors } from './connectors.js';
+export type { Connector } from './connectors.js';
 export { addRemoteToConfig, applyWrap, removeRemoteFromConfig, unwrap } from './transform.js';
 export type { AddRemoteToConfigResult, RemoveRemoteFromConfigResult } from './transform.js';
 export { CLAUDE_DESKTOP_CONFIG_PATH, STABLE_XCG_PROXY_PATH } from './paths.js';
@@ -16,6 +18,7 @@ export type {
   ClaudeConfig,
   ConnectOk,
   ConnectResult,
+  EntryTransport,
   InstallOk,
   InstallResult,
   IpcConfigEntry,

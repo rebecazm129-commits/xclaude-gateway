@@ -77,12 +77,21 @@ export function isAlreadyWrapped(command: string, args: readonly string[]): bool
 function classifyEntry(name: string, raw: unknown): WrapPlanEntry {
   if (!isPlainObject(raw) || typeof raw.command !== 'string') {
     // Remote/url entries and malformed entries have no usable `command`.
-    return { kind: 'skipped', name, reason: 'no-command' };
+    return { kind: 'skipped', name, reason: 'no-command', transport: null, endpoint: null };
   }
   const command = raw.command;
   const args = isStringArray(raw.args) ? raw.args : [];
   if (isAlreadyWrapped(command, args)) {
-    return { kind: 'skipped', name, reason: 'already-wrapped' };
+    // Derive transport/endpoint from the arg shape isAlreadyWrapped just
+    // verified (positions are trusted because the entry is ours):
+    //   http:   ['http','--url',<url>,'--name',<name>]           → url
+    //   stdio:  ['stdio','--wrap',<cmd>,'--name',<name>,'--',…]  → wrapped cmd
+    //   legacy: ['--wrap',<cmd>,'--name',<name>,'--',…]          → wrapped cmd
+    if (args[0] === 'http') {
+      return { kind: 'skipped', name, reason: 'already-wrapped', transport: 'http', endpoint: args[2] };
+    }
+    const endpoint = args[0] === 'stdio' ? args[2] : args[1];
+    return { kind: 'skipped', name, reason: 'already-wrapped', transport: 'stdio', endpoint };
   }
   // Preserve the entry as read; the writer (Phase 2) consumes `original`.
   const original: McpEntry = {
@@ -91,7 +100,7 @@ function classifyEntry(name: string, raw: unknown): WrapPlanEntry {
     ...(isPlainObject(raw.env) ? { env: raw.env as Record<string, string> } : {}),
     ...(typeof raw.cwd === 'string' ? { cwd: raw.cwd } : {}),
   };
-  return { kind: 'wrappable', name, original };
+  return { kind: 'wrappable', name, original, transport: 'stdio', endpoint: command };
 }
 
 // --- Public entrypoint: read + classify, never throws ---

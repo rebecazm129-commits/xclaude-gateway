@@ -81,9 +81,9 @@ export function resolveXcgTargetPathFromMain(): string {
 
 function entryToIpc(entry: WrapPlanEntry): IpcConfigEntry {
   if (entry.kind === 'wrappable') {
-    return { kind: 'wrappable', name: entry.name };
+    return { kind: 'wrappable', name: entry.name, transport: entry.transport ?? null, endpoint: entry.endpoint ?? null };
   }
-  return { kind: 'skipped', name: entry.name, reason: entry.reason };
+  return { kind: 'skipped', name: entry.name, reason: entry.reason, transport: entry.transport ?? null, endpoint: entry.endpoint ?? null };
 }
 
 function summarize(entries: readonly WrapPlanEntry[]): IpcConfigSummary {
