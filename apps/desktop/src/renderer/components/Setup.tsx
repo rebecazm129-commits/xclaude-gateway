@@ -211,7 +211,7 @@ export function Setup({ status, onRefresh }: SetupProps): ReactElement {
         <div className={styles[`feedback_${action.tone}`]}>{action.text}</div>
       ) : null}
 
-      <RemoteConnectors />
+      <RemoteConnectors onRefresh={onRefresh} />
 
       <SelfTest />
     </div>

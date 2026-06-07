@@ -15,6 +15,12 @@ const CONNECTORS: readonly CatalogEntry[] = [
   { label: 'Linear', name: 'linear', url: 'https://mcp.linear.app/mcp' },
 ];
 
+export interface RemoteConnectorsProps {
+  /** Called after a successful connect (the config changed); optional so the
+   * panel still works standalone. */
+  readonly onRefresh?: () => void;
+}
+
 // Map a ConnectResult to a user-facing banner. NOTE: success says "Added" /
 // "configured", not "Connected" — we verify the config entry exists, not that
 // the OAuth token is live. The switch covers the error kinds connect can emit;
@@ -57,7 +63,7 @@ function connectMessage(result: ConnectResult): { tone: 'success' | 'error'; tex
  * interactive login (it can take minutes — the browser opens), then writes the
  * bridge entry.
  */
-export function RemoteConnectors(): ReactElement {
+export function RemoteConnectors({ onRefresh }: RemoteConnectorsProps): ReactElement {
   const [busyName, setBusyName] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<ConnectResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +105,10 @@ export function RemoteConnectors(): ReactElement {
           next.add(entry.name);
           return next;
         });
+        // The connect wrote a new entry into claude_desktop_config.json; let
+        // the parent re-read it so the Setup list reflects it without a manual
+        // Refresh.
+        onRefresh?.();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'unknown error');
