@@ -13,7 +13,7 @@ import styles from './App.module.css';
 type TabId = 'setup' | 'detections';
 
 const TAB_OPTIONS: readonly TabOption<TabId>[] = [
-  { id: 'setup', label: 'Setup' },
+  { id: 'setup', label: 'Connectors' },
   { id: 'detections', label: 'Detections' },
 ];
 

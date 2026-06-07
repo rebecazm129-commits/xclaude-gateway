@@ -1,5 +1,6 @@
 import { useState, type ReactElement } from 'react';
 
+import { toConnectors, type Connector } from '@xcg/shared/config/connectors';
 import type {
   InstallResult,
   StatusResult,
@@ -18,6 +19,15 @@ export interface SetupProps {
 
 type ActionState = 'idle' | 'installing' | 'uninstalling';
 type LastAction = InstallResult | UninstallResult | null;
+
+const CONNECTOR_GROUPS: readonly {
+  readonly status: Connector['status'];
+  readonly title: string;
+}[] = [
+  { status: 'not-audited', title: 'Not audited' },
+  { status: 'audited', title: 'Auditing' },
+  { status: 'unsupported', title: 'Unsupported' },
+];
 
 // Format error.kind for the inline error panel. Detail comes through verbatim.
 function errorMessage(err: { kind: string; detail?: string }): string {
@@ -104,6 +114,7 @@ export function Setup({ status, onRefresh }: SetupProps): ReactElement {
   }
 
   const { configPresent, configPath, entries, summary } = status;
+  const connectors = toConnectors(entries);
   const canInstall = configPresent && summary.wrappable > 0 && actionState === 'idle';
   const canUninstall = configPresent && summary.alreadyWrapped > 0 && actionState === 'idle';
   const action = outcomeMessage(lastAction);
@@ -125,32 +136,31 @@ export function Setup({ status, onRefresh }: SetupProps): ReactElement {
 
       {configPresent ? (
         <>
-          <div className={styles['summary']}>
-            <div className={styles['summaryItem']}>
-              <span className={styles['summaryCount']}>{summary.wrappable}</span>
-              <span className={styles['summaryLabel']}>Wrappable</span>
-            </div>
-            <div className={styles['summaryItem']}>
-              <span className={styles['summaryCount']}>{summary.alreadyWrapped}</span>
-              <span className={styles['summaryLabel']}>Already wrapped</span>
-            </div>
-            <div className={styles['summaryItem']}>
-              <span className={styles['summaryCount']}>{summary.skippedOther}</span>
-              <span className={styles['summaryLabel']}>Skipped</span>
-            </div>
-          </div>
-
-          {entries.length > 0 ? (
-            <ul className={styles['entries']}>
-              {entries.map((e) => (
-                <li key={e.name} className={styles['entry']}>
-                  <span className={styles['entryName']}>{e.name}</span>
-                  <span className={styles[`entryKind_${e.kind}`] ?? styles['entryKind']}>
-                    {e.kind === 'wrappable' ? 'will be wrapped' : `skipped: ${e.reason}`}
-                  </span>
-                </li>
-              ))}
-            </ul>
+          {connectors.length > 0 ? (
+            CONNECTOR_GROUPS.map((g) => {
+              const items = connectors.filter(
+                (c) => c.status === g.status,
+              );
+              if (items.length === 0) {
+                return null;
+              }
+              return (
+                <div key={g.status} className={styles['group']}>
+                  <div className={styles['groupHeader']}>
+                    <span className={styles['groupTitle']}>{g.title}</span>
+                    <span className={styles['groupCount']}>{items.length}</span>
+                  </div>
+                  <ul className={styles['entries']}>
+                    {items.map((c) => (
+                      <li key={c.name} className={styles['entry']}>
+                        <span className={styles['entryName']}>{c.name}</span>
+                        <span className={styles['entryKind']}>{c.type}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })
           ) : (
             <div className={styles['entriesEmpty']}>
               No MCP servers in the config yet.
