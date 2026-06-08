@@ -1,0 +1,181 @@
+.drawer {
+  position: fixed;
+  top: 96px; /* debajo del header (56) + tabs (40) */
+  right: 0;
+  bottom: 0;
+  width: 480px;
+  background: var(--kraft-surface);
+  border-top: var(--kraft-hairline) solid var(--kraft-border-strong);
+  border-left: var(--kraft-hairline) solid var(--kraft-border-strong);
+  box-shadow: -8px 0 24px color-mix(in srgb, var(--kraft-ink) 10%, transparent);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--kraft-font-ui);
+  z-index: 20;
+  animation: slideIn var(--kraft-transition) ease-out;
+}
+
+.drawer:focus {
+  outline: none;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--kraft-font-display);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--kraft-ink);
+  letter-spacing: -0.01em;
+}
+
+.closeButton {
+  background: transparent;
+  border: none;
+  color: var(--kraft-ink-soft);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px;
+  font-family: var(--kraft-font-ui);
+  transition: color var(--kraft-transition-fast) ease;
+}
+
+.closeButton:hover {
+  color: var(--kraft-ink);
+}
+
+.closeButton:focus-visible {
+  outline: 2px solid var(--kraft-accent);
+  outline-offset: 2px;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.path {
+  margin: 0;
+  font-size: 12px;
+  color: var(--kraft-ink-soft);
+}
+
+.pathLabel {
+  color: var(--kraft-ink-disabled);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+  margin-right: 4px;
+}
+
+.pathValue {
+  color: var(--kraft-ink);
+  font-family: var(--kraft-font-mono);
+  font-size: 12px;
+  background: var(--kraft-filter-bg);
+  padding: 2px 6px;
+  border-radius: var(--kraft-radius-sm);
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+}
+
+.installButton,
+.uninstallButton {
+  background: var(--kraft-surface);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  color: var(--kraft-ink);
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--kraft-font-ui);
+  border-radius: var(--kraft-radius-sm);
+  cursor: pointer;
+  transition:
+    background var(--kraft-transition-fast) ease,
+    border-color var(--kraft-transition-fast) ease,
+    color var(--kraft-transition-fast) ease;
+}
+
+.installButton:hover:not(:disabled),
+.uninstallButton:hover:not(:disabled) {
+  background: var(--kraft-filter-bg);
+  border-color: var(--kraft-ink-soft);
+}
+
+.installButton:not(:disabled) {
+  background: var(--kraft-accent);
+  border-color: var(--kraft-accent);
+  color: #ffffff;
+}
+
+.installButton:hover:not(:disabled) {
+  background: var(--kraft-accent-hover);
+  border-color: var(--kraft-accent-hover);
+}
+
+.installButton:disabled,
+.uninstallButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.feedback_success {
+  background: var(--kraft-low-bg);
+  border: var(--kraft-hairline) solid var(--kraft-low-border);
+  color: var(--kraft-low-text);
+  padding: 12px 14px;
+  border-radius: var(--kraft-radius-sm);
+  font-size: 13px;
+}
+
+.feedback_noop {
+  background: var(--kraft-filter-bg);
+  border: var(--kraft-hairline) solid var(--kraft-border);
+  color: var(--kraft-ink-soft);
+  padding: 12px 14px;
+  border-radius: var(--kraft-radius-sm);
+  font-size: 13px;
+}
+
+.feedback_error {
+  background: var(--kraft-critical-bg);
+  border: var(--kraft-hairline) solid var(--kraft-critical-border);
+  color: var(--kraft-critical-text);
+  padding: 12px 14px;
+  border-radius: var(--kraft-radius-sm);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.uninstallHint {
+  margin: -8px 0 0 0;
+  font-size: 12px;
+  color: var(--kraft-ink-soft);
+  line-height: 1.5;
+  max-width: 640px;
+}

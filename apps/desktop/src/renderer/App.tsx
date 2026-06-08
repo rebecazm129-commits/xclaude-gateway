@@ -4,6 +4,7 @@ import type { StatusResult } from '@xcg/shared/config';
 
 import { Detections } from './components/Detections.js';
 import { Setup } from './components/Setup.js';
+import { SettingsDrawer } from './components/SettingsDrawer.js';
 import { HealthWarning } from './components/HealthWarning.js';
 import { Tabs, type TabOption } from './components/Tabs.js';
 import { usePolledHealth } from './hooks/usePolledHealth.js';
@@ -56,6 +57,7 @@ export function App(): JSX.Element {
   const [configStatus, setConfigStatus] = useState<StatusResult | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>(() => readLastTab() ?? 'setup');
   const [statusLoaded, setStatusLoaded] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const { health, refresh: refreshHealth } = usePolledHealth();
 
   const pulseVariantClass =
@@ -132,15 +134,26 @@ export function App(): JSX.Element {
           />
           <h1 className={styles['title']}>xCLAUDE Gateway</h1>
         </span>
-        <button
-          type="button"
-          className={styles['refreshButton']}
-          onClick={() => void handleRefresh()}
-          title="Refresh status"
-          aria-label="Refresh status"
-        >
-          ⟳
-        </button>
+        <div className={styles['headerActions']}>
+          <button
+            type="button"
+            className={styles['refreshButton']}
+            onClick={() => void handleRefresh()}
+            title="Refresh status"
+            aria-label="Refresh status"
+          >
+            ⟳
+          </button>
+          <button
+            type="button"
+            className={styles['refreshButton']}
+            onClick={() => setSettingsOpen(true)}
+            title="Open settings"
+            aria-label="Open settings"
+          >
+            ⚙
+          </button>
+        </div>
       </header>
       <Tabs options={TAB_OPTIONS} active={activeTab} onChange={handleTabChange} />
       <HealthWarning health={health} onRepaired={handleRepaired} />
@@ -148,6 +161,13 @@ export function App(): JSX.Element {
         <Setup status={statusLoaded ? configStatus : null} onRefresh={refreshStatus} />
       ) : (
         <Detections />
+      )}
+      {settingsOpen && (
+        <SettingsDrawer
+          status={statusLoaded ? configStatus : null}
+          onRefresh={refreshStatus}
+          onClose={() => setSettingsOpen(false)}
+        />
       )}
     </div>
   );
