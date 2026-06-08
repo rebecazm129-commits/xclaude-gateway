@@ -11,7 +11,7 @@
   padding: 16px 20px;
   background: var(--kraft-surface);
   border-bottom: var(--kraft-hairline) solid var(--kraft-border);
-  height: 56px;
+  height: 72px;
   box-sizing: border-box;
 }
 
@@ -23,8 +23,24 @@
 
 .titleGroup {
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.titleRow {
+  display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.trust {
+  margin: 0;
+  font-family: var(--kraft-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--kraft-ink-soft);
+  padding-left: 20px;
 }
 
 .pulse {

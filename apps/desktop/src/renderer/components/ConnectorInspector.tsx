@@ -15,6 +15,18 @@ const STATUS_LABEL: Record<Connector['status'], string> = {
   unsupported: 'Unsupported',
 };
 
+const STATUS_DOT: Record<Connector['status'], string> = {
+  audited: styles['dotAudited']!,
+  'not-audited': styles['dotNotAudited']!,
+  unsupported: styles['dotUnsupported']!,
+};
+
+const TYPE_LABEL: Record<Connector['type'], string> = {
+  remote: 'Remote',
+  local: 'Local',
+  unknown: 'Unknown',
+};
+
 const TRANSPORT_LABEL: Record<Connector['type'], string> = {
   remote: 'HTTP',
   local: 'stdio',
@@ -38,12 +50,16 @@ export function ConnectorInspector({ connector }: ConnectorInspectorProps): Reac
 
   return (
     <div className={styles['root']}>
-      <h2 className={styles['title']}>{connector.name}</h2>
+      <div className={styles['head']}>
+        <span className={styles['headName']}>{connector.name}</span>
+        <span className={styles['headType']}>{TYPE_LABEL[connector.type]}</span>
+        <span className={styles['headStatus']}>
+          <span className={`${styles['dot']} ${STATUS_DOT[connector.status]}`} />
+          {STATUS_LABEL[connector.status]}
+        </span>
+      </div>
+
       <dl className={styles['rows']}>
-        <div className={styles['row']}>
-          <dt className={styles['label']}>Status</dt>
-          <dd className={styles['value']}>{STATUS_LABEL[connector.status]}</dd>
-        </div>
         <div className={styles['row']}>
           <dt className={styles['label']}>Transport</dt>
           <dd className={styles['value']}>{TRANSPORT_LABEL[connector.type]}</dd>

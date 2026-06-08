@@ -127,12 +127,15 @@ export function App(): JSX.Element {
     <div className={styles['app']}>
       <header className={styles['header']}>
         <span className={styles['titleGroup']}>
-          <span
-            className={`${styles['pulse']} ${pulseVariantClass}`}
-            title={pulseTooltip}
-            aria-label={`System health: ${health?.status ?? 'unknown'}`}
-          />
-          <h1 className={styles['title']}>xCLAUDE Gateway</h1>
+          <span className={styles['titleRow']}>
+            <span
+              className={`${styles['pulse']} ${pulseVariantClass}`}
+              title={pulseTooltip}
+              aria-label={`System health: ${health?.status ?? 'unknown'}`}
+            />
+            <h1 className={styles['title']}>xCLAUDE Gateway</h1>
+          </span>
+          <span className={styles['trust']}>Audited locally · No account</span>
         </span>
         <div className={styles['headerActions']}>
           <button

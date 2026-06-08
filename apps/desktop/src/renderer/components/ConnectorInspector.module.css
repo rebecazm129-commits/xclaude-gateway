@@ -4,8 +4,15 @@
   gap: 14px;
 }
 
-.title {
-  margin: 0;
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
+}
+
+.headName {
   font-family: var(--kraft-font-mono);
   font-size: 15px;
   font-weight: 600;
@@ -13,20 +20,61 @@
   word-break: break-all;
 }
 
+.headType {
+  color: var(--kraft-ink-soft);
+  background: var(--kraft-filter-bg);
+  border-radius: var(--kraft-radius-sm);
+  padding: 2px 7px;
+  font-family: var(--kraft-font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.headStatus {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-family: var(--kraft-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--kraft-ink-soft);
+  white-space: nowrap;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--kraft-radius-dot);
+  flex-shrink: 0;
+}
+
+.dotAudited { background: var(--kraft-status); }
+.dotNotAudited { background: var(--kraft-accent); }
+.dotUnsupported { background: var(--kraft-ink-disabled); }
+
 .rows {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0;
 }
 
 .row {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  gap: 14px;
+  padding: 9px 0;
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
+}
+
+.row:last-child {
+  border-bottom: none;
 }
 
 .label {
+  flex: 0 0 116px;
+  padding-top: 1px;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -34,6 +82,8 @@
 }
 
 .value {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   font-family: var(--kraft-font-mono);
   font-size: 12px;
@@ -65,10 +115,15 @@
 }
 
 .flaggedRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: 72px 1fr 120px auto;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 12px;
+}
+
+.flaggedRow > :first-child {
+  justify-self: start;
 }
 
 .flaggedTool {
@@ -82,11 +137,13 @@
 }
 
 .flaggedCategory {
+  justify-self: end;
   white-space: nowrap;
   color: var(--kraft-ink-soft);
 }
 
 .flaggedTime {
+  justify-self: end;
   white-space: nowrap;
   font-family: var(--kraft-font-mono);
   font-size: 11px;
