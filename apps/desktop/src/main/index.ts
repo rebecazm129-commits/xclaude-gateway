@@ -59,13 +59,14 @@ ipcMain.handle('config:status', () => {
   });
 });
 
-ipcMain.handle('config:install', (_event, mode: 'dry-run' | 'yes') => {
+ipcMain.handle('config:install', (_event, mode: 'dry-run' | 'yes', only?: string) => {
   return runConfigInstall(
     {
       configPath: CLAUDE_DESKTOP_CONFIG_PATH,
       xcgPath: resolveXcgPathFromMain(),
     },
     mode,
+    only,
   );
 });
 

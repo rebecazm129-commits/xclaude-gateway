@@ -15,8 +15,8 @@ import type { EnrichableEvent } from '../shared/types.js';
 contextBridge.exposeInMainWorld('xcg', {
   listDetections: (): Promise<EnrichableEvent[]> => ipcRenderer.invoke('detection:list'),
   configStatus: (): Promise<StatusResult> => ipcRenderer.invoke('config:status'),
-  configInstall: (mode: 'dry-run' | 'yes'): Promise<InstallResult> =>
-    ipcRenderer.invoke('config:install', mode),
+  configInstall: (mode: 'dry-run' | 'yes', only?: string): Promise<InstallResult> =>
+    ipcRenderer.invoke('config:install', mode, only),
   configUninstall: (mode: 'dry-run' | 'yes'): Promise<UninstallResult> =>
     ipcRenderer.invoke('config:uninstall', mode),
   configAddRemote: (name: string, url: string): Promise<AddRemoteResult> =>
