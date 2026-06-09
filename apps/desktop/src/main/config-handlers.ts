@@ -172,6 +172,7 @@ export function runConfigStatus(opts: ConfigHandlerOptions): StatusResult {
 export function runConfigInstall(
   opts: ConfigHandlerOptions,
   mode: 'dry-run' | 'yes',
+  only?: string,
 ): InstallResult {
   const parsed = parseConfig(opts.configPath);
   if (!parsed.ok) {
@@ -188,9 +189,14 @@ export function runConfigInstall(
     return parseErrorToIpc(parsed.error);
   }
 
-  const wrapped = applyWrap(parsed.raw, parsed.plan, opts.xcgPath);
+  const wrapped = applyWrap(parsed.raw, parsed.plan, opts.xcgPath, only);
   const summary = summarize(parsed.plan.entries);
-  const isNoop = summary.wrappable === 0;
+  const isNoop =
+    only === undefined
+      ? summary.wrappable === 0
+      : !parsed.plan.entries.some(
+          (e) => e.kind === 'wrappable' && e.name === only,
+        );
 
   if (mode === 'dry-run') {
     return {

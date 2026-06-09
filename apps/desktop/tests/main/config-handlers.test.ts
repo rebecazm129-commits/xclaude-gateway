@@ -258,6 +258,85 @@ describe('config IPC handlers (Milestone 4 Phase 5.1 sub-step C2)', () => {
     });
   });
 
+  // --- runConfigInstall: only (single-connector wrap) ---
+
+  describe('runConfigInstall — only (single connector)', () => {
+    it('yes + only=<wrappable>: wraps only that entry, leaves the other wrappable untouched', () => {
+      writeConfig({
+        mcpServers: {
+          a: { command: '/usr/local/bin/npx', args: ['-y', 'srv-a'] },
+          b: { command: 'node', args: ['b.js'] },
+        },
+      });
+
+      const result = runConfigInstall(opts(), 'yes', 'a');
+      expect(result).toMatchObject({ ok: true, mode: 'yes', outcome: 'wrote' });
+
+      const written = readConfigParsed() as {
+        mcpServers: {
+          a: { command: string; args: string[] };
+          b: { command: string; args: string[] };
+        };
+      };
+      // 'a' is wrapped with the exact contract.
+      expect(written.mcpServers.a.command).toBe(FAKE_XCG);
+      expect(written.mcpServers.a.args).toEqual([
+        'stdio',
+        '--wrap', '/usr/local/bin/npx',
+        '--name', 'a',
+        '--',
+        '-y', 'srv-a',
+      ]);
+      // 'b', though wrappable, is left byte-for-byte.
+      expect(written.mcpServers.b).toEqual({ command: 'node', args: ['b.js'] });
+    });
+
+    it('yes + only=<inexistent name>: noop, nothing written, no .bak', () => {
+      writeConfig({
+        mcpServers: { a: { command: 'npx', args: ['-y', 'a'] } },
+      });
+      const before = readConfigParsed();
+
+      const result = runConfigInstall(opts(), 'yes', 'zzz');
+      expect(result).toMatchObject({ outcome: 'noop' });
+
+      expect(readConfigParsed()).toEqual(before);            // config untouched
+      expect(existsSync(`${configPath}.bak`)).toBe(false);   // never wrote
+    });
+
+    it('yes + only=<already-wrapped name>: noop, config unchanged', () => {
+      writeConfig({
+        mcpServers: { a: { command: 'npx', args: ['-y', 'a'] } },
+      });
+      runConfigInstall(opts(), 'yes');         // wrap 'a' first
+      const afterFirst = readConfigParsed();
+
+      const r2 = runConfigInstall(opts(), 'yes', 'a'); // 'a' now already-wrapped → not wrappable
+      expect(r2).toMatchObject({ outcome: 'noop' });
+      expect(readConfigParsed()).toEqual(afterFirst);
+    });
+
+    it('dry-run + only=<wrappable>: would_write, nothing written', () => {
+      writeConfig({
+        mcpServers: {
+          a: { command: 'npx', args: ['-y', 'a'] },
+          b: { command: 'node', args: ['b.js'] },
+        },
+      });
+      const result = runConfigInstall(opts(), 'dry-run', 'a');
+      expect(result).toMatchObject({ outcome: 'would_write' });
+      expect(existsSync(`${configPath}.bak`)).toBe(false);
+    });
+
+    it('dry-run + only=<non-wrappable>: noop', () => {
+      writeConfig({
+        mcpServers: { a: { command: 'npx', args: ['-y', 'a'] } },
+      });
+      const result = runConfigInstall(opts(), 'dry-run', 'zzz');
+      expect(result).toMatchObject({ outcome: 'noop' });
+    });
+  });
+
   // --- runConfigUninstall ---
 
   describe('runConfigUninstall', () => {
