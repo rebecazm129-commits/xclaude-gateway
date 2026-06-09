@@ -161,6 +161,14 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
         {action !== null ? (
           <div className={styles[`feedback_${action.tone}`]}>{action.text}</div>
         ) : null}
+
+        <div className={styles['sectionLabel']}>About</div>
+        <p className={styles['about']}>
+          xCLAUDE audits every tool call Claude makes through your MCP
+          connectors, classified by risk across 6 categories and 4 severity
+          levels. Everything is audited locally — no account, no telemetry.
+          Open source, MIT.
+        </p>
       </div>
     </div>
   );
