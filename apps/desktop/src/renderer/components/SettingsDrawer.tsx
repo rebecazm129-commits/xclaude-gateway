@@ -96,6 +96,10 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
     onRefresh();
   }
 
+  function handleOpenAuditFolder(): void {
+    void window.xcg.openAuditFolder();
+  }
+
   const statusOk = status !== null && status.ok ? status : null;
   const canInstall =
     statusOk !== null && statusOk.configPresent && statusOk.summary.wrappable > 0 && actionState === 'idle';
@@ -161,6 +165,18 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
         {action !== null ? (
           <div className={styles[`feedback_${action.tone}`]}>{action.text}</div>
         ) : null}
+
+        <div className={styles['sectionLabel']}>Audit log</div>
+        <div className={styles['auditRow']}>
+          <code className={styles['auditPath']}>~/Library/Application Support/xCLAUDE Gateway/wrappers/</code>
+          <button
+            type="button"
+            className={styles['auditButton']}
+            onClick={handleOpenAuditFolder}
+          >
+            Open folder
+          </button>
+        </div>
 
         <div className={styles['sectionLabel']}>About</div>
         <p className={styles['about']}>
