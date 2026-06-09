@@ -55,12 +55,22 @@ export function Setup({ status, onRefresh, onOpenInDetections }: SetupProps): Re
 
   const { configPresent, entries } = status;
   const connectors = toConnectors(entries);
+  const auditingCount = connectors.filter((c) => c.status === 'audited').length;
+  const notAuditedCount = connectors.filter((c) => c.status === 'not-audited').length;
+  const unsupportedCount = connectors.filter((c) => c.status === 'unsupported').length;
   const selectedConnector = connectors.find((c) => c.name === selectedName) ?? null;
 
   return (
     <div className={styles['container']}>
       {connectors.length > 0 ? (
-        <div className={styles['masterDetail']}>
+        <>
+          <div className={styles['summary']}>
+            <b>{connectors.length}</b> {connectors.length === 1 ? 'connector' : 'connectors'}
+            {' · '}<b>{auditingCount}</b> auditing
+            {' · '}<b>{notAuditedCount}</b> not audited
+            {unsupportedCount > 0 ? <>{' · '}<b>{unsupportedCount}</b> unsupported</> : null}
+          </div>
+          <div className={styles['masterDetail']}>
           <div className={styles['list']}>
             {CONNECTOR_GROUPS.map((g) => {
               const items = connectors.filter((c) => c.status === g.status);
@@ -114,6 +124,7 @@ export function Setup({ status, onRefresh, onOpenInDetections }: SetupProps): Re
             )}
           </div>
         </div>
+        </>
       ) : (
         <div className={styles['empty']}>
           <span className={styles['emptyBadge']} aria-hidden="true">

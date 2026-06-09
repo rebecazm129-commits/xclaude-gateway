@@ -123,6 +123,17 @@
   gap: 16px;
 }
 
+.summary {
+  font-family: var(--kraft-font-ui);
+  font-size: 13px;
+  color: var(--kraft-ink-soft);
+}
+
+.summary b {
+  font-weight: 600;
+  color: var(--kraft-ink);
+}
+
 .inspector {
   margin-top: 22px; /* alinea el inspector con la 1ª tarjeta (alto de la etiqueta de grupo + gap) */
   align-self: flex-start;
