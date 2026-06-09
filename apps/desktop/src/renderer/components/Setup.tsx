@@ -58,84 +58,78 @@ export function Setup({ status, onRefresh }: SetupProps): ReactElement {
 
   return (
     <div className={styles['container']}>
-      <div className={styles['intro']}>
-        {!configPresent ? (
-          <p className={styles['notice']}>
-            Claude Desktop has no MCP config yet. Open Claude Desktop, add at least
-            one MCP server, then come back here to install xCLAUDE Gateway.
-          </p>
-        ) : null}
-      </div>
-
-      {configPresent ? (
-        <>
-          <div className={styles['masterDetail']}>
-            <div className={styles['list']}>
-              {connectors.length > 0 ? (
-                CONNECTOR_GROUPS.map((g) => {
-                  const items = connectors.filter(
-                    (c) => c.status === g.status,
-                  );
-                  if (items.length === 0) {
-                    return null;
-                  }
-                  return (
-                    <div key={g.status} className={styles['group']}>
-                      <div className={styles['groupHeader']}>
-                        <span className={styles['groupTitle']}>{g.title}</span>
-                        <span className={styles['groupCount']}>{items.length}</span>
-                      </div>
-                      <ul className={styles['entries']}>
-                        {items.map((c) => (
-                          <li
-                            key={c.name}
-                            className={
-                              c.name === selectedName
-                                ? `${styles['entry']} ${styles['entrySelected']}`
-                                : styles['entry']
-                            }
-                            role="button"
-                            tabIndex={0}
-                            aria-pressed={c.name === selectedName}
-                            onClick={() => setSelectedName(c.name)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                setSelectedName(c.name);
-                              }
-                            }}
-                          >
-                            <span className={styles['entryName']}>{c.name}</span>
-                            <span className={styles['entryKind']}>{c.type}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className={styles['entriesEmpty']}>
-                  No MCP servers in the config yet.
+      {connectors.length > 0 ? (
+        <div className={styles['masterDetail']}>
+          <div className={styles['list']}>
+            {CONNECTOR_GROUPS.map((g) => {
+              const items = connectors.filter((c) => c.status === g.status);
+              if (items.length === 0) {
+                return null;
+              }
+              return (
+                <div key={g.status} className={styles['group']}>
+                  <div className={styles['groupHeader']}>
+                    <span className={styles['groupTitle']}>{g.title}</span>
+                    <span className={styles['groupCount']}>{items.length}</span>
+                  </div>
+                  <ul className={styles['entries']}>
+                    {items.map((c) => (
+                      <li
+                        key={c.name}
+                        className={
+                          c.name === selectedName
+                            ? `${styles['entry']} ${styles['entrySelected']}`
+                            : styles['entry']
+                        }
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={c.name === selectedName}
+                        onClick={() => setSelectedName(c.name)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedName(c.name);
+                          }
+                        }}
+                      >
+                        <span className={styles['entryName']}>{c.name}</span>
+                        <span className={styles['entryKind']}>{c.type}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              )}
-            </div>
-
-            <div className={styles['inspector']}>
-              {selectedConnector !== null ? (
-                <ConnectorInspector connector={selectedConnector} />
-              ) : (
-                <p className={styles['inspectorEmpty']}>Select a connector to inspect.</p>
-              )}
-            </div>
+              );
+            })}
           </div>
 
-          <div className={styles['introBlock']}>
-            <p className={styles['introHeading']}>See what Claude does.</p>
-            <p className={styles['introDetail']}>Every tool call Claude makes, classified by risk. 6 categories, 4 severity levels.</p>
-            <p className={styles['introTag']}>Audited locally. No account.</p>
+          <div className={styles['inspector']}>
+            {selectedConnector !== null ? (
+              <ConnectorInspector connector={selectedConnector} />
+            ) : (
+              <p className={styles['inspectorEmpty']}>Select a connector to inspect.</p>
+            )}
           </div>
-        </>
-      ) : null}
+        </div>
+      ) : (
+        <div className={styles['empty']}>
+          <span className={styles['emptyBadge']} aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6l-8-4z" />
+              <path d="m9 12 2 2 4-4" />
+            </svg>
+          </span>
+          <h2 className={styles['emptyHeading']}>See what Claude does.</h2>
+          <p className={styles['emptyDetail']}>
+            Every tool call Claude makes, classified by risk — 6 categories, 4 severity levels.
+          </p>
+          <p className={styles['emptyDetail']}>Audited locally. No account.</p>
+          <p className={styles['emptyHint']}>
+            {!configPresent
+              ? 'Claude Desktop has no MCP config yet. Open Claude Desktop, add at least one MCP server, then come back here to install xCLAUDE Gateway.'
+              : 'Local MCP servers already in your Claude config will appear here automatically.'}
+          </p>
+        </div>
+      )}
 
       <RemoteConnectors onRefresh={onRefresh} />
 

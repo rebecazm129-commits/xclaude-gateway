@@ -28,26 +28,6 @@
   line-height: 1.5;
 }
 
-.intro {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.notice {
-  margin: 0;
-  font-size: 13px;
-  color: var(--kraft-ink-body);
-  background: var(--kraft-surface);
-  border-left: 3px solid var(--kraft-accent);
-  border-top: var(--kraft-hairline) solid var(--kraft-border);
-  border-right: var(--kraft-hairline) solid var(--kraft-border);
-  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
-  padding: 10px 14px;
-  border-radius: 0 var(--kraft-radius-sm) var(--kraft-radius-sm) 0;
-  line-height: 1.5;
-}
-
 .entries {
   margin: 0;
   padding: 0;
@@ -101,16 +81,6 @@
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-}
-
-.entriesEmpty {
-  background: var(--kraft-surface);
-  border: var(--kraft-hairline) solid var(--kraft-border);
-  padding: 14px 16px;
-  border-radius: var(--kraft-radius-md);
-  color: var(--kraft-ink-soft);
-  font-size: 13px;
-  text-align: center;
 }
 
 .group {
@@ -196,42 +166,47 @@
   cursor: not-allowed;
 }
 
-.introBlock {
-  background: var(--kraft-surface);
-  border-top: var(--kraft-hairline) solid var(--kraft-border);
-  border-right: var(--kraft-hairline) solid var(--kraft-border);
-  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
-  border-left: 3px solid var(--kraft-accent);
-  border-radius: 0 var(--kraft-radius-sm) var(--kraft-radius-sm) 0;
-  padding: 10px 12px;
+.empty {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  align-items: center;
+  text-align: center;
+  padding: 48px 20px 52px;
 }
 
-.introHeading {
-  margin: 0;
+.emptyBadge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 18px;
+  border-radius: var(--kraft-radius-md);
+  background: color-mix(in srgb, var(--kraft-accent) 12%, transparent);
+  color: var(--kraft-accent);
+}
+
+.emptyHeading {
+  margin: 0 0 12px;
   font-family: var(--kraft-font-display);
-  font-size: 14px;
   font-weight: 500;
-  color: var(--kraft-ink);
+  font-size: 22px;
   letter-spacing: -0.01em;
+  color: var(--kraft-ink);
 }
 
-.introDetail {
-  margin: 0;
-  font-family: var(--kraft-font-ui);
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--kraft-ink-body);
-  line-height: 1.4;
-}
-
-.introTag {
-  margin: 0;
-  font-family: var(--kraft-font-ui);
-  font-size: 11px;
-  font-weight: 500;
+.emptyDetail {
+  margin: 3px 0;
+  max-width: 52ch;
+  font-size: 14px;
+  line-height: 1.5;
   color: var(--kraft-ink-soft);
-  letter-spacing: 0.02em;
+}
+
+.emptyHint {
+  margin: 14px 0 0;
+  max-width: 52ch;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--kraft-ink-disabled);
 }
