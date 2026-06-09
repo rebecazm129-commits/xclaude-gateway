@@ -1,6 +1,6 @@
 .drawer {
   position: fixed;
-  top: 112px; /* debajo del header (72) + tabs (40) */
+  top: 124px; /* debajo del header (84) + tabs (40) */
   right: 0;
   bottom: 0;
   width: 480px;

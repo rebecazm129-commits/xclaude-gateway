@@ -34,6 +34,8 @@ function createWindow(): void {
   const win = new BrowserWindow({
     width: 1100,
     height: 700,
+    titleBarStyle: 'hiddenInset',
+    backgroundColor: '#f0ebe1',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
     },

@@ -2,7 +2,7 @@
   display: flex;
   gap: 0;
   padding: 0 20px;
-  background: var(--kraft-surface);
+  background: var(--kraft-bg);
   border-bottom: var(--kraft-hairline) solid var(--kraft-border);
   height: 40px;
   box-sizing: border-box;

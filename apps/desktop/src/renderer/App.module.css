@@ -9,23 +9,25 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  background: var(--kraft-surface);
+  background: var(--kraft-titlebar);
   border-bottom: var(--kraft-hairline) solid var(--kraft-border);
-  height: 72px;
+  height: 84px;
   box-sizing: border-box;
+  -webkit-app-region: drag;
 }
 
 .headerActions {
   display: flex;
   align-items: center;
   gap: 8px;
+  -webkit-app-region: no-drag;
 }
 
 .titleGroup {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 3px;
+  gap: 9px;
 }
 
 .titleRow {
@@ -112,9 +114,10 @@
 
 .title {
   font-family: var(--kraft-font-display);
-  font-size: 18px;
+  font-size: 26px;
   font-weight: 500;
   color: var(--kraft-ink);
   letter-spacing: -0.01em;
   margin: 0;
+  line-height: 1.2;
 }

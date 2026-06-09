@@ -39,6 +39,7 @@
 :root {
   /* Backgrounds */
   --kraft-bg: #faf7f2;
+  --kraft-titlebar: #f0ebe1;
   --kraft-surface: #ffffff;
   --kraft-filter-bg: #f1ebe1;
   --kraft-border: #e8e1d4;
