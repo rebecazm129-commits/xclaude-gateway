@@ -39,14 +39,17 @@ interface ConnectorInspectorProps {
 
 export function ConnectorInspector({ connector }: ConnectorInspectorProps): ReactElement {
   const detections = usePolledDetections();
-  const flagged = detections
-    .filter(
-      (e): e is DetectionEvent =>
-        e.type === 'mcp.request' &&
-        e.mcp === connector.name &&
-        e.detection.category !== 'tool_call_allowed',
-    )
-    .slice(0, 8);
+  const weekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const calls7d = detections.filter(
+    (e): e is DetectionEvent =>
+      e.type === 'mcp.request' &&
+      e.mcp === connector.name &&
+      new Date(e.ts).getTime() >= weekAgoMs,
+  );
+  const flagged7d = calls7d.filter(
+    (e) => e.detection.category !== 'tool_call_allowed',
+  );
+  const recentFlagged = flagged7d.slice(0, 8);
 
   return (
     <div className={styles['root']}>
@@ -68,13 +71,17 @@ export function ConnectorInspector({ connector }: ConnectorInspectorProps): Reac
           <dt className={styles['label']}>Endpoint</dt>
           <dd className={styles['value']}>{connector.endpoint ?? '—'}</dd>
         </div>
+        <div className={styles['row']}>
+          <dt className={styles['label']}>Calls (7d)</dt>
+          <dd className={styles['value']}>{calls7d.length} audited · {flagged7d.length} flagged</dd>
+        </div>
       </dl>
 
       <div className={styles['flagged']}>
         <h3 className={styles['flaggedTitle']}>Recent flagged calls</h3>
-        {flagged.length > 0 ? (
+        {recentFlagged.length > 0 ? (
           <ul className={styles['flaggedList']}>
-            {flagged.map((e) => (
+            {recentFlagged.map((e) => (
               <li key={e.id} className={styles['flaggedRow']}>
                 <Badge severity={e.detection.severity} />
                 <span className={styles['flaggedTool']}>{e.toolName ?? e.method}</span>
