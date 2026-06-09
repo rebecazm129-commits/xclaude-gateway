@@ -90,6 +90,42 @@ describe('applyWrap — pure transformation (Milestone 4 Phase 2)', () => {
   });
 });
 
+describe('applyWrap — only parameter (single-connector wrap)', () => {
+  it('only=<wrappable> wraps just that entry; other wrappables stay byte-for-byte', () => {
+    const raw = {
+      mcpServers: {
+        a: { command: '/usr/local/bin/npx', args: ['@mcpf/a'] },
+        b: { command: 'node', args: ['b.js'] },
+      },
+    };
+    // Both a and b are wrappable in the plan, but only 'a' is requested.
+    const out = applyWrap(raw, plan('a', 'b'), XCG, 'a') as any;
+    expect(out.mcpServers.a).toEqual({
+      command: XCG,
+      args: ['stdio', '--wrap', '/usr/local/bin/npx', '--name', 'a', '--', '@mcpf/a'],
+    });
+    // b is left exactly as the original, despite being wrappable.
+    expect(out.mcpServers.b).toEqual({ command: 'node', args: ['b.js'] });
+  });
+
+  it('only=<name present but not wrappable> wraps nothing (result equals raw)', () => {
+    const raw = {
+      mcpServers: {
+        a: { command: 'npx', args: ['-y', 'a'] }, // wrappable
+        b: { url: 'https://r' }, // present in config but not a wrappable target
+      },
+    };
+    const out = applyWrap(raw, plan('a'), XCG, 'b');
+    expect(out).toEqual(raw);
+  });
+
+  it('only=<inexistent name> wraps nothing (result equals raw)', () => {
+    const raw = { mcpServers: { a: { command: 'npx', args: ['-y', 'a'] } } };
+    const out = applyWrap(raw, plan('a'), XCG, 'zzz');
+    expect(out).toEqual(raw);
+  });
+});
+
 describe('unwrap — inverse of applyWrap', () => {
   it('roundtrip: wrap then unwrap restores the original entry', () => {
     const raw = { mcpServers: { fs: { command: '/usr/local/bin/npx', args: ['@mcpf/filesystem', '/x'] } } };

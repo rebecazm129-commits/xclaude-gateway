@@ -55,11 +55,20 @@ function unwrapEntry(entry: Record<string, unknown>): Record<string, unknown> {
 // only entries listed as wrappable in the plan, leaves everything else
 // (other top-level keys, skipped entries) byte-for-byte. Pure: returns a
 // new object; `raw` is not mutated.
-export function applyWrap(raw: unknown, plan: WrapPlan, xcgPath: string): unknown {
+export function applyWrap(
+  raw: unknown,
+  plan: WrapPlan,
+  xcgPath: string,
+  only?: string,
+): unknown {
   if (!isPlainObject(raw)) return raw;
   const mcp = raw.mcpServers;
   if (!isPlainObject(mcp)) return { ...raw };
-  const targets = wrappableNames(plan);
+  const allTargets = wrappableNames(plan);
+  const targets =
+    only === undefined
+      ? allTargets
+      : new Set(allTargets.has(only) ? [only] : []);
   const newMcp: Record<string, unknown> = {};
   for (const [name, entry] of Object.entries(mcp)) {
     if (targets.has(name) && isPlainObject(entry)) {
