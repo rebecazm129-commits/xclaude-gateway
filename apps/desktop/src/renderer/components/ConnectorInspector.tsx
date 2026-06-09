@@ -35,9 +35,10 @@ const TRANSPORT_LABEL: Record<Connector['type'], string> = {
 
 interface ConnectorInspectorProps {
   connector: Connector;
+  onOpenInDetections: (name: string) => void;
 }
 
-export function ConnectorInspector({ connector }: ConnectorInspectorProps): ReactElement {
+export function ConnectorInspector({ connector, onOpenInDetections }: ConnectorInspectorProps): ReactElement {
   const detections = usePolledDetections();
   const weekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const calls7d = detections.filter(
@@ -78,7 +79,16 @@ export function ConnectorInspector({ connector }: ConnectorInspectorProps): Reac
       </dl>
 
       <div className={styles['flagged']}>
-        <h3 className={styles['flaggedTitle']}>Recent flagged calls</h3>
+        <div className={styles['flaggedHead']}>
+          <h3 className={styles['flaggedTitle']}>Recent flagged calls</h3>
+          <button
+            type="button"
+            className={styles['openInDetections']}
+            onClick={() => onOpenInDetections(connector.name)}
+          >
+            Open in Detections →
+          </button>
+        </div>
         {recentFlagged.length > 0 ? (
           <ul className={styles['flaggedList']}>
             {recentFlagged.map((e) => (

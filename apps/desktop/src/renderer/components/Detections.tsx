@@ -26,7 +26,12 @@ const CATEGORY_OPTIONS: readonly Category[] = [
 const ROW_HEIGHT = 40;
 const HEADER_AND_FILTERS_HEIGHT = 328;
 
-export function Detections(): JSX.Element {
+interface DetectionsProps {
+  readonly mcpFilter: string | null;
+  readonly onClearMcpFilter: () => void;
+}
+
+export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JSX.Element {
   const detections = usePolledDetections();
   const [selectedSeverities, setSelectedSeverities] =
     useState<readonly Severity[]>(SEVERITY_OPTIONS);
@@ -75,19 +80,24 @@ export function Detections(): JSX.Element {
     };
   }, [openDropdown]);
 
+  const mcpFiltered = useMemo(() => {
+    if (mcpFilter === null) return detections;
+    return detections.filter((d) => d.mcp === mcpFilter);
+  }, [detections, mcpFilter]);
+
   const timeFiltered = useMemo(() => {
-    if (selectedTimeRange === 'all') return detections;
+    if (selectedTimeRange === 'all') return mcpFiltered;
     const now = Date.now();
     const windowMs =
       selectedTimeRange === '1h' ? 60 * 60 * 1000 :
       selectedTimeRange === '24h' ? 24 * 60 * 60 * 1000 :
       7 * 24 * 60 * 60 * 1000;
     const cutoff = now - windowMs;
-    return detections.filter((d) => {
+    return mcpFiltered.filter((d) => {
       const t = Date.parse(d.ts);
       return !Number.isNaN(t) && t >= cutoff;
     });
-  }, [detections, selectedTimeRange]);
+  }, [mcpFiltered, selectedTimeRange]);
 
   const categoryFiltered = useMemo(() => {
     const catSet = new Set(selectedCategories);
@@ -130,6 +140,7 @@ export function Detections(): JSX.Element {
   }, [filtered, lastSeenTopId, scrollOffset]);
 
   const hasActiveFilters =
+    mcpFilter !== null ||
     selectedSeverities.length !== SEVERITY_OPTIONS.length ||
     selectedCategories.length !== CATEGORY_OPTIONS.length ||
     selectedTimeRange !== 'all';
@@ -174,6 +185,7 @@ export function Detections(): JSX.Element {
     setSelectedSeverities(SEVERITY_OPTIONS);
     setSelectedCategories(CATEGORY_OPTIONS);
     setSelectedTimeRange('all');
+    onClearMcpFilter();
   }
 
   function handleOpenAuditFolder(): void {
@@ -191,6 +203,20 @@ export function Detections(): JSX.Element {
         onSelectSeverity={handleSelectSeverity}
       />
       <div className={styles['filters']}>
+        {mcpFilter !== null && (
+          <span className={styles['connectorFilter']}>
+            <span className={styles['connectorFilterLabel']}>connector</span>
+            {mcpFilter}
+            <button
+              type="button"
+              className={styles['connectorFilterClear']}
+              onClick={onClearMcpFilter}
+              aria-label={`Clear connector filter: ${mcpFilter}`}
+            >
+              ✕
+            </button>
+          </span>
+        )}
         <span className={styles['smartCounter']}>{counterLabel}</span>
         <FilterDropdown
           label="Severity"

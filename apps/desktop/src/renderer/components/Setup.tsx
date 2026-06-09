@@ -13,6 +13,7 @@ import styles from './Setup.module.css';
 export interface SetupProps {
   readonly status: StatusResult | null;
   readonly onRefresh: () => void;
+  readonly onOpenInDetections: (name: string) => void;
 }
 
 const CONNECTOR_GROUPS: readonly {
@@ -24,7 +25,7 @@ const CONNECTOR_GROUPS: readonly {
   { status: 'unsupported', title: 'Unsupported' },
 ];
 
-export function Setup({ status, onRefresh }: SetupProps): ReactElement {
+export function Setup({ status, onRefresh, onOpenInDetections }: SetupProps): ReactElement {
   const [selectedName, setSelectedName] = useState<string | null>(null);
 
   // Loading state while status hasn't arrived yet from App.tsx's mount effect.
@@ -104,7 +105,10 @@ export function Setup({ status, onRefresh }: SetupProps): ReactElement {
 
           <div className={styles['inspector']}>
             {selectedConnector !== null ? (
-              <ConnectorInspector connector={selectedConnector} />
+              <ConnectorInspector
+                connector={selectedConnector}
+                onOpenInDetections={onOpenInDetections}
+              />
             ) : (
               <p className={styles['inspectorEmpty']}>Select a connector to inspect.</p>
             )}

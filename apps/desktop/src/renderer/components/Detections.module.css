@@ -148,3 +148,45 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+.connectorFilter {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--kraft-font-mono);
+  font-size: 12px;
+  color: var(--kraft-ink);
+  background: var(--kraft-surface);
+  border: var(--kraft-hairline) solid var(--kraft-accent);
+  border-radius: var(--kraft-radius-sm);
+  padding: 4px 4px 4px 10px;
+  white-space: nowrap;
+}
+
+.connectorFilterLabel {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--kraft-ink-soft);
+}
+
+.connectorFilterClear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--kraft-ink-soft);
+  border-radius: var(--kraft-radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  transition: background var(--kraft-transition-fast) ease, color var(--kraft-transition-fast) ease;
+}
+
+.connectorFilterClear:hover {
+  background: var(--kraft-filter-bg);
+  color: var(--kraft-accent);
+}

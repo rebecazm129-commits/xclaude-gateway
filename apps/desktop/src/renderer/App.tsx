@@ -58,6 +58,7 @@ export function App(): JSX.Element {
   const [activeTab, setActiveTab] = useState<TabId>(() => readLastTab() ?? 'setup');
   const [statusLoaded, setStatusLoaded] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [detectionsMcpFilter, setDetectionsMcpFilter] = useState<string | null>(null);
   const { health, refresh: refreshHealth } = usePolledHealth();
 
   const pulseVariantClass =
@@ -117,6 +118,12 @@ export function App(): JSX.Element {
     writeLastTab(tab);
   }, []);
 
+  const handleOpenInDetections = useCallback((name: string) => {
+    setDetectionsMcpFilter(name);
+    setActiveTab('detections');
+    writeLastTab('detections');
+  }, []);
+
   const refreshStatus = useCallback(() => {
     void window.xcg.configStatus().then((result) => {
       setConfigStatus(result);
@@ -161,9 +168,16 @@ export function App(): JSX.Element {
       <Tabs options={TAB_OPTIONS} active={activeTab} onChange={handleTabChange} />
       <HealthWarning health={health} onRepaired={handleRepaired} />
       {activeTab === 'setup' ? (
-        <Setup status={statusLoaded ? configStatus : null} onRefresh={refreshStatus} />
+        <Setup
+          status={statusLoaded ? configStatus : null}
+          onRefresh={refreshStatus}
+          onOpenInDetections={handleOpenInDetections}
+        />
       ) : (
-        <Detections />
+        <Detections
+          mcpFilter={detectionsMcpFilter}
+          onClearMcpFilter={() => setDetectionsMcpFilter(null)}
+        />
       )}
       {settingsOpen && (
         <SettingsDrawer
