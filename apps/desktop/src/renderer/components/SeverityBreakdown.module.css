@@ -30,7 +30,7 @@
 }
 
 .card_total {
-  background: var(--kraft-surface);
+  background: var(--kraft-bg);
 }
 
 .card_total .number {
