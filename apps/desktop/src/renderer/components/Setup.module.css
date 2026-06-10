@@ -154,6 +154,40 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
+}
+
+.summaryActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Kraft search input: soft border, radius-sm, font-ui 13px. */
+.search {
+  width: 180px;
+  background: var(--kraft-surface);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  border-radius: var(--kraft-radius-sm);
+  padding: 7px 11px;
+  font-size: 13px;
+  font-family: var(--kraft-font-ui);
+  color: var(--kraft-ink);
+}
+
+.search::placeholder {
+  color: var(--kraft-ink-disabled);
+}
+
+.search:focus {
+  outline: none;
+  border-color: var(--kraft-accent);
+}
+
+.noMatch {
+  margin: 0;
+  color: var(--kraft-ink-soft);
+  font-size: 13px;
 }
 
 .summary {

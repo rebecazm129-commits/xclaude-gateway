@@ -32,6 +32,7 @@ const CONNECTOR_GROUPS: readonly {
 export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconnect, onRemove }: SetupProps): ReactElement {
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const detections = usePolledDetections();
 
   // One pass over all detections → flagged-call count per connector (last 7d).
@@ -84,6 +85,12 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
   const unsupportedCount = connectors.filter((c) => c.status === 'unsupported').length;
   const selectedConnector = connectors.find((c) => c.name === selectedName) ?? null;
 
+  // Client-side filter: name contains the query (case-insensitive, trimmed).
+  // Empty query → includes('') is always true → full list. anyMatch drives the
+  // "no results" message. Summary totals stay UNfiltered (computed above).
+  const q = query.trim().toLowerCase();
+  const anyMatch = connectors.some((c) => c.name.toLowerCase().includes(q));
+
   // The add-connector catalog reuses RemoteConnectors intact (busy/banners/
   // connectMessage). Rendered inline (collapsible), not as a popover — zero
   // positioning/click-outside. Stays open after a successful connect so the
@@ -101,20 +108,33 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
               {' · '}<b>{notAuditedCount}</b> not audited
               {unsupportedCount > 0 ? <>{' · '}<b>{unsupportedCount}</b> unsupported</> : null}
             </div>
-            <button
-              type="button"
-              className={styles['addButton']}
-              onClick={() => setAddOpen((o) => !o)}
-              aria-expanded={addOpen}
-            >
-              + Add connector
-            </button>
+            <div className={styles['summaryActions']}>
+              <input
+                type="search"
+                className={styles['search']}
+                placeholder="Search…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Search connectors"
+              />
+              <button
+                type="button"
+                className={styles['addButton']}
+                onClick={() => setAddOpen((o) => !o)}
+                aria-expanded={addOpen}
+              >
+                + Add connector
+              </button>
+            </div>
           </div>
           {catalog}
           <div className={styles['masterDetail']}>
           <div className={styles['list']}>
-            {CONNECTOR_GROUPS.map((g) => {
-              const items = connectors.filter((c) => c.status === g.status);
+            {anyMatch ? (
+              CONNECTOR_GROUPS.map((g) => {
+              const items = connectors.filter(
+                (c) => c.status === g.status && c.name.toLowerCase().includes(q),
+              );
               if (items.length === 0) {
                 return null;
               }
@@ -159,7 +179,10 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
                   </ul>
                 </div>
               );
-            })}
+            })
+            ) : (
+              <p className={styles['noMatch']}>No connectors match.</p>
+            )}
           </div>
 
           <div className={styles['inspector']}>
