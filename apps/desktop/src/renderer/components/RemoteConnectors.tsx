@@ -14,6 +14,7 @@ interface CatalogEntry {
 const CONNECTORS: readonly CatalogEntry[] = [
   { label: 'Notion', name: 'notion', url: 'https://mcp.notion.com/mcp' },
   { label: 'Linear', name: 'linear', url: 'https://mcp.linear.app/mcp' },
+  { label: 'Atlassian', name: 'atlassian', url: 'https://mcp.atlassian.com/v1/mcp/authv2' },
 ];
 
 export interface RemoteConnectorsProps {
