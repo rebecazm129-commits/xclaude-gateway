@@ -9,10 +9,15 @@
 // successful login, so the config never holds a remote entry without a token.
 // Unit-tested with a mocked login (tests/main/connect-handler.test.ts).
 
-import { parseConfig } from '@xcg/shared/config';
+import { parseConfig, toConnectors } from '@xcg/shared/config';
 import type { ConnectResult } from '@xcg/shared/config';
 
-import { runConfigAddRemote, type ConfigHandlerOptions } from './config-handlers.js';
+import {
+  entryToIpc,
+  runConfigAddRemote,
+  runConfigReplaceRemote,
+  type ConfigHandlerOptions,
+} from './config-handlers.js';
 import type { LoginOutcome, LoginProcessOptions } from './login-runner.js';
 
 export interface ConnectHandlerDeps {
@@ -35,26 +40,35 @@ export async function runConfigConnect(
   deps: ConnectHandlerDeps,
   config: ConnectConfig,
 ): Promise<ConnectResult> {
-  // (1) name-exists pre-check, BEFORE the login (do not open the browser if the
-  //     name is already taken). parseConfig errors propagate as IpcConfigError.
+  // (1) Classify any existing entry of this name using the SAME mapping the
+  //     Connectors UI uses (parser plan → entryToIpc → toConnectors), so
+  //     "ours with this URL" is not a parallel criterion. All BEFORE the login:
+  //     we only open the browser for a fresh connect or a legit reconnect.
+  //     parseConfig errors propagate as IpcConfigError.
   const parsed = parseConfig(config.configPath);
   if (!parsed.ok) {
     if (parsed.error.kind === 'not-found') return { ok: false, error: { kind: 'not-found' } };
     return { ok: false, error: { kind: parsed.error.kind, detail: parsed.error.detail } };
   }
-  const mcp =
-    parsed.raw &&
-    typeof parsed.raw === 'object' &&
-    'mcpServers' in parsed.raw &&
-    parsed.raw.mcpServers &&
-    typeof parsed.raw.mcpServers === 'object'
-      ? (parsed.raw.mcpServers as Record<string, unknown>)
-      : {};
-  if (config.name in mcp) {
-    return { ok: false, error: { kind: 'name-exists', detail: 'A connector with that name already exists.' } };
+  const existing = parsed.plan.entries.find((e) => e.name === config.name);
+  let reconnecting = false;
+  if (existing !== undefined) {
+    const [connector] = toConnectors([entryToIpc(existing)]);
+    // Ours iff the classifier calls it a remote bridge (already-wrapped http);
+    // reconnect only when the audited endpoint matches the requested URL.
+    const oursSameUrl =
+      connector !== undefined &&
+      connector.type === 'remote' &&
+      connector.endpoint === config.url;
+    if (!oursSameUrl) {
+      return { ok: false, error: { kind: 'name-exists', detail: 'A connector with that name already exists.' } };
+    }
+    reconnecting = true;
   }
 
-  // (2) Login. The only seam. If not success → error WITHOUT touching the config.
+  // (2) Login. The only seam. For a reconnect this re-auths an existing entry;
+  //     for a fresh connect it authorizes a new one. On failure we touch
+  //     nothing — the existing entry, if any, stays valid (login-first, no rollback).
   const outcome = await deps.login({
     proxyBinPath: config.proxyBinPath,
     url: config.url,
@@ -68,10 +82,19 @@ export async function runConfigConnect(
     return { ok: false, error: { kind: 'login-failed', detail: outcome.detail } };
   }
 
-  // (3) Login OK → write the entry, reusing runConfigAddRemote
-  //     (parseConfig + addRemoteToConfig + writeAtomic).
+  // (3) Login OK → write. Reconnect overwrites the existing bridge (normalizing
+  //     its command path); a fresh connect inserts a new entry.
   const opts: ConfigHandlerOptions = { configPath: config.configPath, xcgPath: config.xcgPath };
-  const added = runConfigAddRemote(opts, { name: config.name, url: config.url });
-  if (!added.ok) return added;
-  return { ok: true, op: 'connect', configPath: config.configPath, name: config.name, outcome: 'wrote' };
+  const written = reconnecting
+    ? runConfigReplaceRemote(opts, { name: config.name, url: config.url })
+    : runConfigAddRemote(opts, { name: config.name, url: config.url });
+  if (!written.ok) return written;
+  return {
+    ok: true,
+    op: 'connect',
+    configPath: config.configPath,
+    name: config.name,
+    outcome: 'wrote',
+    reconnected: reconnecting,
+  };
 }

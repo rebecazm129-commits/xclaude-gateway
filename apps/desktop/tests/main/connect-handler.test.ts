@@ -49,7 +49,7 @@ describe('runConfigConnect (Hito 6 Fase 5, Pieza A)', () => {
     const login = vi.fn((): Promise<LoginOutcome> => Promise.resolve({ kind: 'success' }));
 
     const result = await runConfigConnect({ login }, cfg('notion'));
-    expect(result).toMatchObject({ ok: true, op: 'connect', outcome: 'wrote' });
+    expect(result).toMatchObject({ ok: true, op: 'connect', outcome: 'wrote', reconnected: false });
     expect(login).toHaveBeenCalledTimes(1);
 
     const written = readConfigParsed() as {
@@ -103,6 +103,62 @@ describe('runConfigConnect (Hito 6 Fase 5, Pieza A)', () => {
     const result = await runConfigConnect({ login }, cfg('notion'));
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.kind).toBe('not-found');
+    expect(login).not.toHaveBeenCalled();
+  });
+
+  it('reconnect: ours + same url → re-login and rewrite, reconnected:true', async () => {
+    // A foreign local entry sits alongside the target; reconnect must leave it
+    // byte-for-byte untouched (only mcpServers.notion is rewritten).
+    const filesystem = { command: '/usr/local/bin/npx', args: ['-y', 'xcg-filesystem'] };
+    writeConfig({
+      mcpServers: {
+        notion: { command: FAKE_XCG, args: ['http', '--url', URL_OK, '--name', 'notion'] },
+        filesystem,
+      },
+    });
+    const login = vi.fn((): Promise<LoginOutcome> => Promise.resolve({ kind: 'success' }));
+
+    const result = await runConfigConnect({ login }, cfg('notion'));
+    expect(result).toMatchObject({ ok: true, op: 'connect', outcome: 'wrote', reconnected: true });
+    expect(login).toHaveBeenCalledTimes(1);
+
+    const written = readConfigParsed() as {
+      mcpServers: {
+        notion: { command: string; args: string[] };
+        filesystem: { command: string; args: string[] };
+      };
+    };
+    expect(written.mcpServers.notion.command).toBe(FAKE_XCG);
+    expect(written.mcpServers.notion.args).toEqual(['http', '--url', URL_OK, '--name', 'notion']);
+    // The unrelated entry is preserved verbatim.
+    expect(written.mcpServers.filesystem).toEqual(filesystem);
+  });
+
+  it('ours but a different url → name-exists, login NOT called', async () => {
+    writeConfig({
+      mcpServers: {
+        notion: { command: FAKE_XCG, args: ['http', '--url', 'https://other.example/mcp', '--name', 'notion'] },
+      },
+    });
+    const login = vi.fn((): Promise<LoginOutcome> => Promise.resolve({ kind: 'success' }));
+
+    const result = await runConfigConnect({ login }, cfg('notion'));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('name-exists');
+    expect(login).not.toHaveBeenCalled();
+  });
+
+  it('foreign entry (not ours) → name-exists, login NOT called', async () => {
+    // Distinct from the short-circuit test above: asserts the classifier path
+    // (toConnectors → local) rejects a non-xcg-proxy command as name-exists.
+    writeConfig({
+      mcpServers: { notion: { command: '/usr/local/bin/npx', args: ['-y', 'fs'] } },
+    });
+    const login = vi.fn((): Promise<LoginOutcome> => Promise.resolve({ kind: 'success' }));
+
+    const result = await runConfigConnect({ login }, cfg('notion'));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('name-exists');
     expect(login).not.toHaveBeenCalled();
   });
 });

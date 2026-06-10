@@ -129,6 +129,20 @@ export function addRemoteToConfig(raw: unknown, name: string, url: string, xcgPa
   return { ok: true, config: { ...raw, mcpServers: newMcp } };
 }
 
+// Overwrites mcpServers[name] with a fresh bridge entry. Sibling of
+// addRemoteToConfig WITHOUT the name-exists guard: used by reconnect, where the
+// caller (runConfigConnect) has already classified the existing entry as ours
+// (toConnectors → remote) AND pointing at the same URL. Still validates
+// name/url and the config shape. Returns the full config object for writeAtomic.
+export function replaceRemoteInConfig(raw: unknown, name: string, url: string, xcgPath: string): AddRemoteToConfigResult {
+  if (!isSafeRemoteName(name)) return { ok: false, error: 'invalid-name' };
+  try { new URL(url); } catch { return { ok: false, error: 'invalid-url' }; }
+  if (!isPlainObject(raw)) return { ok: false, error: 'bad-config' };
+  const mcp = isPlainObject(raw.mcpServers) ? raw.mcpServers : {};
+  const newMcp = { ...mcp, [name]: createRemoteEntry(name, url, xcgPath) };
+  return { ok: true, config: { ...raw, mcpServers: newMcp } };
+}
+
 // Removes a remote bridge entry under mcpServers[name]. Symmetric to
 // addRemoteToConfig. Unlike unwrap (which restores a wrapped stdio entry's
 // original), a remote entry has no pre-existing original to restore — the user

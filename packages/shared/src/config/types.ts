@@ -167,6 +167,10 @@ export interface ConnectOk {
   configPath: string;
   name: string;
   outcome: 'wrote';
+  /** false = a new connector was added; true = an existing bridge of ours
+   *  (same URL) was re-authorized and its entry rewritten. Lets the UI show
+   *  "Reconnected" vs "Added". */
+  reconnected: boolean;
 }
 
 export interface IsConnectedOk {

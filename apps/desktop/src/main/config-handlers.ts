@@ -18,6 +18,7 @@ import {
   isAlreadyWrapped,
   parseConfig,
   removeRemoteFromConfig,
+  replaceRemoteInConfig,
   STABLE_XCG_PROXY_PATH,
   unwrap,
   writeAtomic,
@@ -79,7 +80,9 @@ export function resolveXcgTargetPathFromMain(): string {
 
 // --- Internal helpers (camelCase for IPC, parallel to cli.ts snake_case) ---
 
-function entryToIpc(entry: WrapPlanEntry): IpcConfigEntry {
+// Exported so runConfigConnect can reuse the EXACT plan→IPC→toConnectors
+// classification (rather than re-deriving "is this ours" from arg shapes).
+export function entryToIpc(entry: WrapPlanEntry): IpcConfigEntry {
   if (entry.kind === 'wrappable') {
     return { kind: 'wrappable', name: entry.name, transport: entry.transport ?? null, endpoint: entry.endpoint ?? null };
   }
@@ -286,6 +289,23 @@ export function runConfigAddRemote(
   const parsed = parseConfig(opts.configPath);
   if (!parsed.ok) return parseErrorToIpc(parsed.error);
   const res = addRemoteToConfig(parsed.raw, params.name, params.url, opts.xcgPath);
+  if (!res.ok) return createRemoteErrorToIpc(res.error);
+  const wr = writeAtomic(opts.configPath, res.config);
+  if (!wr.ok) return writeAtomicErrorToIpc(wr.error);
+  return { ok: true, op: 'add-remote', configPath: opts.configPath, name: params.name, outcome: 'wrote' };
+}
+
+// Reconnect writer: overwrites an existing bridge of ours. Mirrors
+// runConfigAddRemote but via replaceRemoteInConfig (no name-exists guard); the
+// caller has already verified the entry is ours and points at the same URL.
+// Reuses the same parse/write error mapping for consistency.
+export function runConfigReplaceRemote(
+  opts: ConfigHandlerOptions,
+  params: { name: string; url: string },
+): AddRemoteResult {
+  const parsed = parseConfig(opts.configPath);
+  if (!parsed.ok) return parseErrorToIpc(parsed.error);
+  const res = replaceRemoteInConfig(parsed.raw, params.name, params.url, opts.xcgPath);
   if (!res.ok) return createRemoteErrorToIpc(res.error);
   const wr = writeAtomic(opts.configPath, res.config);
   if (!wr.ok) return writeAtomicErrorToIpc(wr.error);
