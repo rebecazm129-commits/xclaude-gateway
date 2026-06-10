@@ -24,7 +24,12 @@ const CATEGORY_OPTIONS: readonly Category[] = [
 ];
 
 const ROW_HEIGHT = 40;
-const HEADER_AND_FILTERS_HEIGHT = 328;
+// Chrome around the virtualized list: titlebar (42) + header (84) + tabs (40) +
+// filters bar, PLUS the bottom "Open audit folder" footer (~34px: padding 8×2 +
+// row + hairline) which renders below the list. The footer was uncounted before
+// the titlebar landed too (328 had the same bug). The 42 mirrors
+// --kraft-titlebar-height in index.css (keep in sync — TS can't read the CSS var).
+const HEADER_AND_FILTERS_HEIGHT = 404;
 
 interface DetectionsProps {
   readonly mcpFilter: string | null;

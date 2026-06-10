@@ -150,6 +150,7 @@ export function App(): JSX.Element {
 
   return (
     <div className={styles['app']}>
+      <div className={styles['titlebar']} />
       <header className={styles['header']}>
         <span className={styles['titleGroup']}>
           <span className={styles['titleRow']}>

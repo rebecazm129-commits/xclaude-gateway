@@ -4,12 +4,19 @@
   height: 100vh;
 }
 
+.titlebar {
+  height: var(--kraft-titlebar-height);
+  background: var(--kraft-titlebar);
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
+  -webkit-app-region: drag;
+}
+
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  background: var(--kraft-titlebar);
+  background: var(--kraft-bg);
   border-bottom: var(--kraft-hairline) solid var(--kraft-border);
   height: 84px;
   box-sizing: border-box;

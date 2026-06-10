@@ -1,6 +1,6 @@
 .drawer {
   position: fixed;
-  top: 124px; /* debajo del header (84) + tabs (40) */
+  top: calc(124px + var(--kraft-titlebar-height)); /* titlebar (42) + header (84) + tabs (40) */
   right: 0;
   bottom: 0;
   width: 480px;

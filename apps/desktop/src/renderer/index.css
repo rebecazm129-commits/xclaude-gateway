@@ -92,6 +92,10 @@
   --kraft-radius-dot: 50%;
   --kraft-hairline: 0.5px;
 
+  /* Layout — integrated hiddenInset title bar strip. Single source of truth for
+   * the 42px strip; drawer offsets and Detections list geometry derive from it. */
+  --kraft-titlebar-height: 42px;
+
   /* Motion */
   --kraft-transition-fast: 0.12s;
   --kraft-transition: 0.2s;
