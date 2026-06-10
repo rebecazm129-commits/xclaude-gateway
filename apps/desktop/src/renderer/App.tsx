@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import type { ConnectResult, StatusResult } from '@xcg/shared/config';
+import type { ConnectResult, RemoveRemoteResult, StatusResult } from '@xcg/shared/config';
 
 import { Detections } from './components/Detections.js';
 import { Setup } from './components/Setup.js';
@@ -148,6 +148,18 @@ export function App(): JSX.Element {
     [refreshStatus],
   );
 
+  const handleRemove = useCallback(
+    (name: string): Promise<RemoveRemoteResult> =>
+      window.xcg.configRemoveRemote(name).then((result) => {
+        // ok covers both wrote (entry gone) and noop (not ours); refresh either
+        // way so the list reflects reality. The result is returned so the
+        // inspector can show the noop/error banner.
+        if (result.ok) refreshStatus();
+        return result;
+      }),
+    [refreshStatus],
+  );
+
   return (
     <div className={styles['app']}>
       <div className={styles['titlebar']} />
@@ -193,6 +205,7 @@ export function App(): JSX.Element {
           onOpenInDetections={handleOpenInDetections}
           onAudit={handleAudit}
           onReconnect={handleReconnect}
+          onRemove={handleRemove}
         />
       ) : (
         <Detections

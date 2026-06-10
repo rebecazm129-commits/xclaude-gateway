@@ -231,6 +231,61 @@
   cursor: not-allowed;
 }
 
+/* Outline buttons (Remove / Cancel) — kraft equivalent of the mockup's btn-out:
+ * transparent, 1px border, soft ink, subtle hover. 1px (not hairline) so the
+ * outline reads as a real border. */
+.removeButton,
+.cancelButton {
+  background: transparent;
+  border: 1px solid var(--kraft-border);
+  color: var(--kraft-ink-soft);
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--kraft-font-ui);
+  border-radius: var(--kraft-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+
+.removeButton:hover:not(:disabled),
+.cancelButton:hover:not(:disabled) {
+  background: var(--kraft-filter-bg);
+  border-color: var(--kraft-border-strong);
+  color: var(--kraft-ink);
+}
+
+.removeButton:disabled,
+.cancelButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Danger confirm — filled with the existing critical tokens. */
+.removeConfirmButton {
+  background: var(--kraft-critical-bg);
+  border: 1px solid var(--kraft-critical-border);
+  color: var(--kraft-critical-text);
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--kraft-font-ui);
+  border-radius: var(--kraft-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+
+.removeConfirmButton:hover:not(:disabled) {
+  border-color: var(--kraft-critical-dot);
+}
+
+.removeConfirmButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .banner_success,
 .banner_error {
   font-size: 13px;

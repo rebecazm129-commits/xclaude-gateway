@@ -1,13 +1,13 @@
 import { useState, type ReactElement } from 'react';
 
 import type { Connector } from '@xcg/shared/config/connectors';
-import type { ConnectResult } from '@xcg/shared/config';
+import type { ConnectResult, RemoveRemoteResult } from '@xcg/shared/config';
 
 import type { DetectionEvent } from '../../shared/types.js';
 import { usePolledDetections } from '../hooks/usePolledDetections.js';
 import { Badge } from './Badge.js';
 import { CATEGORY_LABELS, formatTimestamp } from './detections-format.js';
-import { connectMessage } from './config-messages.js';
+import { connectMessage, errorMessage } from './config-messages.js';
 
 import styles from './ConnectorInspector.module.css';
 
@@ -40,12 +40,16 @@ interface ConnectorInspectorProps {
   onOpenInDetections: (name: string) => void;
   onAudit: (name: string) => void;
   onReconnect: (name: string, url: string) => Promise<ConnectResult>;
+  onRemove: (name: string) => Promise<RemoveRemoteResult>;
 }
 
-export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onReconnect }: ConnectorInspectorProps): ReactElement {
+export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onReconnect, onRemove }: ConnectorInspectorProps): ReactElement {
   const detections = usePolledDetections();
   const [busy, setBusy] = useState(false);
   const [reconnectResult, setReconnectResult] = useState<ConnectResult | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const [removeResult, setRemoveResult] = useState<RemoveRemoteResult | null>(null);
   const weekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const calls7d = detections.filter(
     (e): e is DetectionEvent =>
@@ -64,9 +68,11 @@ export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onR
   const canReconnect = connector.type === 'remote' && connector.endpoint !== null;
 
   async function handleReconnect(): Promise<void> {
-    if (busy || connector.endpoint === null) return;
+    if (busy || removing || connector.endpoint === null) return;
     setBusy(true);
     setReconnectResult(null);
+    setRemoveResult(null);
+    setConfirmingRemove(false);
     try {
       const result = await onReconnect(connector.name, connector.endpoint);
       setReconnectResult(result);
@@ -79,7 +85,52 @@ export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onR
     }
   }
 
+  // Remove is a two-click inline confirm. The first click only flips to the
+  // confirm state (no IPC); "Confirm remove" runs it, "Cancel" backs out.
+  // Switching selection resets all of this (the inspector is keyed by name).
+  function handleRemoveClick(): void {
+    if (busy || removing) return;
+    setReconnectResult(null);
+    setRemoveResult(null);
+    setConfirmingRemove(true);
+  }
+
+  function handleCancelRemove(): void {
+    setConfirmingRemove(false);
+  }
+
+  async function handleConfirmRemove(): Promise<void> {
+    if (busy || removing) return;
+    setRemoving(true);
+    setRemoveResult(null);
+    try {
+      const result = await onRemove(connector.name);
+      setRemoveResult(result);
+      // ok+wrote: the parent re-reads the config, the entry vanishes from the
+      // list and this inspector unmounts. noop/error: stay, exit confirm, banner.
+      if (!(result.ok && result.outcome === 'wrote')) {
+        setConfirmingRemove(false);
+      }
+    } catch (err) {
+      console.error('remove failed:', err);
+      setConfirmingRemove(false);
+    } finally {
+      setRemoving(false);
+    }
+  }
+
   const message = reconnectResult !== null ? connectMessage(reconnectResult) : null;
+
+  // ok+wrote → no banner (the entry disappears). ok+noop → soft error: the entry
+  // exists but isn't ours to remove. !ok → reuse the shared errorMessage mapping.
+  const removeBanner =
+    removeResult === null
+      ? null
+      : removeResult.ok
+        ? removeResult.outcome === 'noop'
+          ? "This connector isn’t managed by xCLAUDE, so it can’t be removed here. Remove it from claude_desktop_config.json manually."
+          : null
+        : errorMessage(removeResult.error);
 
   return (
     <div className={styles['root']}>
@@ -149,15 +200,49 @@ export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onR
             type="button"
             className={styles['reconnectButton']}
             onClick={() => void handleReconnect()}
-            disabled={busy}
+            disabled={busy || removing}
           >
             {busy ? 'Reconnecting… (check your browser)' : 'Reconnect'}
           </button>
+
+          {confirmingRemove ? (
+            <>
+              <button
+                type="button"
+                className={styles['removeConfirmButton']}
+                onClick={() => void handleConfirmRemove()}
+                disabled={busy || removing}
+              >
+                {removing ? 'Removing…' : 'Confirm remove'}
+              </button>
+              <button
+                type="button"
+                className={styles['cancelButton']}
+                onClick={handleCancelRemove}
+                disabled={removing}
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className={styles['removeButton']}
+              onClick={handleRemoveClick}
+              disabled={busy || removing}
+            >
+              Remove
+            </button>
+          )}
         </div>
       ) : null}
 
       {message !== null ? (
         <div className={styles[`banner_${message.tone}`]}>{message.text}</div>
+      ) : null}
+
+      {removeBanner !== null ? (
+        <div className={styles['banner_error']}>{removeBanner}</div>
       ) : null}
     </div>
   );
