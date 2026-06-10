@@ -44,7 +44,7 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
 }
 
 .row {
@@ -52,11 +52,19 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  /* Uniform 56px rows (≈ Connect button + ~12px top/bottom) whether the row
+   * shows the button or the "Added" pill. border-box global reset stays. */
+  min-height: 56px;
+  padding: 12px 0;
+}
+
+.row + .row {
+  border-top: var(--kraft-hairline) solid var(--kraft-border);
 }
 
 .rowLabel {
-  font-size: 14px;
-  font-weight: 500;
+  font-family: var(--kraft-font-mono);
+  font-size: 13px;
   color: var(--kraft-ink);
 }
 
@@ -67,9 +75,14 @@
 }
 
 .addedBadge {
-  font-size: 12px;
+  font-family: var(--kraft-font-mono);
+  font-size: 11px;
   font-weight: 500;
   color: var(--kraft-low-text);
+  background: var(--kraft-low-bg);
+  border: var(--kraft-hairline) solid var(--kraft-low-border);
+  border-radius: var(--kraft-radius-sm);
+  padding: 3px 9px;
 }
 
 .connectButton {
