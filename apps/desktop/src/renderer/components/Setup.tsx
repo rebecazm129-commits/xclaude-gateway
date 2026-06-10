@@ -30,6 +30,7 @@ const CONNECTOR_GROUPS: readonly {
 
 export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconnect, onRemove }: SetupProps): ReactElement {
   const [selectedName, setSelectedName] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   // Loading state while status hasn't arrived yet from App.tsx's mount effect.
   if (status === null) {
@@ -63,16 +64,33 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
   const unsupportedCount = connectors.filter((c) => c.status === 'unsupported').length;
   const selectedConnector = connectors.find((c) => c.name === selectedName) ?? null;
 
+  // The add-connector catalog reuses RemoteConnectors intact (busy/banners/
+  // connectMessage). Rendered inline (collapsible), not as a popover — zero
+  // positioning/click-outside. Stays open after a successful connect so the
+  // "Added" badge is visible; closes naturally on tab change (Setup unmounts).
+  const catalog = addOpen ? <RemoteConnectors onRefresh={onRefresh} /> : null;
+
   return (
     <div className={styles['container']}>
       {connectors.length > 0 ? (
         <>
-          <div className={styles['summary']}>
-            <b>{connectors.length}</b> {connectors.length === 1 ? 'connector' : 'connectors'}
-            {' · '}<b>{auditingCount}</b> auditing
-            {' · '}<b>{notAuditedCount}</b> not audited
-            {unsupportedCount > 0 ? <>{' · '}<b>{unsupportedCount}</b> unsupported</> : null}
+          <div className={styles['summaryRow']}>
+            <div className={styles['summary']}>
+              <b>{connectors.length}</b> {connectors.length === 1 ? 'connector' : 'connectors'}
+              {' · '}<b>{auditingCount}</b> auditing
+              {' · '}<b>{notAuditedCount}</b> not audited
+              {unsupportedCount > 0 ? <>{' · '}<b>{unsupportedCount}</b> unsupported</> : null}
+            </div>
+            <button
+              type="button"
+              className={styles['addButton']}
+              onClick={() => setAddOpen((o) => !o)}
+              aria-expanded={addOpen}
+            >
+              + Add connector
+            </button>
           </div>
+          {catalog}
           <div className={styles['masterDetail']}>
           <div className={styles['list']}>
             {CONNECTOR_GROUPS.map((g) => {
@@ -150,10 +168,17 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
               ? 'Claude Desktop has no MCP config yet. Open Claude Desktop, add at least one MCP server, then come back here to install xCLAUDE Gateway.'
               : 'Local MCP servers already in your Claude config will appear here automatically.'}
           </p>
+          <button
+            type="button"
+            className={styles['addButton']}
+            onClick={() => setAddOpen((o) => !o)}
+            aria-expanded={addOpen}
+          >
+            + Add connector
+          </button>
+          {catalog}
         </div>
       )}
-
-      <RemoteConnectors onRefresh={onRefresh} />
 
       <SelfTest />
     </div>

@@ -123,6 +123,13 @@
   gap: 16px;
 }
 
+.summaryRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .summary {
   font-family: var(--kraft-font-ui);
   font-size: 13px;
@@ -132,6 +139,31 @@
 .summary b {
   font-weight: 600;
   color: var(--kraft-ink);
+}
+
+/* Accent CTA — kraft equivalent of the mockup's filled btn-coral. */
+.addButton {
+  flex-shrink: 0;
+  background: var(--kraft-accent);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--kraft-radius-sm);
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--kraft-font-ui);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--kraft-transition-fast) ease;
+}
+
+.addButton:hover {
+  background: var(--kraft-accent-hover);
+}
+
+/* In the empty state the button is centered by the panel; give it breathing room. */
+.empty .addButton {
+  margin-top: 20px;
 }
 
 .inspector {
