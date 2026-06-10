@@ -3,9 +3,10 @@
 // (browser open + 5-min wait + finishAuth round-trip) is validated manually
 // against the real remote in 4.c.2.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js';
 
-import { interpretCallback } from '../src/login.js';
+import { interpretCallback, probeAuthorization } from '../src/login.js';
 
 const CALLBACK_PATH = '/xcg-callback';
 
@@ -38,5 +39,23 @@ describe('interpretCallback', () => {
   it('ignores trailing slashes / query-only differences on a non-matching path', () => {
     const url = new URL('http://127.0.0.1:51703/xcg-callback/?code=x');
     expect(interpretCallback(url, CALLBACK_PATH)).toEqual({ kind: 'ignore' });
+  });
+});
+
+describe('probeAuthorization', () => {
+  it('returns false when send() resolves (token still valid → no redirect, no callback wait)', async () => {
+    const send = vi.fn(() => Promise.resolve());
+    await expect(probeAuthorization(send)).resolves.toBe(false);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns true when send() throws UnauthorizedError (browser redirect happened → existing flow)', async () => {
+    const send = vi.fn(() => Promise.reject(new UnauthorizedError('redirect')));
+    await expect(probeAuthorization(send)).resolves.toBe(true);
+  });
+
+  it('rethrows a non-Unauthorized error (real discovery/DCR/network failure)', async () => {
+    const send = vi.fn(() => Promise.reject(new Error('network down')));
+    await expect(probeAuthorization(send)).rejects.toThrow('network down');
   });
 });

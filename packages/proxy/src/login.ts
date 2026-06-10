@@ -26,6 +26,24 @@ export function interpretCallback(reqUrl: URL, callbackPath: string): CallbackRe
   return { kind: 'error', error: 'missing_code' };
 }
 
+// Drives the initialize handshake and reports whether the SDK redirected to the
+// browser. Missing/expired token → the first send() triggers 401 → discovery →
+// DCR → redirectToAuthorization (opens the browser) and the SDK throws
+// UnauthorizedError: returns true (caller must wait for the loopback callback).
+// A still-valid token → the credential is accepted, send() resolves, no redirect:
+// returns false (caller is done — nothing to authorize). Any other error is a
+// real failure (discovery/DCR/network) and propagates. Extracted as the unit-
+// testable seam for the 200-vs-401 decision (runLogin's full flow stays manual).
+export async function probeAuthorization(send: () => Promise<void>): Promise<boolean> {
+  try {
+    await send();
+    return false; // 200: token still valid, no browser redirect happened
+  } catch (err) {
+    if (err instanceof UnauthorizedError) return true; // REDIRECT: browser opened
+    throw err;
+  }
+}
+
 export async function runLogin({ url, name }: LoginArgs): Promise<void> {
   const provider = new LoginOAuthProvider(name);
   const redirect = new URL(provider.redirectUrl);
@@ -73,13 +91,13 @@ export async function runLogin({ url, name }: LoginArgs): Promise<void> {
   const transport = new StreamableHTTPClientTransport(new URL(url), { authProvider: provider });
   let timer: NodeJS.Timeout | undefined;
   try {
-    // start() crea el AbortController pero es no-op de auth en este SDK; quien
-    // dispara el 401 -> discovery -> DCR -> redirectToAuthorization es el primer
-    // send(). Mandamos un initialize: el provider abrirá el navegador / imprimirá
-    // la URL y luego el SDK lanza el UnauthorizedError esperado (REDIRECT).
-    try {
-      await transport.start();
-      await transport.send({
+    await transport.start();
+    // The first send() is where the SDK runs auth: a missing/expired token
+    // triggers 401 -> DCR -> redirectToAuthorization (opens the browser) and the
+    // SDK throws UnauthorizedError; a still-valid token is accepted (200) and no
+    // redirect happens. We must wait for the loopback callback ONLY in the former.
+    const redirected = await probeAuthorization(() =>
+      transport.send({
         jsonrpc: '2.0',
         id: 0,
         method: 'initialize',
@@ -88,11 +106,16 @@ export async function runLogin({ url, name }: LoginArgs): Promise<void> {
           capabilities: {},
           clientInfo: { name: 'xcg-proxy-login', version: '0.0.0' },
         },
-      });
-    } catch (err) {
-      // Tras abrir el navegador, el SDK lanza UnauthorizedError (REDIRECT): esperado.
-      // Cualquier otra cosa (fallo de discovery/DCR) es un error real.
-      if (!(err instanceof UnauthorizedError)) throw err;
+      }),
+    );
+
+    if (!redirected) {
+      // Token still valid — reconnect is a no-op. No browser, no callback wait.
+      // This is the reconnect-of-an-authorized-connector path that previously
+      // hung for the full 5-min timeout (it waited for a callback that the
+      // never-opened browser could not produce).
+      process.stderr.write(`xcg-proxy login: "${name}" token still valid; no re-authorization needed\n`);
+      return;
     }
 
     const code = await Promise.race([
