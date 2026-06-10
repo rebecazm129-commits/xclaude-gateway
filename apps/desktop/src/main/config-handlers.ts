@@ -35,6 +35,7 @@ import {
   type WrapPlanEntry,
   type WriteAtomicError,
 } from '@xcg/shared/config';
+import { deleteStoredCredentials } from '@xcg/proxy/credentials';
 
 // --- xcgPath resolution from the main process (D-C2-3) ---
 //
@@ -312,18 +313,33 @@ export function runConfigReplaceRemote(
   return { ok: true, op: 'add-remote', configPath: opts.configPath, name: params.name, outcome: 'wrote' };
 }
 
-export function runConfigRemoveRemote(
+// deps seam: deleteCredentials is injectable so handler tests never touch the
+// real Keychain; defaults to the proxy helper.
+export interface RemoveRemoteDeps {
+  deleteCredentials?: (name: string) => Promise<{ cleared: boolean }>;
+}
+
+export async function runConfigRemoveRemote(
   opts: ConfigHandlerOptions,
   params: { name: string },
-): RemoveRemoteResult {
+  deps: RemoveRemoteDeps = {},
+): Promise<RemoveRemoteResult> {
+  const deleteCredentials = deps.deleteCredentials ?? deleteStoredCredentials;
   const parsed = parseConfig(opts.configPath);
   if (!parsed.ok) return parseErrorToIpc(parsed.error);
   const res = removeRemoteFromConfig(parsed.raw, params.name);
   if (!res.ok) return createRemoteErrorToIpc(res.error);
-  if (!res.removed) return { ok: true, op: 'remove-remote', configPath: opts.configPath, name: params.name, outcome: 'noop' };
+  if (!res.removed) {
+    // noop: nothing of ours was removed → never touch the Keychain.
+    return { ok: true, op: 'remove-remote', configPath: opts.configPath, name: params.name, outcome: 'noop' };
+  }
   const wr = writeAtomic(opts.configPath, res.config);
   if (!wr.ok) return writeAtomicErrorToIpc(wr.error);
-  return { ok: true, op: 'remove-remote', configPath: opts.configPath, name: params.name, outcome: 'wrote' };
+  // Entry removed → best-effort clear the connector's stored credentials. A
+  // clear failure does NOT fail the remove (the entry is already gone); we just
+  // report tokensCleared:false so the UI can mention leftover credentials.
+  const { cleared } = await deleteCredentials(params.name);
+  return { ok: true, op: 'remove-remote', configPath: opts.configPath, name: params.name, outcome: 'wrote', tokensCleared: cleared };
 }
 
 // Narrows a raw mcpServers entry to the shape isAlreadyWrapped needs. Private

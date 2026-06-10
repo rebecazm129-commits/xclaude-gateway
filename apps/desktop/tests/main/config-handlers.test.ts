@@ -8,7 +8,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir as osTmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   runConfigAddRemote,
@@ -485,24 +485,32 @@ describe('config IPC handlers (Milestone 4 Phase 5.1 sub-step C2)', () => {
 
   describe('runConfigRemoveRemote', () => {
     const URL_OK = 'https://mcp.notion.com/mcp';
+    const deleteCredentials = vi.fn(() => Promise.resolve({ cleared: true }));
 
-    it('removes one of our remote entries, outcome wrote', () => {
+    beforeEach(() => {
+      deleteCredentials.mockReset();
+      deleteCredentials.mockResolvedValue({ cleared: true });
+    });
+
+    it('removes one of our remote entries, outcome wrote, clears credentials', async () => {
       writeConfig({ mcpServers: {} });
       runConfigAddRemote(opts(), { name: 'notion', url: URL_OK });
 
-      const result = runConfigRemoveRemote(opts(), { name: 'notion' });
-      expect(result).toMatchObject({ ok: true, op: 'remove-remote', outcome: 'wrote' });
+      const result = await runConfigRemoveRemote(opts(), { name: 'notion' }, { deleteCredentials });
+      expect(result).toMatchObject({ ok: true, op: 'remove-remote', outcome: 'wrote', tokensCleared: true });
+      expect(deleteCredentials).toHaveBeenCalledWith('notion');
 
       const written = readConfigParsed() as { mcpServers: Record<string, unknown> };
       expect('notion' in written.mcpServers).toBe(false);
     });
 
-    it('does not remove a non-ours entry: outcome noop, entry stays', () => {
+    it('does not remove a non-ours entry: outcome noop, entry stays, Keychain untouched', async () => {
       writeConfig({
         mcpServers: { notion: { command: '/usr/local/bin/npx', args: ['-y', 'fs'] } },
       });
-      const result = runConfigRemoveRemote(opts(), { name: 'notion' });
+      const result = await runConfigRemoveRemote(opts(), { name: 'notion' }, { deleteCredentials });
       expect(result).toMatchObject({ ok: true, op: 'remove-remote', outcome: 'noop' });
+      expect(deleteCredentials).not.toHaveBeenCalled();
 
       const written = readConfigParsed() as {
         mcpServers: { notion: { command: string; args: string[] } };
@@ -510,10 +518,20 @@ describe('config IPC handlers (Milestone 4 Phase 5.1 sub-step C2)', () => {
       expect(written.mcpServers.notion).toEqual({ command: '/usr/local/bin/npx', args: ['-y', 'fs'] });
     });
 
-    it('non-existent name: outcome noop', () => {
+    it('non-existent name: outcome noop, Keychain untouched', async () => {
       writeConfig({ mcpServers: {} });
-      const result = runConfigRemoveRemote(opts(), { name: 'notion' });
+      const result = await runConfigRemoveRemote(opts(), { name: 'notion' }, { deleteCredentials });
       expect(result).toMatchObject({ ok: true, op: 'remove-remote', outcome: 'noop' });
+      expect(deleteCredentials).not.toHaveBeenCalled();
+    });
+
+    it('wrote but credential clear fails: remove still ok, tokensCleared:false', async () => {
+      writeConfig({ mcpServers: {} });
+      runConfigAddRemote(opts(), { name: 'notion', url: URL_OK });
+      deleteCredentials.mockResolvedValue({ cleared: false });
+
+      const result = await runConfigRemoveRemote(opts(), { name: 'notion' }, { deleteCredentials });
+      expect(result).toMatchObject({ ok: true, op: 'remove-remote', outcome: 'wrote', tokensCleared: false });
     });
   });
 

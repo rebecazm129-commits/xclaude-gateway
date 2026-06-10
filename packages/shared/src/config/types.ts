@@ -159,6 +159,10 @@ export interface RemoveRemoteOk {
   configPath: string;
   name: string;
   outcome: 'wrote' | 'noop';
+  /** Only set when outcome === 'wrote': whether the connector's Keychain
+   *  credentials were cleared (best-effort). Absent on noop (Keychain untouched)
+   *  and optional so non-desktop producers of this shape need not set it. */
+  tokensCleared?: boolean;
 }
 
 export interface ConnectOk {
