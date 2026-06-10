@@ -2,6 +2,7 @@ import { useState, useEffect, type ReactElement } from 'react';
 
 import type { ConnectResult, IsConnectedResult } from '@xcg/shared/config';
 
+import { connectMessage } from './config-messages.js';
 import styles from './RemoteConnectors.module.css';
 
 interface CatalogEntry {
@@ -19,41 +20,6 @@ export interface RemoteConnectorsProps {
   /** Called after a successful connect (the config changed); optional so the
    * panel still works standalone. */
   readonly onRefresh?: () => void;
-}
-
-// Map a ConnectResult to a user-facing banner. NOTE: success says "Added" /
-// "configured", not "Connected" — we verify the config entry exists, not that
-// the OAuth token is live. The switch covers the error kinds connect can emit;
-// IpcConfigError is a wider union, so this is intentionally NOT exhaustive (no
-// strict never-guard) — the default covers kinds other ops emit but connect
-// never returns.
-function connectMessage(result: ConnectResult): { tone: 'success' | 'error'; text: string } {
-  if (result.ok) {
-    return { tone: 'success', text: `Added. "${result.name}" is configured. Restart Claude Desktop to use it.` };
-  }
-  switch (result.error.kind) {
-    case 'login-failed':
-      return { tone: 'error', text: 'Authorization failed or timed out. Please try again.' };
-    case 'login-invalid-args':
-      return { tone: 'error', text: 'Internal error launching the login. Please report this.' };
-    case 'name-exists':
-      return { tone: 'error', text: 'This connector is already set up.' };
-    case 'not-found':
-      return {
-        tone: 'error',
-        text: 'claude_desktop_config.json was not found. Open Claude Desktop and add at least one MCP server first.',
-      };
-    case 'invalid-name':
-      return { tone: 'error', text: result.error.detail };
-    case 'invalid-url':
-      return { tone: 'error', text: result.error.detail };
-    case 'unreadable':
-    case 'invalid-json':
-    case 'unexpected-shape':
-      return { tone: 'error', text: `Could not read the config. ${result.error.detail ?? ''}`.trim() };
-    default:
-      return { tone: 'error', text: 'An unexpected error occurred.' };
-  }
 }
 
 /**

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import type { StatusResult } from '@xcg/shared/config';
+import type { ConnectResult, StatusResult } from '@xcg/shared/config';
 
 import { Detections } from './components/Detections.js';
 import { Setup } from './components/Setup.js';
@@ -136,6 +136,18 @@ export function App(): JSX.Element {
     });
   }, [refreshStatus]);
 
+  const handleReconnect = useCallback(
+    (name: string, url: string): Promise<ConnectResult> =>
+      window.xcg.configConnect(name, url).then((result) => {
+        // A successful reconnect rewrote the config entry; re-read so the
+        // inspector/list reflect it. The result is returned so the caller
+        // (ConnectorInspector) can render the success/error banner.
+        if (result.ok) refreshStatus();
+        return result;
+      }),
+    [refreshStatus],
+  );
+
   return (
     <div className={styles['app']}>
       <header className={styles['header']}>
@@ -179,6 +191,7 @@ export function App(): JSX.Element {
           onRefresh={refreshStatus}
           onOpenInDetections={handleOpenInDetections}
           onAudit={handleAudit}
+          onReconnect={handleReconnect}
         />
       ) : (
         <Detections

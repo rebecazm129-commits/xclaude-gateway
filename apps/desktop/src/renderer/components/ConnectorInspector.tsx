@@ -1,11 +1,13 @@
-import { type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 
 import type { Connector } from '@xcg/shared/config/connectors';
+import type { ConnectResult } from '@xcg/shared/config';
 
 import type { DetectionEvent } from '../../shared/types.js';
 import { usePolledDetections } from '../hooks/usePolledDetections.js';
 import { Badge } from './Badge.js';
 import { CATEGORY_LABELS, formatTimestamp } from './detections-format.js';
+import { connectMessage } from './config-messages.js';
 
 import styles from './ConnectorInspector.module.css';
 
@@ -37,10 +39,13 @@ interface ConnectorInspectorProps {
   connector: Connector;
   onOpenInDetections: (name: string) => void;
   onAudit: (name: string) => void;
+  onReconnect: (name: string, url: string) => Promise<ConnectResult>;
 }
 
-export function ConnectorInspector({ connector, onOpenInDetections, onAudit }: ConnectorInspectorProps): ReactElement {
+export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onReconnect }: ConnectorInspectorProps): ReactElement {
   const detections = usePolledDetections();
+  const [busy, setBusy] = useState(false);
+  const [reconnectResult, setReconnectResult] = useState<ConnectResult | null>(null);
   const weekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const calls7d = detections.filter(
     (e): e is DetectionEvent =>
@@ -52,6 +57,29 @@ export function ConnectorInspector({ connector, onOpenInDetections, onAudit }: C
     (e) => e.detection.category !== 'tool_call_allowed',
   );
   const recentFlagged = flagged7d.slice(0, 8);
+
+  // Reconnect is only offered for remote bridges of ours (type 'remote' with a
+  // known endpoint URL). Re-runs the OAuth login and rewrites the entry; the
+  // result banner reuses connectMessage (distinguishes "Reconnected" copy).
+  const canReconnect = connector.type === 'remote' && connector.endpoint !== null;
+
+  async function handleReconnect(): Promise<void> {
+    if (busy || connector.endpoint === null) return;
+    setBusy(true);
+    setReconnectResult(null);
+    try {
+      const result = await onReconnect(connector.name, connector.endpoint);
+      setReconnectResult(result);
+    } catch (err) {
+      // configConnect IPC essentially never rejects (the handler returns a
+      // result); log defensively rather than surface a half-state.
+      console.error('reconnect failed:', err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const message = reconnectResult !== null ? connectMessage(reconnectResult) : null;
 
   return (
     <div className={styles['root']}>
@@ -114,6 +142,23 @@ export function ConnectorInspector({ connector, onOpenInDetections, onAudit }: C
           <p className={styles['flaggedEmpty']}>No flagged calls.</p>
         )}
       </div>
+
+      {canReconnect ? (
+        <div className={styles['foot']}>
+          <button
+            type="button"
+            className={styles['reconnectButton']}
+            onClick={() => void handleReconnect()}
+            disabled={busy}
+          >
+            {busy ? 'Reconnecting… (check your browser)' : 'Reconnect'}
+          </button>
+        </div>
+      ) : null}
+
+      {message !== null ? (
+        <div className={styles[`banner_${message.tone}`]}>{message.text}</div>
+      ) : null}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useState, type ReactElement } from 'react';
 
 import { toConnectors, type Connector } from '@xcg/shared/config/connectors';
-import type { StatusResult } from '@xcg/shared/config';
+import type { ConnectResult, StatusResult } from '@xcg/shared/config';
 
 import { ConnectorInspector } from './ConnectorInspector.js';
 import { errorMessage } from './config-messages.js';
@@ -15,6 +15,7 @@ export interface SetupProps {
   readonly onRefresh: () => void;
   readonly onOpenInDetections: (name: string) => void;
   readonly onAudit: (name: string) => void;
+  readonly onReconnect: (name: string, url: string) => Promise<ConnectResult>;
 }
 
 const CONNECTOR_GROUPS: readonly {
@@ -26,7 +27,7 @@ const CONNECTOR_GROUPS: readonly {
   { status: 'unsupported', title: 'Unsupported' },
 ];
 
-export function Setup({ status, onRefresh, onOpenInDetections, onAudit }: SetupProps): ReactElement {
+export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconnect }: SetupProps): ReactElement {
   const [selectedName, setSelectedName] = useState<string | null>(null);
 
   // Loading state while status hasn't arrived yet from App.tsx's mount effect.
@@ -117,9 +118,11 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit }: SetupP
           <div className={styles['inspector']}>
             {selectedConnector !== null ? (
               <ConnectorInspector
+                key={selectedConnector.name}
                 connector={selectedConnector}
                 onOpenInDetections={onOpenInDetections}
                 onAudit={onAudit}
+                onReconnect={onReconnect}
               />
             ) : (
               <p className={styles['inspectorEmpty']}>Select a connector to inspect.</p>
