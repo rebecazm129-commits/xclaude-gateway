@@ -25,9 +25,10 @@ export interface RemoteConnectorsProps {
 /**
  * "Remote connectors" panel for the Setup tab. Self-contained (like SelfTest):
  * invokes window.xcg.configConnect / configIsConnected internally. Catalog of
- * predefined connectors; MVP is Connect only (no Remove). A connect runs the
- * interactive login (it can take minutes — the browser opens), then writes the
- * bridge entry.
+ * predefined connectors; this panel is add-only — already-connected entries
+ * show just an "Added" badge (Reconnect lives in the connector inspector). A
+ * connect runs the interactive login (it can take minutes — the browser opens),
+ * then writes the bridge entry.
  */
 export function RemoteConnectors({ onRefresh }: RemoteConnectorsProps): ReactElement {
   const [busyName, setBusyName] = useState<string | null>(null);
@@ -103,19 +104,16 @@ export function RemoteConnectors({ onRefresh }: RemoteConnectorsProps): ReactEle
             <div className={styles['rowActions']}>
               {connectedNames.has(entry.name) ? (
                 <span className={styles['addedBadge']}>Added</span>
-              ) : null}
-              <button
-                type="button"
-                className={styles['connectButton']}
-                onClick={() => void handleConnect(entry)}
-                disabled={busyName !== null}
-              >
-                {busyName === entry.name
-                  ? 'Connecting… (check your browser)'
-                  : connectedNames.has(entry.name)
-                    ? 'Reconnect'
-                    : 'Connect'}
-              </button>
+              ) : (
+                <button
+                  type="button"
+                  className={styles['connectButton']}
+                  onClick={() => void handleConnect(entry)}
+                  disabled={busyName !== null}
+                >
+                  {busyName === entry.name ? 'Connecting… (check your browser)' : 'Connect'}
+                </button>
+              )}
             </div>
           </li>
         ))}
