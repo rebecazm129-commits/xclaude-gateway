@@ -14,6 +14,7 @@ export interface SetupProps {
   readonly status: StatusResult | null;
   readonly onRefresh: () => void;
   readonly onOpenInDetections: (name: string) => void;
+  readonly onAudit: (name: string) => void;
 }
 
 const CONNECTOR_GROUPS: readonly {
@@ -25,7 +26,7 @@ const CONNECTOR_GROUPS: readonly {
   { status: 'unsupported', title: 'Unsupported' },
 ];
 
-export function Setup({ status, onRefresh, onOpenInDetections }: SetupProps): ReactElement {
+export function Setup({ status, onRefresh, onOpenInDetections, onAudit }: SetupProps): ReactElement {
   const [selectedName, setSelectedName] = useState<string | null>(null);
 
   // Loading state while status hasn't arrived yet from App.tsx's mount effect.
@@ -118,6 +119,7 @@ export function Setup({ status, onRefresh, onOpenInDetections }: SetupProps): Re
               <ConnectorInspector
                 connector={selectedConnector}
                 onOpenInDetections={onOpenInDetections}
+                onAudit={onAudit}
               />
             ) : (
               <p className={styles['inspectorEmpty']}>Select a connector to inspect.</p>

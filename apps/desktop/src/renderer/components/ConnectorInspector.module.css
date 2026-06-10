@@ -54,6 +54,26 @@
 .dotNotAudited { background: var(--kraft-accent); }
 .dotUnsupported { background: var(--kraft-ink-disabled); }
 
+.auditButton {
+  margin-left: 8px;
+  background: var(--kraft-accent);
+  border: var(--kraft-hairline) solid var(--kraft-accent);
+  color: #ffffff;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--kraft-font-ui);
+  border-radius: var(--kraft-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+
+.auditButton:hover {
+  background: var(--kraft-accent-hover);
+  border-color: var(--kraft-accent-hover);
+}
+
 .rows {
   margin: 0;
   display: flex;

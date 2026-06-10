@@ -130,6 +130,12 @@ export function App(): JSX.Element {
     });
   }, []);
 
+  const handleAudit = useCallback((name: string) => {
+    void window.xcg.configInstall('yes', name).then(() => {
+      refreshStatus();
+    });
+  }, [refreshStatus]);
+
   return (
     <div className={styles['app']}>
       <header className={styles['header']}>
@@ -172,6 +178,7 @@ export function App(): JSX.Element {
           status={statusLoaded ? configStatus : null}
           onRefresh={refreshStatus}
           onOpenInDetections={handleOpenInDetections}
+          onAudit={handleAudit}
         />
       ) : (
         <Detections

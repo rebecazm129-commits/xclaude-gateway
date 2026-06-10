@@ -36,9 +36,10 @@ const TRANSPORT_LABEL: Record<Connector['type'], string> = {
 interface ConnectorInspectorProps {
   connector: Connector;
   onOpenInDetections: (name: string) => void;
+  onAudit: (name: string) => void;
 }
 
-export function ConnectorInspector({ connector, onOpenInDetections }: ConnectorInspectorProps): ReactElement {
+export function ConnectorInspector({ connector, onOpenInDetections, onAudit }: ConnectorInspectorProps): ReactElement {
   const detections = usePolledDetections();
   const weekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const calls7d = detections.filter(
@@ -61,6 +62,15 @@ export function ConnectorInspector({ connector, onOpenInDetections }: ConnectorI
           <span className={`${styles['dot']} ${STATUS_DOT[connector.status]}`} />
           {STATUS_LABEL[connector.status]}
         </span>
+        {connector.status === 'not-audited' ? (
+          <button
+            type="button"
+            className={styles['auditButton']}
+            onClick={() => onAudit(connector.name)}
+          >
+            Audit
+          </button>
+        ) : null}
       </div>
 
       <dl className={styles['rows']}>
