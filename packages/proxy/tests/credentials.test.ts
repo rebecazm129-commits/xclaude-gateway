@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../src/keychain.js', () => ({ keychainDelete: vi.fn() }));
+vi.mock('../src/keychain.js', () => ({ keychainDelete: vi.fn(), keychainGet: vi.fn() }));
 
-import { keychainDelete } from '../src/keychain.js';
-import { deleteStoredCredentials } from '../src/credentials.js';
+import { keychainDelete, keychainGet } from '../src/keychain.js';
+import { deleteStoredCredentials, hasStoredCredentials } from '../src/credentials.js';
 
 const mockDelete = vi.mocked(keychainDelete);
+const mockGet = vi.mocked(keychainGet);
 
 describe('deleteStoredCredentials', () => {
   beforeEach(() => {
@@ -38,5 +39,20 @@ describe('deleteStoredCredentials', () => {
     const result = await deleteStoredCredentials('linear');
     expect(result).toEqual({ cleared: false });
     expect(mockDelete).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('hasStoredCredentials', () => {
+  beforeEach(() => { mockGet.mockReset(); });
+
+  it('true when the tokens item exists', async () => {
+    mockGet.mockResolvedValue('{"access_token":"x"}');
+    await expect(hasStoredCredentials('linear')).resolves.toBe(true);
+    expect(mockGet).toHaveBeenCalledWith('linear:tokens');
+  });
+
+  it('false when the tokens item is absent (keychainGet → null)', async () => {
+    mockGet.mockResolvedValue(null);
+    await expect(hasStoredCredentials('linear')).resolves.toBe(false);
   });
 });

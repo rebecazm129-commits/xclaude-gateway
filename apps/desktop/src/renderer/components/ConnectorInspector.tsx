@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 
 import type { Connector } from '@xcg/shared/config/connectors';
 import type { ConnectResult, RemoveRemoteResult } from '@xcg/shared/config';
@@ -50,6 +50,8 @@ export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onR
   const [removing, setRemoving] = useState(false);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [removeResult, setRemoveResult] = useState<RemoveRemoteResult | null>(null);
+  // null = loading/unknown ("—"); true/false = token present/absent. Remote only.
+  const [authPresent, setAuthPresent] = useState<boolean | null>(null);
   const weekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const calls7d = detections.filter(
     (e): e is DetectionEvent =>
@@ -67,6 +69,28 @@ export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onR
   // result banner reuses connectMessage (distinguishes "Reconnected" copy).
   const canReconnect = connector.type === 'remote' && connector.endpoint !== null;
 
+  // Query the Keychain once on mount. No polling: the inspector is keyed by
+  // connector name, so selecting another connector remounts and re-runs this.
+  useEffect(() => {
+    if (connector.type !== 'remote') return;
+    let cancelled = false;
+    setAuthPresent(null);
+    void window.xcg.configHasCredentials(connector.name).then(
+      (present) => {
+        if (!cancelled) setAuthPresent(present);
+      },
+      (err) => {
+        if (!cancelled) {
+          console.error('auth check failed:', err);
+          setAuthPresent(null);
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [connector.type, connector.name]);
+
   async function handleReconnect(): Promise<void> {
     if (busy || removing || connector.endpoint === null) return;
     setBusy(true);
@@ -76,6 +100,9 @@ export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onR
     try {
       const result = await onReconnect(connector.name, connector.endpoint);
       setReconnectResult(result);
+      // A successful reconnect re-authorized the token, so it exists now; keep
+      // the Auth row fresh without waiting for a remount.
+      if (result.ok) setAuthPresent(true);
     } catch (err) {
       // configConnect IPC essentially never rejects (the handler returns a
       // result); log defensively rather than surface a half-state.
@@ -161,6 +188,18 @@ export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onR
           <dt className={styles['label']}>Endpoint</dt>
           <dd className={styles['value']}>{connector.endpoint ?? '—'}</dd>
         </div>
+        {connector.type === 'remote' ? (
+          <div className={styles['row']}>
+            <dt className={styles['label']}>Auth</dt>
+            <dd className={styles['value']}>
+              {authPresent === null
+                ? '—'
+                : authPresent
+                  ? 'OAuth · token stored in Keychain'
+                  : 'OAuth · no token stored'}
+            </dd>
+          </div>
+        ) : null}
         <div className={styles['row']}>
           <dt className={styles['label']}>Calls (7d)</dt>
           <dd className={styles['value']}>{calls7d.length} audited · {flagged7d.length} flagged</dd>

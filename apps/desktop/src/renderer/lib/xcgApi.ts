@@ -19,6 +19,7 @@ export interface XcgApi {
   configRemoveRemote(name: string): Promise<RemoveRemoteResult>;
   configConnect(name: string, url: string): Promise<ConnectResult>;
   configIsConnected(name: string): Promise<IsConnectedResult>;
+  configHasCredentials(name: string): Promise<boolean>;
   validateHealth(): Promise<HealthResult>;
   repairWraps(): Promise<RepairResult>;
   runSelfTest(): Promise<SelfTestReport>;

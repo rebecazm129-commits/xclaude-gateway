@@ -3,7 +3,7 @@
 // `${name}:${kind}` for kind in tokens|client|verifier (mirror of
 // oauth-provider's acct()). Removing a connector should clear all three.
 
-import { keychainDelete } from './keychain.js';
+import { keychainDelete, keychainGet } from './keychain.js';
 
 // Keep in sync with KeychainOAuthProvider.acct() in oauth-provider.ts.
 const CREDENTIAL_KINDS = ['tokens', 'client', 'verifier'] as const;
@@ -29,4 +29,12 @@ export async function deleteStoredCredentials(name: string): Promise<DeleteCrede
     }
   }
   return { cleared };
+}
+
+// True iff the connector has a stored access/refresh token (the `${name}:tokens`
+// Keychain item — the one that means "logged in"; client/verifier are incidental
+// and may exist mid-flow). Propagates real Keychain errors; absence is null →
+// false. Used by the inspector's Auth row.
+export async function hasStoredCredentials(name: string): Promise<boolean> {
+  return (await keychainGet(`${name}:tokens`)) !== null;
 }

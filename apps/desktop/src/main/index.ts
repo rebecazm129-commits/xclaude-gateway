@@ -27,6 +27,7 @@ import { spawnWrapper, readDetectionsFromAudit, resolveNpxPath } from './selftes
 import { runSelfTest } from './selftest-handler.js';
 import { runConfigConnect } from './connect-handler.js';
 import { runLoginProcess } from './login-runner.js';
+import { hasStoredCredentials } from '@xcg/proxy/credentials';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -122,6 +123,13 @@ ipcMain.handle('config:is-connected', (_event, params: { name: string }) => {
     },
     { name: params.name },
   );
+});
+
+// Keychain-only query (no config read): does this connector have a stored OAuth
+// token? Returns a plain boolean; a real Keychain error rejects (the renderer
+// degrades the Auth row to "—"). Mirrors the config:is-connected shape.
+ipcMain.handle('config:has-credentials', (_event, params: { name: string }) => {
+  return hasStoredCredentials(params.name);
 });
 
 ipcMain.handle('system:health', () => {

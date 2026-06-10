@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld('xcg', {
     ipcRenderer.invoke('config:connect', { name, url }),
   configIsConnected: (name: string): Promise<IsConnectedResult> =>
     ipcRenderer.invoke('config:is-connected', { name }),
+  configHasCredentials: (name: string): Promise<boolean> =>
+    ipcRenderer.invoke('config:has-credentials', { name }),
   validateHealth: (): Promise<HealthResult> => ipcRenderer.invoke('system:health'),
   repairWraps: (): Promise<RepairResult> => ipcRenderer.invoke('system:repair-wraps'),
   runSelfTest: (): Promise<SelfTestReport> => ipcRenderer.invoke('system:self-test:run'),
