@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 
 import { toConnectors, type Connector } from '@xcg/shared/config/connectors';
 import type { ConnectResult, RemoveRemoteResult, StatusResult } from '@xcg/shared/config';
@@ -7,6 +7,7 @@ import { ConnectorInspector } from './ConnectorInspector.js';
 import { errorMessage } from './config-messages.js';
 import { RemoteConnectors } from './RemoteConnectors.js';
 import { SelfTest } from './SelfTest.js';
+import { usePolledDetections } from '../hooks/usePolledDetections.js';
 
 import styles from './Setup.module.css';
 
@@ -31,6 +32,25 @@ const CONNECTOR_GROUPS: readonly {
 export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconnect, onRemove }: SetupProps): ReactElement {
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const detections = usePolledDetections();
+
+  // One pass over all detections → flagged-call count per connector (last 7d).
+  // Same predicate the inspector uses (mcp.request, non-allowed category, in
+  // window), but aggregated once for every row instead of a filter per row.
+  const flaggedByMcp = useMemo(() => {
+    const weekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const map = new Map<string, number>();
+    for (const e of detections) {
+      if (
+        e.type === 'mcp.request' &&
+        e.detection.category !== 'tool_call_allowed' &&
+        new Date(e.ts).getTime() >= weekAgoMs
+      ) {
+        map.set(e.mcp, (map.get(e.mcp) ?? 0) + 1);
+      }
+    }
+    return map;
+  }, [detections]);
 
   // Loading state while status hasn't arrived yet from App.tsx's mount effect.
   if (status === null) {
@@ -105,29 +125,37 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
                     <span className={styles['groupCount']}>{items.length}</span>
                   </div>
                   <ul className={styles['entries']}>
-                    {items.map((c) => (
-                      <li
-                        key={c.name}
-                        className={
-                          c.name === selectedName
-                            ? `${styles['entry']} ${styles['entrySelected']}`
-                            : styles['entry']
-                        }
-                        role="button"
-                        tabIndex={0}
-                        aria-pressed={c.name === selectedName}
-                        onClick={() => setSelectedName(c.name)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            setSelectedName(c.name);
+                    {items.map((c) => {
+                      const flagged = flaggedByMcp.get(c.name) ?? 0;
+                      return (
+                        <li
+                          key={c.name}
+                          className={
+                            c.name === selectedName
+                              ? `${styles['entry']} ${styles['entrySelected']}`
+                              : styles['entry']
                           }
-                        }}
-                      >
-                        <span className={styles['entryName']}>{c.name}</span>
-                        <span className={styles['entryKind']}>{c.type}</span>
-                      </li>
-                    ))}
+                          role="button"
+                          tabIndex={0}
+                          aria-pressed={c.name === selectedName}
+                          onClick={() => setSelectedName(c.name)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setSelectedName(c.name);
+                            }
+                          }}
+                        >
+                          <span className={styles['entryName']}>{c.name}</span>
+                          <span className={styles['entryTrail']}>
+                            <span className={styles['entryKind']}>{c.type}</span>
+                            <span className={flagged > 0 ? styles['flagged'] : styles['flaggedZero']}>
+                              {flagged > 0 ? `${flagged} flagged` : '0'}
+                            </span>
+                          </span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               );

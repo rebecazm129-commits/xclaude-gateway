@@ -83,6 +83,32 @@
   letter-spacing: 0.06em;
 }
 
+.entryTrail {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* >0 flagged: amber/medium tokens (mismo set que la severidad medium). */
+.flagged {
+  font-family: var(--kraft-font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--kraft-medium-text);
+  background: var(--kraft-medium-bg);
+  border-radius: var(--kraft-radius-sm);
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+/* 0 flagged: tinta apagada, como el mockup. */
+.flaggedZero {
+  font-family: var(--kraft-font-mono);
+  font-size: 10px;
+  color: var(--kraft-ink-disabled);
+}
+
 .group {
   display: flex;
   flex-direction: column;
