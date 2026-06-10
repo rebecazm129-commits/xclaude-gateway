@@ -55,4 +55,27 @@ describe('hasStoredCredentials', () => {
     mockGet.mockResolvedValue(null);
     await expect(hasStoredCredentials('linear')).resolves.toBe(false);
   });
+
+  it('false for a corrupt blob (truncated JSON)', async () => {
+    mockGet.mockResolvedValue('{"access_tok');
+    await expect(hasStoredCredentials('atlassian')).resolves.toBe(false);
+  });
+
+  it('false for valid JSON without access_token', async () => {
+    mockGet.mockResolvedValue('{"refresh_token":"r"}');
+    await expect(hasStoredCredentials('atlassian')).resolves.toBe(false);
+  });
+
+  it('false for an empty access_token', async () => {
+    mockGet.mockResolvedValue('{"access_token":""}');
+    await expect(hasStoredCredentials('atlassian')).resolves.toBe(false);
+  });
+
+  it('true for a large valid blob (access_token ≥8KB)', async () => {
+    const big = 'a'.repeat(8192);
+    mockGet.mockResolvedValue(
+      JSON.stringify({ access_token: big, token_type: 'Bearer', refresh_token: 'r', expires_in: 3600, scope: 's' }),
+    );
+    await expect(hasStoredCredentials('atlassian')).resolves.toBe(true);
+  });
 });

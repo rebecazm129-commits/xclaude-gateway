@@ -31,10 +31,17 @@ export async function deleteStoredCredentials(name: string): Promise<DeleteCrede
   return { cleared };
 }
 
-// True iff the connector has a stored access/refresh token (the `${name}:tokens`
-// Keychain item — the one that means "logged in"; client/verifier are incidental
-// and may exist mid-flow). Propagates real Keychain errors; absence is null →
-// false. Used by the inspector's Auth row.
+// True iff the connector has a *valid* stored token blob (the `${name}:tokens`
+// Keychain item parses as JSON with a non-empty access_token). A present but
+// corrupt/truncated blob counts as NOT logged in — re-auth overwrites it.
+// Propagates real Keychain errors; absence is null → false.
 export async function hasStoredCredentials(name: string): Promise<boolean> {
-  return (await keychainGet(`${name}:tokens`)) !== null;
+  const raw = await keychainGet(`${name}:tokens`);
+  if (raw === null) return false;
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed?.access_token === 'string' && parsed.access_token.length > 0;
+  } catch {
+    return false;
+  }
 }
