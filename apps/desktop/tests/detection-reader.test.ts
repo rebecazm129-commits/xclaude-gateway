@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { readDetections } from '../src/main/detection-reader.js';
+import { readDetections, readLatestToolCount } from '../src/main/detection-reader.js';
 import { SELFTEST_WRAPPER_NAME } from '../src/main/selftest-runner.js';
 
 let tmpDir: string;
@@ -299,5 +299,47 @@ describe('readDetections', () => {
     const result = await readDetections(dir);
     expect(result).toHaveLength(1);
     expect(result[0]?.id).toBe('real1');
+  });
+});
+
+function toolsResponse(mcp: string, ts: string, names: string[]): Record<string, unknown> {
+  return {
+    v: 1, id: ts, ts, session: 'sess', mcp,
+    type: 'mcp.response', direction: 'server_to_client', rpcId: 1, bytes: 100,
+    result: { tools: names.map((name) => ({ name })) },
+  };
+}
+
+describe('readLatestToolCount', () => {
+  it('returns count + ts of the latest tools/list response for the mcp', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'xcg-tc-'));
+    // ULID-ish names: lexicographic order == chronological.
+    await writeFile(join(dir, '01A.jsonl'),
+      JSON.stringify(toolsResponse('notion', '2026-06-01T00:00:00Z', ['a', 'b'])) + '\n');
+    await writeFile(join(dir, '01B.jsonl'),
+      JSON.stringify(toolsResponse('notion', '2026-06-02T00:00:00Z', ['a', 'b', 'c'])) + '\n');
+    const tc = await readLatestToolCount('notion', dir);
+    expect(tc).toEqual({ count: 3, ts: '2026-06-02T00:00:00Z' });
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('returns null when there is no tools/list response for the mcp', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'xcg-tc-'));
+    // a tools/list for a DIFFERENT mcp must not match.
+    await writeFile(join(dir, '01A.jsonl'),
+      JSON.stringify(toolsResponse('linear', '2026-06-01T00:00:00Z', ['x'])) + '\n');
+    expect(await readLatestToolCount('notion', dir)).toBeNull();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('ignores responses without a tools array; null on missing dir', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'xcg-tc-'));
+    await writeFile(join(dir, '01A.jsonl'),
+      JSON.stringify({ v: 1, id: 'x', ts: 't', session: 's', mcp: 'notion',
+        type: 'mcp.response', direction: 'server_to_client', rpcId: 0,
+        result: { protocolVersion: '1' } }) + '\n'); // initialize, no tools[]
+    expect(await readLatestToolCount('notion', dir)).toBeNull();
+    expect(await readLatestToolCount('notion', join(dir, 'nope'))).toBeNull(); // ENOENT → null
+    await rm(dir, { recursive: true, force: true });
   });
 });

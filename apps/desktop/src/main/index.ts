@@ -22,7 +22,7 @@ import {
   runConfigUninstall,
 } from './config-handlers.js';
 import { runValidateHealth, runRepairWraps } from './health-handlers.js';
-import { readDetections } from './detection-reader.js';
+import { readDetections, readLatestToolCount } from './detection-reader.js';
 import { spawnWrapper, readDetectionsFromAudit, resolveNpxPath } from './selftest-runner.js';
 import { runSelfTest } from './selftest-handler.js';
 import { runConfigConnect } from './connect-handler.js';
@@ -130,6 +130,12 @@ ipcMain.handle('config:is-connected', (_event, params: { name: string }) => {
 // degrades the Auth row to "—"). Mirrors the config:is-connected shape.
 ipcMain.handle('config:has-credentials', (_event, params: { name: string }) => {
   return hasStoredCredentials(params.name);
+});
+
+// Latest tool inventory size for a connector, derived read-only from the audit
+// JSONL (the proxy already records tools/list responses). null if unknown.
+ipcMain.handle('config:tool-count', (_event, params: { name: string }) => {
+  return readLatestToolCount(params.name);
 });
 
 ipcMain.handle('system:health', () => {

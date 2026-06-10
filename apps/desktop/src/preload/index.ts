@@ -10,7 +10,7 @@ import type {
   StatusResult,
   UninstallResult,
 } from '@xcg/shared/config';
-import type { EnrichableEvent } from '../shared/types.js';
+import type { EnrichableEvent, ToolCount } from '../shared/types.js';
 
 contextBridge.exposeInMainWorld('xcg', {
   listDetections: (): Promise<EnrichableEvent[]> => ipcRenderer.invoke('detection:list'),
@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld('xcg', {
     ipcRenderer.invoke('config:is-connected', { name }),
   configHasCredentials: (name: string): Promise<boolean> =>
     ipcRenderer.invoke('config:has-credentials', { name }),
+  configToolCount: (name: string): Promise<ToolCount | null> =>
+    ipcRenderer.invoke('config:tool-count', { name }),
   validateHealth: (): Promise<HealthResult> => ipcRenderer.invoke('system:health'),
   repairWraps: (): Promise<RepairResult> => ipcRenderer.invoke('system:repair-wraps'),
   runSelfTest: (): Promise<SelfTestReport> => ipcRenderer.invoke('system:self-test:run'),

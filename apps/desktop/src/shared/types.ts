@@ -13,6 +13,13 @@ export type {
   DetectionBlock,
 } from '@xcg/shared';
 
+// Latest tool-inventory size for a connector, derived read-only from the audit
+// JSONL (the most recent tools/list response). ts is the response timestamp.
+export interface ToolCount {
+  count: number;
+  ts: string;
+}
+
 // Variante 1: mcp.request con detection inline (detector síncrono regex que
 // enriqueció el frame en el path crítico). Es lo que el reader ya leía.
 export interface DetectionEvent {

@@ -6,6 +6,7 @@ import type {
   DetectionEvent,
   DetectionEnrichmentEvent,
   EnrichableEvent,
+  ToolCount,
 } from '../shared/types.js';
 import { SELFTEST_WRAPPER_NAME } from './selftest-runner.js';
 
@@ -71,17 +72,21 @@ function isDetectionEnrichmentEvent(
   );
 }
 
-export async function readDetections(
-  dir: string = DEFAULT_WRAPPERS_DIR,
-): Promise<EnrichableEvent[]> {
-  let entries: string[];
+// Shared listing used by readDetections and readLatestToolCount. ENOENT → [].
+async function listJsonlFiles(dir: string): Promise<string[]> {
   try {
-    entries = await readdir(dir);
+    const entries = await readdir(dir);
+    return entries.filter((name) => name.endsWith('.jsonl'));
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw err;
   }
-  const jsonlFiles = entries.filter((name) => name.endsWith('.jsonl'));
+}
+
+export async function readDetections(
+  dir: string = DEFAULT_WRAPPERS_DIR,
+): Promise<EnrichableEvent[]> {
+  const jsonlFiles = await listJsonlFiles(dir);
   const seenIds = new Set<string>();
   const requests: DetectionEvent[] = [];
   const enrichments: DetectionEnrichmentEvent[] = [];
@@ -178,4 +183,47 @@ export async function readDetections(
   const results: EnrichableEvent[] = [...requests, ...orphanEnrichments];
   results.sort((a, b) => b.ts.localeCompare(a.ts));
   return results;
+}
+
+// Reads the most recent tools/list response's tool count for a given mcp. The
+// proxy audits every server→client frame, so result.tools is present verbatim
+// in the JSONL (no proxy change needed). Files are ULID-named → lexicographic
+// order is chronological; we scan newest file first and, within a file, newest
+// line first (append-only), returning on the first match. null if none.
+function toolsListResponseFor(value: unknown, mcp: string): ToolCount | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const obj = value as Record<string, unknown>;
+  if (obj['type'] !== 'mcp.response' || obj['mcp'] !== mcp) return null;
+  const result = obj['result'];
+  if (typeof result !== 'object' || result === null) return null;
+  const tools = (result as Record<string, unknown>)['tools'];
+  if (!Array.isArray(tools)) return null;
+  const ts = obj['ts'];
+  return { count: tools.length, ts: typeof ts === 'string' ? ts : '' };
+}
+
+export async function readLatestToolCount(
+  mcp: string,
+  dir: string = DEFAULT_WRAPPERS_DIR,
+): Promise<ToolCount | null> {
+  const files = await listJsonlFiles(dir);
+  // ULID filenames sort lexicographically by creation time → newest first.
+  files.sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+  for (const filename of files) {
+    const content = await readFile(join(dir, filename), 'utf8');
+    const lines = content.split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      if (line === undefined || line.trim() === '') continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      const match = toolsListResponseFor(parsed, mcp);
+      if (match) return match; // early exit: first match is the latest
+    }
+  }
+  return null;
 }

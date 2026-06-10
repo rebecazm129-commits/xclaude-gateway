@@ -8,7 +8,7 @@ import type {
   StatusResult,
   UninstallResult,
 } from '@xcg/shared/config';
-import type { EnrichableEvent } from '../../shared/types.js';
+import type { EnrichableEvent, ToolCount } from '../../shared/types.js';
 
 export interface XcgApi {
   listDetections(): Promise<EnrichableEvent[]>;
@@ -20,6 +20,7 @@ export interface XcgApi {
   configConnect(name: string, url: string): Promise<ConnectResult>;
   configIsConnected(name: string): Promise<IsConnectedResult>;
   configHasCredentials(name: string): Promise<boolean>;
+  configToolCount(name: string): Promise<ToolCount | null>;
   validateHealth(): Promise<HealthResult>;
   repairWraps(): Promise<RepairResult>;
   runSelfTest(): Promise<SelfTestReport>;

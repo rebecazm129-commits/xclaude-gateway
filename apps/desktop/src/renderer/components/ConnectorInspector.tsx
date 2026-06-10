@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactElement } from 'react';
 import type { Connector } from '@xcg/shared/config/connectors';
 import type { ConnectResult, RemoveRemoteResult } from '@xcg/shared/config';
 
-import type { DetectionEvent } from '../../shared/types.js';
+import type { DetectionEvent, ToolCount } from '../../shared/types.js';
 import { usePolledDetections } from '../hooks/usePolledDetections.js';
 import { Badge } from './Badge.js';
 import { CATEGORY_LABELS, formatTimestamp } from './detections-format.js';
@@ -52,6 +52,8 @@ export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onR
   const [removeResult, setRemoveResult] = useState<RemoveRemoteResult | null>(null);
   // null = loading/unknown ("—"); true/false = token present/absent. Remote only.
   const [authPresent, setAuthPresent] = useState<boolean | null>(null);
+  // null = loading/none/error ("—"); otherwise the latest tool inventory size.
+  const [toolCount, setToolCount] = useState<ToolCount | null>(null);
   const weekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const calls7d = detections.filter(
     (e): e is DetectionEvent =>
@@ -90,6 +92,27 @@ export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onR
       cancelled = true;
     };
   }, [connector.type, connector.name]);
+
+  // Tool count for every connector type, read once on mount (keyed remount per
+  // connector → no polling). Same shape as the Auth query.
+  useEffect(() => {
+    let cancelled = false;
+    setToolCount(null);
+    void window.xcg.configToolCount(connector.name).then(
+      (tc) => {
+        if (!cancelled) setToolCount(tc);
+      },
+      (err) => {
+        if (!cancelled) {
+          console.error('tool count failed:', err);
+          setToolCount(null);
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [connector.name]);
 
   async function handleReconnect(): Promise<void> {
     if (busy || removing || connector.endpoint === null) return;
@@ -200,6 +223,10 @@ export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onR
             </dd>
           </div>
         ) : null}
+        <div className={styles['row']}>
+          <dt className={styles['label']}>Tools</dt>
+          <dd className={styles['value']}>{toolCount !== null ? toolCount.count : '—'}</dd>
+        </div>
         <div className={styles['row']}>
           <dt className={styles['label']}>Calls (7d)</dt>
           <dd className={styles['value']}>{calls7d.length} audited · {flagged7d.length} flagged</dd>
