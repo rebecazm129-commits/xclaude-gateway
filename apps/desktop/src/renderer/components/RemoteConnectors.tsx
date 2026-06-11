@@ -30,6 +30,12 @@ const CONNECTORS: readonly CatalogEntry[] = [
     url: 'https://calendarmcp.googleapis.com/mcp/v1',
     scope: 'https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.events.readonly',
   },
+  {
+    label: 'Google Drive',
+    name: 'drive',
+    url: 'https://drivemcp.googleapis.com/mcp/v1',
+    scope: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file',
+  },
 ];
 
 export interface RemoteConnectorsProps {
