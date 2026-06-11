@@ -20,3 +20,6 @@ coverage/
 # Artefacto binario (~105MB q8 + configs), fuera de git por decision de
 # producto: el .app lo empaqueta via electron-builder extraResources.
 packages/proxy/models/
+
+# Disposable empirical spikes — never committed.
+spike/
