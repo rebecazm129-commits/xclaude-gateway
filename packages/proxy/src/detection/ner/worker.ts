@@ -4,8 +4,8 @@ import { env, pipeline } from '@huggingface/transformers';
 
 import type { DetectionFinding, DetectorOutput } from '../types.js';
 import {
-  mapTokensToFindings,
-  type NerToken,
+  mapGroupsToFindings,
+  type NerGroup,
   type WorkerJobRequest,
   type WorkerJobResponse,
 } from './worker-pure.js';
@@ -34,11 +34,17 @@ function send(msg: WorkerJobResponse): void {
 }
 
 async function main(): Promise<void> {
-  let ner: (text: string) => Promise<unknown>;
+  let ner: (
+    text: string,
+    options: { aggregation_strategy: 'simple' },
+  ) => Promise<unknown>;
   try {
     ner = (await pipeline('token-classification', MODEL_ID, {
       dtype: 'q8',
-    })) as unknown as (text: string) => Promise<unknown>;
+    })) as unknown as (
+      text: string,
+      options: { aggregation_strategy: 'simple' },
+    ) => Promise<unknown>;
   } catch (err) {
     send({
       kind: 'error',
@@ -51,9 +57,11 @@ async function main(): Promise<void> {
 
   process.on('message', async (msg: WorkerJobRequest) => {
     if (msg.kind !== 'infer') return;
-    let tokens: NerToken[];
+    let groups: NerGroup[];
     try {
-      tokens = (await ner(msg.paramsJson)) as NerToken[];
+      groups = (await ner(msg.paramsJson, {
+        aggregation_strategy: 'simple',
+      })) as NerGroup[];
     } catch (err) {
       send({
         kind: 'error',
@@ -68,8 +76,8 @@ async function main(): Promise<void> {
     // el NER detecta lo menos accionable; escalar por cantidad seria alert
     // fatigue y pre-cargaria el bloqueo de Hitos 7-9). location ausente
     // (start/end no existen en la salida del modelo).
-    const findings: DetectionFinding[] = mapTokensToFindings(
-      tokens,
+    const findings: DetectionFinding[] = mapGroupsToFindings(
+      groups,
       SCORE_THRESHOLD,
     );
     if (findings.length === 0) {

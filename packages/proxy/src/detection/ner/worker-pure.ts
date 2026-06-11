@@ -36,33 +36,28 @@ export type WorkerJobResponse =
   | { kind: 'skip'; jobId: string }
   | { kind: 'error'; jobId?: string; message: string };
 
-// Forma empiricamente verificada de la salida del pipeline (probe /tmp):
-// Array<{entity, score, index, word}> SIN start/end (la config q8 no los
-// emite). 'entity' usa BIO scheme: B-{TYPE}/I-{TYPE} con TYPE in
-// {PER,LOC,ORG,MISC}, o 'O' (outside). El cast es necesario porque
-// transformers.js no expone tipos limpios para token-classification.
-export type NerToken = {
-  entity: string;
+// Forma empiricamente verificada de la salida del pipeline con
+// aggregation_strategy:'simple' (spike 11/06, q8): Array<{entity_group, score,
+// word}>. entity_group YA viene limpio (TYPE in {PER,LOC,ORG,MISC}, sin prefijo
+// BIO; los tokens contiguos se fusionan en un span). q8 sigue SIN emitir
+// start/end (ni index), por eso no hay `location`. El grouped tambien emite
+// elementos sub-umbral (p.ej. score 0.27) que el filtro estricto descarta. El
+// cast es necesario porque transformers.js no expone tipos limpios aqui.
+export type NerGroup = {
+  entity_group: string;
   score: number;
-  index: number;
   word: string;
 };
 
-export function stripBio(label: string): string {
-  return label.startsWith('B-') || label.startsWith('I-')
-    ? label.slice(2)
-    : label;
-}
-
-// Mapeo puro tokens NER -> findings (extraido para test unitario sin cargar
+// Mapeo puro grupos NER -> findings (extraido para test unitario sin cargar
 // el modelo). Filtro estricto `> threshold` (no `>=`): el umbral filtra ruido,
-// un token en la frontera exacta NO es senal. Sin `location`: start/end no
-// existen en la salida del modelo (verificado en probe).
-export function mapTokensToFindings(
-  tokens: NerToken[],
+// un elemento en la frontera exacta NO es senal. Sin `location`: start/end no
+// existen en la salida del modelo (verificado en spike).
+export function mapGroupsToFindings(
+  groups: NerGroup[],
   threshold: number,
 ): DetectionFinding[] {
-  return tokens
-    .filter((t) => t.score > threshold)
-    .map((t) => ({ type: stripBio(t.entity) }));
+  return groups
+    .filter((g) => g.score > threshold)
+    .map((g) => ({ type: g.entity_group }));
 }
