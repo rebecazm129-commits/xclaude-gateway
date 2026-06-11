@@ -28,7 +28,7 @@ import { runSelfTest } from './selftest-handler.js';
 import { runConfigConnect } from './connect-handler.js';
 import { runLoginProcess } from './login-runner.js';
 import { hasStoredCredentials } from '@xcg/proxy/credentials';
-import { createTray } from './tray.js';
+import { createTray, computeTrayCounts, updateTrayCounts } from './tray.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -64,7 +64,11 @@ function openWindow(): void {
 }
 
 ipcMain.handle('detection:list', async () => {
-  return readDetections();
+  const result = await readDetections();
+  // Piggyback: refresh the tray off the data the renderer already polls — zero
+  // extra JSONL reads.
+  updateTrayCounts(computeTrayCounts(result, Date.now()));
+  return result;
 });
 
 ipcMain.handle('config:status', () => {
@@ -228,13 +232,27 @@ function bootstrapStableSymlink(): void {
   }
 }
 
+const TRAY_REFRESH_MS = 60_000;
+let trayRefreshHandle: NodeJS.Timeout | null = null;
+
 void app.whenReady().then(() => {
   bootstrapStableSymlink();
   createWindow();
   createTray(openWindow);
+  // First recurring loop in the MAIN process: a 60s backstop so the tray count
+  // stays fresh even with no renderer polling (all windows closed). KNOWN loose
+  // end — this and the renderer's usePolledDetections (2s) are candidates to
+  // collapse into a single source-of-truth poll later.
+  trayRefreshHandle = setInterval(() => {
+    void readDetections().then((events) => updateTrayCounts(computeTrayCounts(events, Date.now())));
+  }, TRAY_REFRESH_MS);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on('before-quit', () => {
+  if (trayRefreshHandle) clearInterval(trayRefreshHandle);
 });
 
 app.on('window-all-closed', () => {
