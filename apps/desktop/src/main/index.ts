@@ -28,6 +28,7 @@ import { runSelfTest } from './selftest-handler.js';
 import { runConfigConnect } from './connect-handler.js';
 import { runLoginProcess } from './login-runner.js';
 import { hasStoredCredentials } from '@xcg/proxy/credentials';
+import { createTray } from './tray.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -46,6 +47,19 @@ function createWindow(): void {
     void win.loadURL(process.env['ELECTRON_RENDERER_URL']);
   } else {
     void win.loadFile(join(__dirname, '../renderer/index.html'));
+  }
+}
+
+// Tray "open" action: focus the existing window or create one. Kept here so
+// createWindow stays local to index.ts (tray.ts receives this as a callback).
+function openWindow(): void {
+  const existing = BrowserWindow.getAllWindows()[0];
+  if (existing) {
+    if (existing.isMinimized()) existing.restore();
+    existing.show();
+    existing.focus();
+  } else {
+    createWindow();
   }
 }
 
@@ -217,6 +231,7 @@ function bootstrapStableSymlink(): void {
 void app.whenReady().then(() => {
   bootstrapStableSymlink();
   createWindow();
+  createTray(openWindow);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

@@ -16,6 +16,12 @@ extraResources:
       - "*.dylib"
   - from: ../../packages/proxy/models
     to: proxy/models
+  - from: ../../build
+    to: tray
+    filter:
+      - xclaude-tray-icon.png
+      - xclaude-tray-icon@2x.png
+      - xclaude-tray-icon@3x.png
 mac:
   icon: ../../build/xclaude-icon.icns
   category: public.app-category.developer-tools  # revisar a 'productivity'
