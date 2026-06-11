@@ -23,8 +23,8 @@ contextBridge.exposeInMainWorld('xcg', {
     ipcRenderer.invoke('config:add-remote', { name, url }),
   configRemoveRemote: (name: string): Promise<RemoveRemoteResult> =>
     ipcRenderer.invoke('config:remove-remote', { name }),
-  configConnect: (name: string, url: string): Promise<ConnectResult> =>
-    ipcRenderer.invoke('config:connect', { name, url }),
+  configConnect: (name: string, url: string, scope?: string): Promise<ConnectResult> =>
+    ipcRenderer.invoke('config:connect', { name, url, scope }),
   configIsConnected: (name: string): Promise<IsConnectedResult> =>
     ipcRenderer.invoke('config:is-connected', { name }),
   configHasCredentials: (name: string): Promise<boolean> =>

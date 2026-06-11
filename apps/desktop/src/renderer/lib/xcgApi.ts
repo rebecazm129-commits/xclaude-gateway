@@ -17,7 +17,7 @@ export interface XcgApi {
   configUninstall(mode: 'dry-run' | 'yes'): Promise<UninstallResult>;
   configAddRemote(name: string, url: string): Promise<AddRemoteResult>;
   configRemoveRemote(name: string): Promise<RemoveRemoteResult>;
-  configConnect(name: string, url: string): Promise<ConnectResult>;
+  configConnect(name: string, url: string, scope?: string): Promise<ConnectResult>;
   configIsConnected(name: string): Promise<IsConnectedResult>;
   configHasCredentials(name: string): Promise<boolean>;
   configToolCount(name: string): Promise<ToolCount | null>;

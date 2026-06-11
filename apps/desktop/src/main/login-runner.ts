@@ -23,16 +23,19 @@ export interface LoginProcessOptions {
   readonly proxyBinPath: string;
   readonly url: string;
   readonly name: string;
+  /** Optional OAuth scopes; passed as `--scope` only when set & non-empty so
+   *  existing (DCR) connectors spawn exactly as before. */
+  readonly scope?: string;
   /** Backstop timeout, larger than the binary's own 5-min callback timeout. */
   readonly timeoutMs: number;
 }
 
 export async function runLoginProcess(opts: LoginProcessOptions): Promise<LoginOutcome> {
-  const child = spawn(
-    opts.proxyBinPath,
-    ['login', '--url', opts.url, '--name', opts.name],
-    { stdio: ['ignore', 'ignore', 'pipe'] },
-  );
+  const args = ['login', '--url', opts.url, '--name', opts.name];
+  if (opts.scope !== undefined && opts.scope !== '') {
+    args.push('--scope', opts.scope);
+  }
+  const child = spawn(opts.proxyBinPath, args, { stdio: ['ignore', 'ignore', 'pipe'] });
 
   return await new Promise<LoginOutcome>((resolve) => {
     let settled = false;

@@ -33,6 +33,9 @@ export interface ConnectConfig {
   readonly proxyBinPath: string;
   readonly name: string;
   readonly url: string;
+  /** Optional OAuth scopes forwarded to the login process (Gmail needs them;
+   *  DCR connectors omit it). */
+  readonly scope?: string;
   readonly timeoutMs: number;
 }
 
@@ -73,6 +76,7 @@ export async function runConfigConnect(
     proxyBinPath: config.proxyBinPath,
     url: config.url,
     name: config.name,
+    scope: config.scope,
     timeoutMs: config.timeoutMs,
   });
   if (outcome.kind === 'invalid-args') {

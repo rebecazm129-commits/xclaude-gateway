@@ -9,12 +9,21 @@ interface CatalogEntry {
   readonly label: string;
   readonly name: string;
   readonly url: string;
+  /** Space-separated OAuth scopes to request (Google/Gmail needs explicit
+   *  scopes; DCR connectors omit it). */
+  readonly scope?: string;
 }
 
 const CONNECTORS: readonly CatalogEntry[] = [
   { label: 'Notion', name: 'notion', url: 'https://mcp.notion.com/mcp' },
   { label: 'Linear', name: 'linear', url: 'https://mcp.linear.app/mcp' },
   { label: 'Atlassian', name: 'atlassian', url: 'https://mcp.atlassian.com/v1/mcp/authv2' },
+  {
+    label: 'Gmail',
+    name: 'gmail',
+    url: 'https://gmailmcp.googleapis.com/mcp/v1',
+    scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose',
+  },
 ];
 
 export interface RemoteConnectorsProps {
@@ -65,7 +74,7 @@ export function RemoteConnectors({ onRefresh }: RemoteConnectorsProps): ReactEle
     setLastResult(null);
     setError(null);
     try {
-      const result = await window.xcg.configConnect(entry.name, entry.url);
+      const result = await window.xcg.configConnect(entry.name, entry.url, entry.scope);
       setLastResult(result);
       if (result.ok) {
         setConnectedNames((prev) => {

@@ -101,7 +101,7 @@ ipcMain.handle('config:remove-remote', (_event, params: { name: string }) => {
   );
 });
 
-ipcMain.handle('config:connect', (_event, params: { name: string; url: string }) => {
+ipcMain.handle('config:connect', (_event, params: { name: string; url: string; scope?: string }) => {
   return runConfigConnect(
     { login: runLoginProcess },
     {
@@ -110,6 +110,7 @@ ipcMain.handle('config:connect', (_event, params: { name: string; url: string })
       proxyBinPath: resolveXcgTargetPathFromMain(),
       name: params.name,
       url: params.url,
+      scope: params.scope,
       timeoutMs: 360_000,
     },
   );
