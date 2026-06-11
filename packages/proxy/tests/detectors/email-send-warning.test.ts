@@ -20,6 +20,20 @@ function input(paramsJson: string): DetectorInput {
   };
 }
 
+function toolInput(toolName: string, paramsJson = ''): DetectorInput {
+  return {
+    paramsJson,
+    toolName,
+    envelope: {
+      payload: undefined,
+      mcp: 'test-mcp',
+      method: 'tools/call',
+      direction: 'client_to_server',
+      sessionId: '01HXTESTSESSION',
+    },
+  };
+}
+
 describe('emailSendWarning', () => {
   describe('positives (EN)', () => {
     it('detects "send email to <recipient>"', () => {
@@ -180,6 +194,49 @@ describe('emailSendWarning', () => {
 
     it('returns null for definite article email mention without send verb', () => {
       expect(emailSendWarning(input('The email server is down.'))).toBeNull();
+    });
+  });
+
+  describe('tool-name branch', () => {
+    it('create_draft (Gmail) → medium, email_compose_tool', () => {
+      const out = emailSendWarning(toolInput('create_draft'));
+      expect(out?.category).toBe('email_send_warning');
+      expect(out?.severity).toBe('medium');
+      expect(out?.findings).toEqual([{ type: 'email_compose_tool', location: 'tool' }]);
+    });
+
+    it('send_email → high, email_send_tool', () => {
+      const out = emailSendWarning(toolInput('send_email'));
+      expect(out?.severity).toBe('high');
+      expect(out?.findings).toEqual([{ type: 'email_send_tool', location: 'tool' }]);
+    });
+
+    it('sendEmail (camelCase) → high, email_send_tool', () => {
+      const out = emailSendWarning(toolInput('sendEmail'));
+      expect(out?.severity).toBe('high');
+      expect(out?.findings.some((f) => f.type === 'email_send_tool')).toBe(true);
+    });
+
+    it.each(['label_message', 'unlabel_message', 'write_file', 'search_threads'])(
+      'does not fire on %s (no send/compose token)',
+      (name) => {
+        expect(emailSendWarning(toolInput(name))).toBeNull();
+      },
+    );
+
+    it('combined: text "send an email to..." + create_draft → ONE output, high, BOTH findings', () => {
+      const out = emailSendWarning(toolInput('create_draft', 'send an email to alice@example.com'));
+      expect(out?.severity).toBe('high'); // text high > compose medium
+      expect(out?.findings.map((f) => f.type).sort()).toEqual([
+        'email_compose_tool',
+        'email_send_command',
+      ]);
+    });
+
+    it('toolName undefined + matching text → unchanged text-only behavior', () => {
+      const out = emailSendWarning(input('send an email to alice@example.com'));
+      expect(out?.severity).toBe('high');
+      expect(out?.findings).toEqual([{ type: 'email_send_command', location: 'params' }]);
     });
   });
 });
