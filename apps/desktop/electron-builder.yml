@@ -17,6 +17,7 @@ extraResources:
   - from: ../../packages/proxy/models
     to: proxy/models
 mac:
+  icon: ../../build/xclaude-icon.icns
   category: public.app-category.developer-tools  # revisar a 'productivity'
                                                   # cuando Hito 5 (onboarding
                                                   # consumer) cambie el target
