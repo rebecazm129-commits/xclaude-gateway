@@ -7,6 +7,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   data_export_warning: 'Data export',
   tool_call_allowed: 'Tool call',
   pii_detected: 'PII detected',
+  pii_structured: 'Structured PII',
 };
 
 const MONTH_SHORT: readonly string[] = [

@@ -87,7 +87,7 @@ describe('runSelfTest', () => {
     );
 
     expect(report.outcome).toEqual({ kind: 'timeout_partial' });
-    expect(report.entries.filter((e) => e.actual === null)).toHaveLength(2);
+    expect(report.entries.filter((e) => e.actual === null)).toHaveLength(3);
     expect(
       report.entries.filter((e) => e.actual !== null).every((e) => e.pass),
     ).toBe(true);
@@ -138,21 +138,21 @@ describe('runSelfTest', () => {
       h.config,
     );
 
-    // reader received auditFile + session + expected ids [1..5] (no 0) + timeout.
+    // reader received auditFile + session + expected ids [1..6] (no 0) + timeout.
     expect(reader).toHaveBeenCalledTimes(1);
     const [auditFile, session, expectedRpcIds, timeoutMs] = reader.mock.calls[0]!;
     expect(auditFile).toBe('/tmp/fake.jsonl');
     expect(session).toBe('01TESTSESSION');
-    expect(expectedRpcIds).toEqual([1, 2, 3, 4, 5]);
+    expect(expectedRpcIds).toEqual([1, 2, 3, 4, 5, 6]);
     expect(timeoutMs).toBe(h.config.readbackTimeoutMs);
 
-    // send: initialize (id 0) + initialized (no id) + 5 tool calls (ids 1..5) = 7.
-    expect(h.send).toHaveBeenCalledTimes(7);
+    // send: initialize (id 0) + initialized (no id) + 6 tool calls (ids 1..6) = 8.
+    expect(h.send).toHaveBeenCalledTimes(8);
     const frames = h.send.mock.calls.map((c) => c[0] as Record<string, unknown>);
     expect(frames[0]).toMatchObject({ id: 0, method: 'initialize' });
     expect(frames[1]).toMatchObject({ method: 'notifications/initialized' });
     expect(frames[1]).not.toHaveProperty('id');
-    expect(frames.slice(2).map((f) => f['id'])).toEqual([1, 2, 3, 4, 5]);
+    expect(frames.slice(2).map((f) => f['id'])).toEqual([1, 2, 3, 4, 5, 6]);
     expect(frames.slice(2).every((f) => f['method'] === 'tools/call')).toBe(true);
     expect(h.kill).toHaveBeenCalledTimes(1);
   });

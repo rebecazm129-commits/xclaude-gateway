@@ -21,6 +21,7 @@ const CATEGORY_OPTIONS: readonly Category[] = [
   'data_export_warning',
   'tool_call_allowed',
   'pii_detected',
+  'pii_structured',
 ];
 
 const ROW_HEIGHT = 40;

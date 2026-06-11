@@ -44,8 +44,8 @@ describe('self-test registry', () => {
   });
 
   describe('registry shape', () => {
-    it('contains exactly five examples', () => {
-      expect(examples).toHaveLength(5);
+    it('contains exactly six examples', () => {
+      expect(examples).toHaveLength(6);
     });
 
     it('has no duplicate categoryKey', () => {

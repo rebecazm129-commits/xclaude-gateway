@@ -23,7 +23,8 @@ export type Category =
   | 'email_send_warning'
   | 'data_export_warning'
   | 'tool_call_allowed'
-  | 'pii_detected';
+  | 'pii_detected'
+  | 'pii_structured';
 
 export interface DetectionFinding {
   type: string;

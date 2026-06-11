@@ -88,6 +88,6 @@ export const EXAMPLE_PAYLOAD: SelfTestExample = {
   expectedSeverity: 'high',
   label: 'Email send',
   description: "A request asking the model to send an email on the user's behalf.",
-  message: 'send an email to alice@example.com',
+  message: 'send an email to the whole team',
   method: 'tools/call',
 };
