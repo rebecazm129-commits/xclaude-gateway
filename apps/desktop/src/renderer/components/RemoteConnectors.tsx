@@ -24,6 +24,12 @@ const CONNECTORS: readonly CatalogEntry[] = [
     url: 'https://gmailmcp.googleapis.com/mcp/v1',
     scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose',
   },
+  {
+    label: 'Google Calendar',
+    name: 'calendar',
+    url: 'https://calendarmcp.googleapis.com/mcp/v1',
+    scope: 'https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.events.readonly',
+  },
 ];
 
 export interface RemoteConnectorsProps {
