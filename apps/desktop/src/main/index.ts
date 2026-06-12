@@ -29,6 +29,7 @@ import { runConfigConnect } from './connect-handler.js';
 import { runLoginProcess } from './login-runner.js';
 import { hasStoredCredentials } from '@xcg/proxy/credentials';
 import { createTray, computeTrayCounts, updateTrayCounts } from './tray.js';
+import { isAllowedNavigation } from './navigation-guard.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -41,6 +42,16 @@ function createWindow(): void {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
     },
+  });
+
+  // Defense-in-depth: the renderer never originates navigation or new windows.
+  // Deny window.open outright, and block any will-navigate that isn't the local
+  // app (file://) or the dev server. External links go via shell.openExternal.
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (event, url) => {
+    if (!isAllowedNavigation(url, process.env['ELECTRON_RENDERER_URL'])) {
+      event.preventDefault();
+    }
   });
 
   if (process.env['ELECTRON_RENDERER_URL']) {
