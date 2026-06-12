@@ -1,4 +1,4 @@
-// Tests for connectMessage (renderer formatter shared by RemoteConnectors and
+// Tests for connectMessage (renderer formatter shared by AddConnectorModal and
 // ConnectorInspector). Pure function, no React/DOM — runs as a plain unit test.
 // Covers the success copy split (Added vs Reconnected) and an error kind.
 

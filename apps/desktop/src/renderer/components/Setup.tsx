@@ -3,9 +3,9 @@ import { useMemo, useState, type ReactElement } from 'react';
 import { toConnectors, type Connector } from '@xcg/shared/config/connectors';
 import type { ConnectResult, RemoveRemoteResult, StatusResult } from '@xcg/shared/config';
 
+import { AddConnectorModal } from './AddConnectorModal.js';
 import { ConnectorInspector } from './ConnectorInspector.js';
 import { errorMessage } from './config-messages.js';
-import { RemoteConnectors } from './RemoteConnectors.js';
 import { SelfTest } from './SelfTest.js';
 import { usePolledDetections } from '../hooks/usePolledDetections.js';
 
@@ -91,12 +91,6 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
   const q = query.trim().toLowerCase();
   const anyMatch = connectors.some((c) => c.name.toLowerCase().includes(q));
 
-  // The add-connector catalog reuses RemoteConnectors intact (busy/banners/
-  // connectMessage). Rendered inline (collapsible), not as a popover — zero
-  // positioning/click-outside. Stays open after a successful connect so the
-  // "Added" badge is visible; closes naturally on tab change (Setup unmounts).
-  const catalog = addOpen ? <RemoteConnectors onRefresh={onRefresh} /> : null;
-
   return (
     <div className={styles['container']}>
       {connectors.length > 0 ? (
@@ -120,14 +114,13 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
               <button
                 type="button"
                 className={styles['addButton']}
-                onClick={() => setAddOpen((o) => !o)}
-                aria-expanded={addOpen}
+                onClick={() => setAddOpen(true)}
+                aria-haspopup="dialog"
               >
                 + Add connector
               </button>
             </div>
           </div>
-          {catalog}
           <div className={styles['masterDetail']}>
           <div className={styles['list']}>
             {anyMatch ? (
@@ -230,16 +223,21 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
           <button
             type="button"
             className={styles['addButton']}
-            onClick={() => setAddOpen((o) => !o)}
-            aria-expanded={addOpen}
+            onClick={() => setAddOpen(true)}
+            aria-haspopup="dialog"
           >
             + Add connector
           </button>
-          {catalog}
         </div>
       )}
 
       <SelfTest />
+
+      <AddConnectorModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onRefresh={onRefresh}
+      />
     </div>
   );
 }

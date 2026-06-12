@@ -271,3 +271,15 @@ ipcMain.handle('system:open-audit-folder', async (): Promise<void> => {
     console.error('openPath failed:', result);
   }
 });
+
+ipcMain.handle('system:open-external', async (_event, url: string): Promise<void> => {
+  // Only ever hand http(s) URLs to the system browser — never file:, etc.
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return;
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return;
+  await shell.openExternal(parsed.toString());
+});

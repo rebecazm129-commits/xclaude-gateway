@@ -25,6 +25,8 @@ export interface XcgApi {
   repairWraps(): Promise<RepairResult>;
   runSelfTest(): Promise<SelfTestReport>;
   openAuditFolder(): Promise<void>;
+  /** Open an http(s) URL in the system browser (never navigates the renderer). */
+  openExternalUrl(url: string): Promise<void>;
 }
 
 declare global {

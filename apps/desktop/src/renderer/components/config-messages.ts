@@ -25,7 +25,7 @@ export function errorMessage(err: { kind: string; detail?: string }): string {
 // exists, not that the OAuth token is live. The switch covers the error kinds
 // connect can emit; IpcConfigError is a wider union, so this is intentionally
 // NOT exhaustive (no strict never-guard) — the default covers kinds other ops
-// emit but connect never returns. Shared by RemoteConnectors (Setup panel) and
+// emit but connect never returns. Shared by AddConnectorModal (Setup) and
 // ConnectorInspector (per-connector Reconnect).
 export function connectMessage(result: ConnectResult): { tone: 'success' | 'error'; text: string } {
   if (result.ok) {
