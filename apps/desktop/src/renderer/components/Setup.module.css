@@ -83,11 +83,14 @@
   letter-spacing: 0.06em;
 }
 
-/* REMOTE pill in the accent/coral tone (LOCAL keeps the neutral .entryKind).
- * Reuses --kraft-accent + the same color-mix recipe as .emptyBadge. */
+/* REMOTE pill in amber (LOCAL keeps the neutral .entryKind). Trade-off: reuses
+ * the MEDIUM severity tokens for a transport-type pill — accepted semantic debt
+ * (it visually overlaps the MEDIUM "flagged" count pill, and a reader could
+ * misread it as severity). Revisit with a dedicated --kraft-remote token if that
+ * confusion bites. Mirrored in ConnectorInspector .headTypeRemote. */
 .entryKindRemote {
-  color: var(--kraft-accent);
-  background: color-mix(in srgb, var(--kraft-accent) 12%, transparent);
+  color: var(--kraft-medium-text);
+  background: var(--kraft-medium-bg);
 }
 
 .entryTrail {

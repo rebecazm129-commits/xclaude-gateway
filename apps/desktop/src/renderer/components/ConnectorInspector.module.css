@@ -31,11 +31,14 @@
   letter-spacing: 0.06em;
 }
 
-/* REMOTE chip in the accent/coral tone, matching the list's .entryKindRemote
- * (LOCAL keeps the neutral .headType). Reuses --kraft-accent + color-mix. */
+/* REMOTE chip in amber, matching the list's .entryKindRemote (LOCAL keeps the
+ * neutral .headType). Trade-off: reuses the MEDIUM severity tokens for a
+ * transport-type chip — accepted semantic debt (overlaps the MEDIUM "flagged"
+ * pill; could read as severity). Revisit with a dedicated --kraft-remote token
+ * if it confuses. */
 .headTypeRemote {
-  color: var(--kraft-accent);
-  background: color-mix(in srgb, var(--kraft-accent) 12%, transparent);
+  color: var(--kraft-medium-text);
+  background: var(--kraft-medium-bg);
 }
 
 .headStatus {
@@ -121,7 +124,7 @@
 .flagged {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px; /* air between the header (title + Open in Detections) and the rows */
 }
 
 .flaggedTitle {
@@ -138,15 +141,23 @@
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  /* Per-row padding + hairline define the rhythm (like the detail .row), so no
+   * inter-row gap here. */
+  gap: 0;
 }
 
 .flaggedRow {
   display: grid;
   grid-template-columns: 72px 1fr 120px auto;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  padding: 7px 0;
   font-size: 12px;
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
+}
+
+.flaggedRow:last-child {
+  border-bottom: none;
 }
 
 .flaggedRow > :first-child {
