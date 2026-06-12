@@ -1,0 +1,72 @@
+.scrim {
+  position: fixed;
+  inset: 0;
+  /* Sit below the draggable titlebar so it stays grabbable (mockup: top 42px). */
+  top: var(--kraft-titlebar-height);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--kraft-ink) 22%, transparent);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: 720px;
+  max-width: calc(100vw - 80px);
+  max-height: calc(100vh - 140px);
+  overflow: hidden;
+  background: var(--kraft-bg);
+  border: var(--kraft-hairline) solid var(--kraft-border);
+  border-radius: var(--kraft-radius-pill); /* 14px — mockup panel geometry */
+  box-shadow: 0 30px 80px -30px color-mix(in srgb, var(--kraft-ink) 45%, transparent);
+}
+
+.panel:focus {
+  outline: none;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 22px 28px 0;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--kraft-font-display);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--kraft-ink);
+}
+
+.close {
+  padding: 4px;
+  border: 0;
+  background: none;
+  color: var(--kraft-ink-soft);
+  font-family: var(--kraft-font-mono);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.close:hover {
+  color: var(--kraft-ink);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.foot {
+  padding: 12px 28px;
+  border-top: var(--kraft-hairline) solid var(--kraft-border);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--kraft-ink-soft);
+}
