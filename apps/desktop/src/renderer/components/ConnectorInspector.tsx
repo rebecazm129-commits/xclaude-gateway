@@ -186,7 +186,15 @@ export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onR
     <div className={styles['root']}>
       <div className={styles['head']}>
         <span className={styles['headName']}>{connector.name}</span>
-        <span className={styles['headType']}>{TYPE_LABEL[connector.type]}</span>
+        <span
+          className={
+            connector.type === 'remote'
+              ? `${styles['headType']} ${styles['headTypeRemote']}`
+              : styles['headType']
+          }
+        >
+          {TYPE_LABEL[connector.type]}
+        </span>
         <span className={styles['headStatus']}>
           <span className={`${styles['dot']} ${STATUS_DOT[connector.status]}`} />
           {STATUS_LABEL[connector.status]}

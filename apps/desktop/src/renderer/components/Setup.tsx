@@ -168,7 +168,15 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
                         >
                           <span className={styles['entryName']}>{c.name}</span>
                           <span className={styles['entryTrail']}>
-                            <span className={styles['entryKind']}>{c.type}</span>
+                            <span
+                              className={
+                                c.type === 'remote'
+                                  ? `${styles['entryKind']} ${styles['entryKindRemote']}`
+                                  : styles['entryKind']
+                              }
+                            >
+                              {c.type}
+                            </span>
                             <span className={flagged > 0 ? styles['flagged'] : styles['flaggedZero']}>
                               {flagged > 0 ? `${flagged} flagged` : '0'}
                             </span>

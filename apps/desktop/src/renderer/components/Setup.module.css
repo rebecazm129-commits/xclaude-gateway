@@ -83,15 +83,27 @@
   letter-spacing: 0.06em;
 }
 
+/* REMOTE pill in the accent/coral tone (LOCAL keeps the neutral .entryKind).
+ * Reuses --kraft-accent + the same color-mix recipe as .emptyBadge. */
+.entryKindRemote {
+  color: var(--kraft-accent);
+  background: color-mix(in srgb, var(--kraft-accent) 12%, transparent);
+}
+
 .entryTrail {
   justify-self: end;
-  display: flex;
+  /* Fixed-width counter column (right-aligned, like the inspector's 72px badge
+   * column) so the type pill's right edge is anchored at the same x across rows,
+   * regardless of whether the counter reads "0" or "N flagged". */
+  display: grid;
+  grid-template-columns: auto 84px;
   align-items: center;
   gap: 8px;
 }
 
 /* >0 flagged: amber/medium tokens (mismo set que la severidad medium). */
 .flagged {
+  justify-self: end;
   font-family: var(--kraft-font-mono);
   font-size: 10px;
   font-weight: 500;
@@ -104,6 +116,7 @@
 
 /* 0 flagged: tinta apagada, como el mockup. */
 .flaggedZero {
+  justify-self: end;
   font-family: var(--kraft-font-mono);
   font-size: 10px;
   color: var(--kraft-ink-disabled);

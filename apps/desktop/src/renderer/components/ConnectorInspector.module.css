@@ -31,6 +31,13 @@
   letter-spacing: 0.06em;
 }
 
+/* REMOTE chip in the accent/coral tone, matching the list's .entryKindRemote
+ * (LOCAL keeps the neutral .headType). Reuses --kraft-accent + color-mix. */
+.headTypeRemote {
+  color: var(--kraft-accent);
+  background: color-mix(in srgb, var(--kraft-accent) 12%, transparent);
+}
+
 .headStatus {
   display: flex;
   align-items: center;
