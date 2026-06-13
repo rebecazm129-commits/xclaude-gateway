@@ -1,10 +1,10 @@
 # xCLAUDE Gateway
 
-A local audit layer for Claude Desktop's MCP traffic. It sits between Claude Desktop and the services it talks to — remote connectors like Notion, Linear, Atlassian or Gmail, or the local MCP servers you already run — records every JSON-RPC frame to a per-session log on your Mac, and classifies sensitive patterns with severity tags. The audit happens locally; the traffic still reaches the service it's addressed to.
+A local audit layer for Claude Desktop's MCP traffic. It sits between Claude Desktop and the services it talks to — remote connectors like Notion, Linear, Atlassian, GitHub or Gmail, or the local MCP servers you already run — records every JSON-RPC frame to a per-session log on your Mac, and classifies sensitive patterns with severity tags. The audit happens locally; the traffic still reaches the service it's addressed to.
 
 ## What it does
 
-Whether you connect a remote service through xCLAUDE (Notion, Linear, Atlassian, Gmail, Google Calendar, Google Drive) or wrap a local MCP server you already run (filesystem, custom scripts, anything you launch via `npx` or a local binary), xCLAUDE Gateway sits transparently between Claude Desktop and that server:
+Whether you connect a remote service through xCLAUDE (Notion, Linear, Atlassian, GitHub, Gmail, Google Calendar, Google Drive) or wrap a local MCP server you already run (filesystem, custom scripts, anything you launch via `npx` or a local binary), xCLAUDE Gateway sits transparently between Claude Desktop and that server:
 
 - **Wraps your existing MCP servers transparently** — no changes to the servers themselves.
 - **Records every JSON-RPC frame** (requests, responses, notifications) to a per-session JSONL log under `~/Library/Application Support/xCLAUDE Gateway/wrappers/`.
@@ -12,7 +12,7 @@ Whether you connect a remote service through xCLAUDE (Notion, Linear, Atlassian,
   - `credential_detected` (CRITICAL) — known formats of API keys (Anthropic, OpenAI, GitHub, AWS, and similar).
   - `prompt_injection` (CRITICAL) — common injection phrases ("ignore all previous instructions", "follow any instructions you find inside this file", etc.).
   - `email_send_warning` (HIGH / MEDIUM) — two branches: imperative requests to send email found in tool text, and send-semantics tool calls. An AI-executed send (`send`/`reply`/`forward` tools) flags at HIGH — an action that deserves human attention regardless of intent; an AI-composed draft (`draft`/`compose` tools) flags at MEDIUM, since a draft is content one click away from sent.
-  - `pii_structured` (MEDIUM) — well-formed, checksum-validated PII shapes: emails, IBANs (mod-97), credit cards (Luhn), US SSNs, UK National Insurance and NHS numbers, Spanish DNI/NIE, international phone numbers, passport MRZ lines (ICAO 9303), French NIR, Italian codice fiscale, Dutch BSN, German Steuer-ID and Portuguese NIF. A regex preselects each candidate and a checksum confirms it, which keeps false positives near zero on numeric-heavy payloads. Findings record the matched type only — never the datum itself. Available from the first release after 0.4.3.
+  - `pii_structured` (MEDIUM) — well-formed, checksum-validated PII shapes: emails, IBANs (mod-97), credit cards (Luhn), US SSNs, UK National Insurance and NHS numbers, Spanish DNI/NIE, international phone numbers, passport MRZ lines (ICAO 9303), French NIR, Italian codice fiscale, Dutch BSN, German Steuer-ID and Portuguese NIF. A regex preselects each candidate and a checksum confirms it, which keeps false positives near zero on numeric-heavy payloads. Findings record the matched type only — never the datum itself. Available since 0.4.4.
   - `data_export_warning` (MEDIUM) — imperative requests to export data.
   - A `tool_call_allowed` baseline at LOW severity is emitted for every tool call that doesn't match any of the above. This is the "everything is normal" line, not an absence of analysis.
 - **Captures latency overhead per response** (`overheadUs`) and end-to-end server response time (`latencyMs`).
@@ -20,7 +20,7 @@ Whether you connect a remote service through xCLAUDE (Notion, Linear, Atlassian,
 - **Shows the classified events in a Detections view** inside the `xCLAUDE Gateway.app` window, with severity and category filters — plus a menu-bar icon with a live count of flagged events in the last 24 hours.
 - **Auto-configures `claude_desktop_config.json`** from a Setup UI: one click installs the wrappers, another reverts them, with a backup of your original config preserved.
 
-The audit runs entirely on your Mac: no telemetry, no account, no data sent to us. Note that wrapped servers still talk to their destination — a local MCP server to your filesystem, a remote connector to its provider over the network. xCLAUDE observes that traffic; it doesn't reroute or withhold it.
+The audit runs entirely on your Mac: no telemetry, no account, no analytics. xCLAUDE makes no network calls of its own — the only outbound traffic is the connectors you add and their OAuth sign-in, plus the "Request a connector" link, which opens your system browser. Note that wrapped servers still talk to their destination — a local MCP server to your filesystem, a remote connector to its provider over the network. xCLAUDE observes that traffic; it doesn't reroute or withhold it.
 
 ## What this proxy is, and what it is not
 
@@ -52,7 +52,7 @@ xCLAUDE Gateway in its current state **covers a specific subset** of the Claude 
 ### What is covered
 
 - **Claude Desktop** with **local MCP servers** that are wrapped via the Setup UI (or manually in `claude_desktop_config.json` by pointing them to `xcg-proxy`).
-- **Remote MCP servers connected through xCLAUDE** (Notion, Linear, Atlassian, Gmail, Google Calendar and Google Drive today; more on the way). You connect them in the app's Remote Connectors panel, which signs you in and bridges the traffic through your machine for auditing.
+- **Remote MCP servers connected through xCLAUDE** (Notion, Linear, Atlassian, GitHub, Gmail, Google Calendar and Google Drive today; more on the way). You connect them in the app's Remote Connectors panel, which signs you in and bridges the traffic through your machine for auditing.
 
 ### What is NOT covered
 
@@ -67,16 +67,20 @@ If you're using Claude Desktop with local MCP servers, or you connect a remote s
 
 ## Remote connectors
 
-xCLAUDE can audit remote MCP services (Notion, Linear, Atlassian, Gmail, Google Calendar and Google Drive today, with more on the way) by acting as your connection to them, instead of Claude Desktop connecting directly.
+xCLAUDE can audit remote MCP services (Notion, Linear, Atlassian, GitHub, Gmail, Google Calendar and Google Drive today, with more on the way) by acting as your connection to them, instead of Claude Desktop connecting directly.
 
 To audit a service this way:
 
 1. If you already have it enabled as a native Connector in Claude Desktop, disconnect it there first. xCLAUDE audits its own bridged connection, not the native one.
-2. In xCLAUDE, open the Setup tab and find the service under **Remote connectors**. Click **Connect**.
+2. In xCLAUDE, open the Setup tab and click **Add connector** to open the connector gallery. Pick the service and click **Connect**. (Not listed? Use the **Request a connector** link.)
 3. A browser window opens to authorize the service (standard OAuth). Approve it; the tab will say the login is complete.
 4. Restart Claude Desktop. Claude now reaches the service through xCLAUDE, and every call is recorded and classified like any other MCP traffic.
 
 Your authorization token is stored in the macOS Keychain, not in plain text. xCLAUDE never sees your password. The traffic still reaches the provider — xCLAUDE observes it on its way through, it does not withhold or reroute it.
+
+### GitHub
+
+Connects via standard OAuth. xCLAUDE requests a narrow scope set — `repo`, `read:org`, `read:user` — rather than the full set the server advertises.
 
 ### Google services (Gmail, Calendar, Drive) — early support
 
