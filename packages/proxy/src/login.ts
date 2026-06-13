@@ -170,6 +170,45 @@ export async function runLogin({ url, name, scope }: LoginArgs, deps: RunLoginDe
   const transport = createTransport(url, provider);
   try {
     await transport.start();
+
+    // General rule: an explicit scope (catalog or LoginArgs) ⇒ authorize with OUR
+    // scope BEFORE the first initialize. Some servers (e.g. GitHub) answer initialize
+    // with a 401 whose WWW-Authenticate carries resource_metadata but NO scope, so the
+    // SDK transport's internal auth() would resolve the scope from the PRM's
+    // scopes_supported (SEP-835 priority #2) — every scope the server advertises. By
+    // driving auth() directly on the provider with the caller's scope first (priority
+    // #1), the authorization URL carries exactly that scope; the resulting token then
+    // satisfies initialize with no 401 and no internal auth. We do NOT re-send a
+    // verifying initialize here (the REDIRECT and deferred paths below don't either):
+    // a single-shot loopback callback can't serve a second upscope round-trip.
+    //
+    // No explicit scope (DCR connectors like Atlassian) → fall through unchanged.
+    // Note: Gmail/Calendar/Drive carry explicit scopes too, so they now enter this
+    // branch rather than the deferred path (accepted; revisited with their own login
+    // trigger).
+    if (scope !== undefined && scope !== '') {
+      // Confirm the server actually requires authorization (RFC 9728 metadata).
+      // Absent → nothing to authorize (mirrors the deferred path's decision).
+      const metadata = await discoverFn(url);
+      if (!metadata) {
+        process.stderr.write(`xcg-proxy login: "${name}" — no authorization required by server\n`);
+        return;
+      }
+      // Drive auth() WITHOUT a catch: a real auth failure must surface as a login
+      // error, never a false success.
+      const result = await authFn(provider, { serverUrl: url, scope });
+      if (result === 'REDIRECT') {
+        const code = await callback.waitForCode();
+        await transport.finishAuth(code);
+        process.stderr.write(
+          `xcg-proxy login: authorized "${name}" with scope "${scope}"; token stored in Keychain\n`,
+        );
+      } else {
+        process.stderr.write(`xcg-proxy login: authorized "${name}" via stored/refreshed credentials\n`);
+      }
+      return;
+    }
+
     // The first send() is where the SDK runs auth: a missing/expired token
     // triggers 401 -> DCR -> redirectToAuthorization (opens the browser) and the
     // SDK throws UnauthorizedError; a still-valid token is accepted (200) and no
