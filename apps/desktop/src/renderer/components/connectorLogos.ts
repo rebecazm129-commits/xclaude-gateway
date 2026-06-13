@@ -13,6 +13,7 @@ import linear from '../assets/logos/linear.svg?raw';
 import atlassian from '../assets/logos/atlassian.svg?raw';
 import github from '../assets/logos/github.svg?raw';
 import stripe from '../assets/logos/stripe.svg?raw';
+import apollo from '../assets/logos/apollo.svg?raw';
 import gmail from '../assets/logos/gmail.svg?raw';
 import googlecalendar from '../assets/logos/googlecalendar.svg?raw';
 import googledrive from '../assets/logos/googledrive.svg?raw';
@@ -25,6 +26,7 @@ export const LOGO_SVGS: Readonly<Record<string, string>> = {
   atlassian,
   github,
   stripe,
+  apollo,
   gmail,
   googlecalendar,
   googledrive,

@@ -50,6 +50,11 @@ const CATALOG: readonly CatalogEntry[] = [
     description: 'Payments, customers and invoices — every call recorded and classified.',
   },
   {
+    label: 'Apollo', name: 'apollo', logo: 'apollo', group: 'oneclick',
+    url: 'https://mcp.apollo.io/mcp',
+    description: 'Prospecting, contacts and enrichment — every call recorded and classified.',
+  },
+  {
     label: 'Gmail', name: 'gmail', logo: 'gmail', group: 'google',
     url: 'https://gmailmcp.googleapis.com/mcp/v1',
     scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose',
