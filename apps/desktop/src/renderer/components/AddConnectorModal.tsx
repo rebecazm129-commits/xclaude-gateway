@@ -45,6 +45,11 @@ const CATALOG: readonly CatalogEntry[] = [
     description: 'Repositories, issues and pull requests — every call recorded and classified.',
   },
   {
+    label: 'Stripe', name: 'stripe', logo: 'stripe', group: 'oneclick',
+    url: 'https://mcp.stripe.com',
+    description: 'Payments, customers and invoices — every call recorded and classified.',
+  },
+  {
     label: 'Gmail', name: 'gmail', logo: 'gmail', group: 'google',
     url: 'https://gmailmcp.googleapis.com/mcp/v1',
     scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose',
