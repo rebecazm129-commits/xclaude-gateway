@@ -92,11 +92,11 @@ export function createTray(onOpen: () => void): void {
   tray.setContextMenu(Menu.buildFromTemplate(buildTrayMenuTemplate(onOpen)));
 }
 
-// Updates the live Tray from fresh counts: a critical count as the menu-bar
-// title (empty string when zero, so nothing shows), and a rebuilt context menu
+// Updates the live Tray from fresh counts: no menu-bar title (the tray shows
+// only the logo, never a number), and a rebuilt context menu
 // with the "N flagged (24h)" line. No-op until createTray() has run.
 export function updateTrayCounts(counts: TrayCounts): void {
   if (!tray || !onOpenAction) return;
-  tray.setTitle(counts.critical24h > 0 ? String(counts.critical24h) : '');
+  tray.setTitle('');
   tray.setContextMenu(Menu.buildFromTemplate(buildTrayMenuTemplate(onOpenAction, counts)));
 }
