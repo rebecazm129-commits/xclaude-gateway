@@ -82,6 +82,10 @@ const CATALOG: readonly CatalogEntry[] = [
     label: 'Asana', name: 'asana', logo: 'asana', group: 'comingsoon',
     description: 'Tasks and projects.',
   },
+  {
+    label: 'HubSpot', name: 'hubspot', logo: 'hubspot', group: 'comingsoon',
+    description: 'CRM, contacts and deals.',
+  },
 ];
 
 const GROUPS: readonly { id: Group; label: string; note?: ReactNode }[] = [

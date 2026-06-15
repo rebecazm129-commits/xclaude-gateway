@@ -19,6 +19,7 @@ import gmail from '../assets/logos/gmail.svg?raw';
 import googlecalendar from '../assets/logos/googlecalendar.svg?raw';
 import googledrive from '../assets/logos/googledrive.svg?raw';
 import asana from '../assets/logos/asana.svg?raw';
+import hubspot from '../assets/logos/hubspot.svg?raw';
 
 /** Logo SVG markup keyed by the catalog entry's `logo` slug. */
 export const LOGO_SVGS: Readonly<Record<string, string>> = {
@@ -33,4 +34,5 @@ export const LOGO_SVGS: Readonly<Record<string, string>> = {
   googlecalendar,
   googledrive,
   asana,
+  hubspot,
 };
