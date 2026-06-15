@@ -55,6 +55,11 @@ const CATALOG: readonly CatalogEntry[] = [
     description: 'Prospecting, contacts and enrichment — every call recorded and classified.',
   },
   {
+    label: 'Slack', name: 'slack', logo: 'slack', group: 'oneclick',
+    url: 'https://mcp.slack.com/mcp',
+    description: 'Search, messages and canvases — every call recorded and classified.',
+  },
+  {
     label: 'Gmail', name: 'gmail', logo: 'gmail', group: 'google',
     url: 'https://gmailmcp.googleapis.com/mcp/v1',
     scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose',
