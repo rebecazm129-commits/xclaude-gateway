@@ -184,15 +184,15 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
           connectors, classified by risk across 6 categories and 4 severity
           levels. Everything is audited locally — no account, no telemetry.
         </p>
-        <p className={styles['legal']}>
-          MIT License · © 2026 Rebeca Zambrano Moreno & Ignacio Lucea Artero
-        </p>
-        <p className={styles['legal']}>
+        <p className={styles['about']}>
           xCLAUDE Gateway is an independent, open-source project, not affiliated
           with, endorsed by, or sponsored by Anthropic. "Claude" and "Claude
           Desktop" are trademarks of Anthropic. Other product names and logos —
           Google, Gmail, Slack, Notion, and the like — belong to their respective
           owners and are used for identification only.
+        </p>
+        <p className={styles['legal']}>
+          MIT License · © 2026 Rebeca Zambrano Moreno & Ignacio Lucea Artero
         </p>
       </div>
     </div>

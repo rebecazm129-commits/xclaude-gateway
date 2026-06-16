@@ -195,6 +195,11 @@
   line-height: 1.6;
 }
 
+/* Space stacked About paragraphs (descriptive + disclaimer share .about). */
+.about + .about {
+  margin-top: 8px;
+}
+
 /* Legal/trademark fine print under About — quieter than .about. */
 .legal {
   margin: 10px 0 0;
