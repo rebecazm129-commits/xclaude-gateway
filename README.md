@@ -15,9 +15,10 @@ Whether you connect a remote service through xCLAUDE (Notion, Linear, Atlassian,
   - `pii_structured` (MEDIUM) — well-formed, checksum-validated PII shapes: emails, IBANs (mod-97), credit cards (Luhn), US SSNs, UK National Insurance and NHS numbers, Spanish DNI/NIE, international phone numbers, passport MRZ lines (ICAO 9303), French NIR, Italian codice fiscale, Dutch BSN, German Steuer-ID and Portuguese NIF. A regex preselects each candidate and a checksum confirms it, which keeps false positives near zero on numeric-heavy payloads. Findings record the matched type only — never the datum itself. Available since 0.4.4.
   - `data_export_warning` (MEDIUM) — imperative requests to export data.
   - A `tool_call_allowed` baseline at LOW severity is emitted for every tool call that doesn't match any of the above. This is the "everything is normal" line, not an absence of analysis.
+- **Both directions.** `credential_detected` and `prompt_injection` also scan the content returned by tool calls (server responses), not just outgoing parameters — a secret or an injection string arriving in a tool result is classified too.
 - **Captures latency overhead per response** (`overheadUs`) and end-to-end server response time (`latencyMs`).
 - **Captures the wrapped server's stderr output** as separate events.
-- **Shows the classified events in a Detections view** inside the `xCLAUDE Gateway.app` window, with severity and category filters — plus a menu-bar icon with a live count of flagged events in the last 24 hours.
+- **Shows the classified events in a Detections view** inside the `xCLAUDE Gateway.app` window, with severity and category filters — plus a menu-bar icon whose dropdown menu lists the number of flagged events in the last 24 hours.
 - **Auto-configures `claude_desktop_config.json`** from a Setup UI: one click installs the wrappers, another reverts them, with a backup of your original config preserved.
 
 The audit runs entirely on your Mac: no telemetry, no account, no analytics. xCLAUDE makes no network calls of its own — the only outbound traffic is the connectors you add and their OAuth sign-in, plus the "Request a connector" link, which opens your system browser. Note that wrapped servers still talk to their destination — a local MCP server to your filesystem, a remote connector to its provider over the network. xCLAUDE observes that traffic; it doesn't reroute or withhold it.
@@ -76,22 +77,37 @@ To audit a service this way:
 3. A browser window opens to authorize the service (standard OAuth). Approve it; the tab will say the login is complete.
 4. Restart Claude Desktop. Claude now reaches the service through xCLAUDE, and every call is recorded and classified like any other MCP traffic.
 
-Your authorization token is stored in the macOS Keychain, not in plain text. xCLAUDE never sees your password. The traffic still reaches the provider — xCLAUDE observes it on its way through, it does not withhold or reroute it.
+Your authorization token is stored in the macOS Keychain, not in plain text. xCLAUDE never sees your password. The traffic still reaches the provider — xCLAUDE observes it on its way through, it does not withhold or reroute it. If a connector's authorization expires or is revoked, xCLAUDE flags a re-login alert on that connector (and a macOS notification); reconnect it and restart Claude Desktop to resume auditing.
 
 ### GitHub
 
 Connects via standard OAuth. xCLAUDE requests a narrow scope set — `repo`, `read:org`, `read:user` — rather than the full set the server advertises.
 
-### Google services (Gmail, Calendar, Drive) — early support
-
-Google's official Workspace MCP servers work differently from the other connectors, and connecting them currently takes extra setup on your side:
-
-- **Bring your own OAuth client.** Google does not support dynamic client registration, so you need your own (free) OAuth client from a Google Cloud project — application type "Desktop app" — with the relevant APIs enabled and the connector's scopes added to your consent screen. One client serves all three connectors.
-- **Developer Preview enrollment.** Google currently gates these MCP servers behind its Workspace Developer Preview Program. You must register your Google Cloud project with the program (free; the sign-up form requires a non-Gmail account). This requirement should disappear when the servers leave preview.
-- **One-time terminal step.** xCLAUDE has no UI yet for entering your client credentials; seeding them into the Keychain is a documented one-time terminal command.
-- **Weekly re-login while unverified.** While your Google client is in "Testing" mode, Google expires refresh tokens after 7 days, so you'll re-authorize weekly.
-
-Scopes requested are the ones Google documents for each server — Gmail: read + compose (the Gmail MCP has no send tool by Google's design; drafting is the maximum); Calendar: read-only; Drive: read + per-file access.
+### Google services (Gmail, Calendar, Drive)
+Google's official Workspace MCP servers don't use the one-click flow the other connectors do, so connecting them takes extra setup on your side — roughly 20–30 minutes in the Google Cloud console. Two things make them different: Google has no dynamic client registration, so you bring your own (free) OAuth client; and the servers are currently behind Google's Workspace Developer Preview Program, which you enroll your project in. One OAuth client serves all three connectors.
+**Before you start — the one hard requirement.** Enrolling in the Developer Preview Program requires a Google **Workspace (domain) account**; the enrollment form rejects plain `@gmail.com` addresses. If a personal Gmail account is all you have, you can't complete this setup today. This gate is Google's, and should disappear when these servers leave preview.
+1. **Create a Google Cloud project.** Any new project works. Note its **project number** — you'll need it to enroll in the preview program.
+2. **Enable two APIs** in that project: `gmail.googleapis.com` and `gmailmcp.googleapis.com`. Both are required: without the second, the MCP server returns `403` on every tool call.
+3. **Configure the OAuth consent screen.** User type **External**, in **Testing** mode, and add your own Google account as a test user. Add the scopes listed under "Scopes" below.
+4. **Create the OAuth client.** Application type **Desktop app**. Google issues a **client ID** and **client secret**; keep both for the seeding step. (Google's token endpoint requires the client secret even though the flow uses PKCE.)
+5. **Enroll your project in the Developer Preview Program** at `developers.google.com/workspace/preview`, using your project number and your Workspace account. Approval usually takes a few hours to a couple of days. Once the project is approved, any Google account can authorize through it.
+6. **Seed your client into xCLAUDE.** There's no in-app UI for this yet, so seeding is a one-time terminal step that stores your client in the macOS Keychain — it never goes into plain-text config. Run the command below once per Google connector you plan to use; the same client serves all three, so just change `CONNECTOR`.
+```bash
+# Nothing is echoed to the terminal or saved to your shell history.
+printf 'client_id: ';     read -r  CLIENT_ID
+printf 'client_secret: '; read -rs CLIENT_SECRET; echo
+CONNECTOR=gmail   # repeat with: calendar, drive
+security add-generic-password -U \
+  -s com.xclaude.gateway \
+  -a "$CONNECTOR:client" \
+  -w "$(printf '{"client_id":"%s","client_secret":"%s"}' "$CLIENT_ID" "$CLIENT_SECRET" | openssl base64 -A)"
+unset CLIENT_ID CLIENT_SECRET
+```
+**Finally, connect and restart.** In xCLAUDE open **Add connector**, pick the Google service and click **Connect** (once seeded it shows **Connect** instead of **Set up…**). A browser window opens to authorize; approve it (you'll pass Google's "unverified app" screen — see below), then restart Claude Desktop. Google traffic is now audited like any other connector.
+**What to expect while your client is unverified.** Two rough edges come from running your own client in Testing mode, not from xCLAUDE:
+- Google shows a **"Google hasn't verified this app"** screen on each authorization. You continue past it because it's your own client.
+- Google expires the refresh token after 7 days, so you **re-authorize about once a week**. xCLAUDE flags a re-login alert on the connector when that happens.
+**Scopes.** xCLAUDE requests the scopes Google documents for each server — Gmail: read + compose (the Gmail MCP has **no send tool** by Google's design, so a draft is the most it can do; you send from Gmail yourself); Calendar: read-only; Drive: read with per-file access.
 
 ## Requirements
 
