@@ -55,6 +55,7 @@
   --kraft-accent: #d86a4d;
   --kraft-accent-hover: #c45d42;
   --kraft-status: #6b8e5a;
+  --kraft-status-ok: #c65c42;  /* brand orange (icon dot) — healthy pulse */
 
   /* Severity — Critical */
   --kraft-critical-bg: #f8dedc;
