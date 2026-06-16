@@ -180,7 +180,7 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
 
         <div className={styles['sectionLabel']}>About</div>
         <p className={styles['about']}>
-          xCLAUDE audits every tool call Claude makes through your MCP
+          xCLAUDE Gateway audits every tool call Claude makes through your MCP
           connectors, classified by risk across 6 categories and 4 severity
           levels. Everything is audited locally — no account, no telemetry.
         </p>
