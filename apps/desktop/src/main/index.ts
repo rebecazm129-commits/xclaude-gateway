@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, Notification, ipcMain, shell } from 'electron';
 import { homedir } from 'node:os';
 import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -30,6 +30,7 @@ import { runConfigConnect } from './connect-handler.js';
 import { runLoginProcess } from './login-runner.js';
 import { hasStoredCredentials } from '@xcg/proxy/credentials';
 import { createTray, computeTrayCounts, updateTrayCounts } from './tray.js';
+import { computeReloginTransitions } from './relogin-notify.js';
 import { isAllowedNavigation } from './navigation-guard.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -246,6 +247,12 @@ function bootstrapStableSymlink(): void {
 
 const TRAY_REFRESH_MS = 60_000;
 let trayRefreshHandle: NodeJS.Timeout | null = null;
+// Re-login notification dedupe (slice C): same module-state pattern as
+// trayRefreshHandle. notifiedRelogin = connectors currently accounted for as
+// alerting; reloginSeeded = whether the first evaluation has run (the first
+// pass seeds these without notifying).
+let notifiedRelogin = new Set<string>();
+let reloginSeeded = false;
 
 void app.whenReady().then(() => {
   bootstrapStableSymlink();
@@ -256,7 +263,28 @@ void app.whenReady().then(() => {
   // end — this and the renderer's usePolledDetections (2s) are candidates to
   // collapse into a single source-of-truth poll later.
   trayRefreshHandle = setInterval(() => {
-    void readAudit().then((audit) => updateTrayCounts(computeTrayCounts(audit.events, Date.now())));
+    void readAudit().then((audit) => {
+      updateTrayCounts(computeTrayCounts(audit.events, Date.now()));
+      // Re-login transitions: notify once when a connector enters the alert set.
+      const currentMcps = new Set(audit.authAlerts.map((a) => a.mcp));
+      const { toNotify, nextNotified, nextSeeded } = computeReloginTransitions(
+        notifiedRelogin,
+        currentMcps,
+        reloginSeeded,
+      );
+      notifiedRelogin = nextNotified;
+      reloginSeeded = nextSeeded;
+      if (Notification.isSupported()) {
+        for (const mcp of toNotify) {
+          const n = new Notification({
+            title: `${mcp} needs re-login`,
+            body: 'Authorization expired. Reconnect it in xCLAUDE Gateway and restart Claude Desktop.',
+          });
+          n.on('click', () => openWindow());
+          n.show();
+        }
+      }
+    });
   }, TRAY_REFRESH_MS);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
