@@ -173,7 +173,7 @@ export function App(): JSX.Element {
             />
             <h1 className={styles['title']}>xCLAUDE Gateway</h1>
           </span>
-          <span className={styles['trust']}>Audited locally · No account</span>
+          <span className={styles['trust']}>Audited locally · No account · No telemetry</span>
         </span>
         <div className={styles['headerActions']}>
           <button

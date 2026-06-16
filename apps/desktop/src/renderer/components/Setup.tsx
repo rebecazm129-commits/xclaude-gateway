@@ -225,7 +225,7 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
           <p className={styles['emptyDetail']}>
             Every tool call Claude makes, classified by risk — 6 categories, 4 severity levels.
           </p>
-          <p className={styles['emptyDetail']}>Audited locally. No account.</p>
+          <p className={styles['emptyDetail']}>Audited locally. No account. No telemetry.</p>
           <p className={styles['emptyHint']}>
             {!configPresent
               ? 'Claude Desktop has no MCP config yet. Open Claude Desktop, add at least one MCP server, then come back here to install xCLAUDE Gateway.'
