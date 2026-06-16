@@ -22,6 +22,8 @@ extraResources:
       - xclaude-tray-icon.png
       - xclaude-tray-icon@2x.png
       - xclaude-tray-icon@3x.png
+  - from: ../../LICENSE
+    to: LICENSE
 mac:
   icon: ../../build/xclaude-icon.icns
   category: public.app-category.developer-tools  # revisar a 'productivity'
