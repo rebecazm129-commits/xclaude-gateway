@@ -8,8 +8,8 @@ import type { Direction, EventBody } from './events.js';
 import { invertDirection, type InflightTracker } from './latency.js';
 import type { ClassifiedFrame } from './parser.js';
 import { buildDetectorInput } from './detection/engine.js';
-import { credentialDetected } from './detection/detectors/index.js';
-import type { AsyncDetector } from './detection/types.js';
+import { credentialDetected, promptInjection } from './detection/detectors/index.js';
+import type { AsyncDetector, Detector, DetectorInput } from './detection/types.js';
 import { elapsedUs } from './timing.js';
 
 export interface FrameProcessorDeps {
@@ -48,6 +48,11 @@ function extractResultText(result: unknown): string {
   if (sc !== undefined) parts.push(JSON.stringify(sc));
   return parts.join('\n');
 }
+
+// Slice 1+2: content detectors that run inline over the extracted tools/call
+// result text. Multi-label, like the request side: each matching detector
+// yields its own mcp.detection_enrichment. Order is the emission order.
+const CONTENT_DETECTORS: readonly Detector[] = [credentialDetected, promptInjection];
 
 export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
   // (key -> request method): the tracker pairs by latency only, not method, so
@@ -106,19 +111,25 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
             ...(latencyMs !== undefined ? { latencyMs } : {}),
           },
         ];
-        // Slice 1: classify credential leaks in the CONTENT of tools/call
-        // results. Inline regex (credentialDetected only); location 'result'.
+        // Slice 1+2: classify credential leaks and prompt-injection in the
+        // CONTENT of tools/call results. Inline regex content detectors; one
+        // mcp.detection_enrichment PER matching detector (multi-label, like the
+        // request side); findings remapped to location 'result'. No FP triage
+        // here — capture-all stays; inbound-noise handling is deferred (Hito 5).
         if (reqMethod === 'tools/call' && 'result' in frame) {
           const text = extractResultText(frame.result);
           if (text.length > 0) {
-            const out = credentialDetected({
+            const input: DetectorInput = {
               envelope: { payload: text, mcp: deps.mcp, method: 'tools/call', direction, sessionId: deps.session },
               paramsJson: text,
               toolName: undefined,
-            });
-            if (out) {
+            };
+            const overheadUs = elapsedUs(tsObservedNs);
+            for (const detect of CONTENT_DETECTORS) {
+              const out = detect(input);
+              if (!out) continue;
               const detection = { ...out, findings: out.findings.map((f) => ({ ...f, location: 'result' })) };
-              events.push({ type: 'mcp.detection_enrichment', rpcId: frame.id, direction, detection, overheadUs: elapsedUs(tsObservedNs) });
+              events.push({ type: 'mcp.detection_enrichment', rpcId: frame.id, direction, detection, overheadUs });
             }
           }
         }
