@@ -106,6 +106,11 @@ const GROUPS: readonly { id: Group; label: string; note?: ReactNode }[] = [
 // TODO: final destination is GitHub Issues once the repo is public.
 const REQUEST_URL = 'https://xclaude.ai';
 
+// PLACEHOLDER — final target is the public README's Google section (+ anchor),
+// fixed in B2 once the repo is public. Opened via the existing external-link
+// pattern (openExternalUrl → shell.openExternal).
+const SETUP_GUIDE_URL = 'https://xclaude.ai';
+
 const FOOT_NOTE =
   "Your authorization token is stored in the macOS Keychain. xCLAUDE observes the traffic on its way through — it doesn't reroute or withhold it.";
 
@@ -129,6 +134,8 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
   const [lastResult, setLastResult] = useState<ConnectResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connectedNames, setConnectedNames] = useState<ReadonlySet<string>>(() => new Set());
+  const [clientSeeded, setClientSeeded] = useState<ReadonlySet<string>>(() => new Set());
+  const [setupEntry, setSetupEntry] = useState<CatalogEntry | null>(null);
   const [query, setQuery] = useState('');
 
   const mountedRef = useRef(true);
@@ -161,6 +168,30 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
       cancelled = true;
     };
   }, []);
+
+  // Which Google (BYO) connectors already have their OAuth client seeded in the
+  // Keychain. Re-checked each time the modal opens (seeding is an out-of-band
+  // terminal step, so it can change between opens). Absence/error = not seeded.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    async function check(): Promise<void> {
+      const found = new Set<string>();
+      for (const entry of CATALOG) {
+        if (entry.group !== 'google') continue;
+        try {
+          if (await window.xcg.configHasClient(entry.name)) found.add(entry.name);
+        } catch {
+          // ignore: treat as not seeded
+        }
+      }
+      if (!cancelled) setClientSeeded(found);
+    }
+    void check();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   async function handleConnect(entry: CatalogEntry): Promise<void> {
     if (entry.url === undefined || busyName !== null) return;
@@ -206,6 +237,15 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
         </button>
       );
     }
+    // Google (BYO): no seeded client yet → route to the one-time setup explainer
+    // instead of attempting OAuth (which would fail without a client).
+    if (entry.group === 'google' && !clientSeeded.has(entry.name)) {
+      return (
+        <button type="button" className={styles['btnSetup']} onClick={() => setSetupEntry(entry)}>
+          Set up…
+        </button>
+      );
+    }
     return (
       <button
         type="button"
@@ -220,6 +260,48 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
 
   return (
     <Modal title="Add connector" onClose={onClose} footer={FOOT_NOTE}>
+      {setupEntry !== null ? (
+        <div className={styles['setup']}>
+          <button type="button" className={styles['setupBack']} onClick={() => setSetupEntry(null)}>
+            ← Back
+          </button>
+          <div className={styles['setupHead']}>
+            <span
+              className={styles['setupLogo']}
+              aria-hidden="true"
+              // Trusted, static, build-time-vendored SVG (no user input).
+              dangerouslySetInnerHTML={{ __html: LOGO_SVGS[setupEntry.logo] ?? '' }}
+            />
+            <h3 className={styles['setupTitle']}>Set up {setupEntry.label} — one-time</h3>
+          </div>
+          <p className={styles['setupIntro']}>
+            Google connectors need your own free Google OAuth client. One client serves Gmail,
+            Calendar and Drive.
+          </p>
+          <ol className={styles['setupSteps']}>
+            <li>A Google Cloud OAuth client (type “Desktop app”) with the Gmail APIs enabled.</li>
+            <li className={styles['setupStepWall']}>
+              <strong>A Workspace or domain Google account.</strong> The Developer Preview
+              enrollment rejects plain Gmail addresses.
+            </li>
+            <li>Enroll your project in the Google Workspace Developer Preview Program.</li>
+            <li>Seed your client into xCLAUDE with a one-time terminal command.</li>
+          </ol>
+          <p className={styles['setupWarn']}>
+            While your client is unverified, Google shows an “app not verified” screen and you’ll
+            re-authorize about once a week.
+          </p>
+          <button
+            type="button"
+            className={styles['btnConnect']}
+            onClick={() => void window.xcg.openExternalUrl(SETUP_GUIDE_URL)}
+          >
+            Open setup guide
+          </button>
+          <p className={styles['setupMuted']}>Once seeded, {setupEntry.label} shows Connect here.</p>
+        </div>
+      ) : (
+        <>
       <p className={styles['sub']}>
         Connect a remote service through xCLAUDE to audit every call Claude makes to it. A browser
         window opens to authorize.
@@ -298,6 +380,8 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
           <div className={styles[`banner_${message.tone}`]}>{message.text}</div>
         </div>
       ) : null}
+        </>
+      )}
     </Modal>
   );
 }

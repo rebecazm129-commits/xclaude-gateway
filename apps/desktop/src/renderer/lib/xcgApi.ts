@@ -20,6 +20,7 @@ export interface XcgApi {
   configConnect(name: string, url: string, scope?: string): Promise<ConnectResult>;
   configIsConnected(name: string): Promise<IsConnectedResult>;
   configHasCredentials(name: string): Promise<boolean>;
+  configHasClient(name: string): Promise<boolean>;
   configToolCount(name: string): Promise<ToolCount | null>;
   validateHealth(): Promise<HealthResult>;
   repairWraps(): Promise<RepairResult>;

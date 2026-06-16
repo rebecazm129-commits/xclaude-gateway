@@ -12,6 +12,7 @@ interface XcgStub {
   configIsConnected?: ReturnType<typeof vi.fn>;
   configConnect?: ReturnType<typeof vi.fn>;
   openExternalUrl?: ReturnType<typeof vi.fn>;
+  configHasClient?: ReturnType<typeof vi.fn>;
 }
 
 function stubXcg(overrides: XcgStub = {}): Required<XcgStub> {
@@ -19,6 +20,7 @@ function stubXcg(overrides: XcgStub = {}): Required<XcgStub> {
     configIsConnected: vi.fn(async () => ({ ok: true, connected: false })),
     configConnect: vi.fn(async () => ({ ok: true, reconnected: false, name: 'x' })),
     openExternalUrl: vi.fn(async () => undefined),
+    configHasClient: vi.fn(async () => false),
     ...overrides,
   };
   vi.stubGlobal('xcg', api);
@@ -112,5 +114,22 @@ describe('AddConnectorModal', () => {
     renderOpen();
     fireEvent.click(screen.getByRole('button', { name: /Request a connector/ }));
     expect(api.openExternalUrl).toHaveBeenCalledWith('https://xclaude.ai');
+  });
+
+  it('Google without a seeded client shows "Set up…" and opens the explainer', async () => {
+    stubXcg(); // configHasClient defaults to false → not seeded
+    renderOpen();
+    const gmail = screen.getByTestId('connector-card-gmail');
+    fireEvent.click(await within(gmail).findByRole('button', { name: 'Set up…' }));
+    // Gallery is replaced by the one-time setup explainer.
+    expect(screen.getByText(/Workspace or domain Google account/)).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Open setup guide' })).toBeDefined();
+  });
+
+  it('Google with a seeded client shows "Connect"', async () => {
+    stubXcg({ configHasClient: vi.fn(async (name: string) => name === 'gmail') });
+    renderOpen();
+    const gmail = screen.getByTestId('connector-card-gmail');
+    expect(await within(gmail).findByRole('button', { name: 'Connect' })).toBeDefined();
   });
 });

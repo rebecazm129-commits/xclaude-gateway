@@ -45,3 +45,10 @@ export async function hasStoredCredentials(name: string): Promise<boolean> {
     return false;
   }
 }
+
+// True iff a BYO OAuth client has been seeded for this connector (the
+// `${name}:client` Keychain item exists). Presence-only — unlike
+// hasStoredCredentials, we don't parse it: seeding is the gate, not validity.
+export async function hasStoredClient(name: string): Promise<boolean> {
+  return (await keychainGet(`${name}:client`)) !== null;
+}

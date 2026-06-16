@@ -28,7 +28,7 @@ import { spawnWrapper, readDetectionsFromAudit, resolveNpxPath } from './selftes
 import { runSelfTest } from './selftest-handler.js';
 import { runConfigConnect } from './connect-handler.js';
 import { runLoginProcess } from './login-runner.js';
-import { hasStoredCredentials } from '@xcg/proxy/credentials';
+import { hasStoredCredentials, hasStoredClient } from '@xcg/proxy/credentials';
 import { createTray, computeTrayCounts, updateTrayCounts } from './tray.js';
 import { computeReloginTransitions } from './relogin-notify.js';
 import { isAllowedNavigation } from './navigation-guard.js';
@@ -162,6 +162,10 @@ ipcMain.handle('config:is-connected', (_event, params: { name: string }) => {
 // degrades the Auth row to "—"). Mirrors the config:is-connected shape.
 ipcMain.handle('config:has-credentials', (_event, params: { name: string }) => {
   return hasStoredCredentials(params.name);
+});
+
+ipcMain.handle('config:has-client', (_event, params: { name: string }) => {
+  return hasStoredClient(params.name);
 });
 
 // Latest tool inventory size for a connector, derived read-only from the audit

@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld('xcg', {
     ipcRenderer.invoke('config:is-connected', { name }),
   configHasCredentials: (name: string): Promise<boolean> =>
     ipcRenderer.invoke('config:has-credentials', { name }),
+  configHasClient: (name: string): Promise<boolean> =>
+    ipcRenderer.invoke('config:has-client', { name }),
   configToolCount: (name: string): Promise<ToolCount | null> =>
     ipcRenderer.invoke('config:tool-count', { name }),
   validateHealth: (): Promise<HealthResult> => ipcRenderer.invoke('system:health'),
