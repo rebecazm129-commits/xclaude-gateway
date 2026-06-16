@@ -249,6 +249,47 @@
   cursor: not-allowed;
 }
 
+/* Highlighted Reconnect when the connector needs re-login. Uses the system's
+ * primary CTA treatment (accent + white), same as Connect/Install — NOT the
+ * amber warning color, which is reserved for the alert, not the action.
+ * Declared after .reconnectButton so the equal-specificity override wins. */
+.reconnectButtonPrimary {
+  background: var(--kraft-accent);
+  border-color: var(--kraft-accent);
+  color: #ffffff;
+}
+.reconnectButtonPrimary:hover:not(:disabled) {
+  background: var(--kraft-accent-hover);
+  border-color: var(--kraft-accent-hover);
+}
+
+/* Re-login amber surfaces: status dot in the header + the alert strip. */
+.dotWarn {
+  background: var(--kraft-warning-dot);
+}
+.authStrip {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: var(--kraft-warning-bg);
+  border: 1px solid var(--kraft-warning-border);
+  border-radius: var(--kraft-radius-sm);
+  color: var(--kraft-warning-text);
+}
+.authStripIcon {
+  color: var(--kraft-warning-dot);
+  font-size: 14px;
+  line-height: 1.3;
+}
+.authStripTitle {
+  font-weight: 600;
+}
+.authStripBody {
+  opacity: 0.9;
+}
+
 /* Outline buttons (Remove / Cancel) — kraft equivalent of the mockup's btn-out:
  * transparent, 1px border, soft ink, subtle hover. 1px (not hairline) so the
  * outline reads as a real border. */

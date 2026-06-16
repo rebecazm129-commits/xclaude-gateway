@@ -71,6 +71,14 @@
   font-family: var(--kraft-font-mono);
 }
 
+/* Re-login needed: amber warning glyph right after the connector name. */
+.authWarn {
+  margin-left: 6px;
+  color: var(--kraft-warning-dot);
+  font-size: 12px;
+  line-height: 1;
+}
+
 .entryKind {
   justify-self: end;
   color: var(--kraft-ink-soft);

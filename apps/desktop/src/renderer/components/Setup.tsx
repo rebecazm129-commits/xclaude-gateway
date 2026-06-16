@@ -7,7 +7,7 @@ import { AddConnectorModal } from './AddConnectorModal.js';
 import { ConnectorInspector } from './ConnectorInspector.js';
 import { errorMessage } from './config-messages.js';
 import { SelfTest } from './SelfTest.js';
-import { usePolledDetections } from '../hooks/usePolledDetections.js';
+import { usePolledAudit } from '../hooks/usePolledAudit.js';
 
 import styles from './Setup.module.css';
 
@@ -33,7 +33,8 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const detections = usePolledDetections();
+  const { events: detections, authAlerts } = usePolledAudit();
+  const alertedMcps = useMemo(() => new Set(authAlerts.map((a) => a.mcp)), [authAlerts]);
 
   // One pass over all detections → flagged-call count per connector (last 7d).
   // Same predicate the inspector uses (mcp.request, non-allowed category, in
@@ -160,6 +161,15 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
                           }}
                         >
                           <span className={styles['entryName']}>{c.name}</span>
+                          {alertedMcps.has(c.name) ? (
+                            <span
+                              className={styles['authWarn']}
+                              title="needs re-login"
+                              aria-label="needs re-login"
+                            >
+                              {'⚠︎'}
+                            </span>
+                          ) : null}
                           <span className={styles['entryTrail']}>
                             <span
                               className={
@@ -191,6 +201,7 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
               <ConnectorInspector
                 key={selectedConnector.name}
                 connector={selectedConnector}
+                authAlert={authAlerts.find((a) => a.mcp === selectedConnector.name) ?? null}
                 onOpenInDetections={onOpenInDetections}
                 onAudit={onAudit}
                 onReconnect={onReconnect}

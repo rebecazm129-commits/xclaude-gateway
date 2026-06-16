@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactElement } from 'react';
 import type { Connector } from '@xcg/shared/config/connectors';
 import type { ConnectResult, RemoveRemoteResult } from '@xcg/shared/config';
 
-import type { DetectionEvent, ToolCount } from '../../shared/types.js';
+import type { DetectionEvent, ToolCount, ConnectorAuthAlert } from '../../shared/types.js';
 import { usePolledDetections } from '../hooks/usePolledDetections.js';
 import { Badge } from './Badge.js';
 import { CATEGORY_LABELS, formatTimestamp } from './detections-format.js';
@@ -37,13 +37,14 @@ const TRANSPORT_LABEL: Record<Connector['type'], string> = {
 
 interface ConnectorInspectorProps {
   connector: Connector;
+  authAlert: ConnectorAuthAlert | null;
   onOpenInDetections: (name: string) => void;
   onAudit: (name: string) => void;
   onReconnect: (name: string, url: string) => Promise<ConnectResult>;
   onRemove: (name: string) => Promise<RemoveRemoteResult>;
 }
 
-export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onReconnect, onRemove }: ConnectorInspectorProps): ReactElement {
+export function ConnectorInspector({ connector, authAlert, onOpenInDetections, onAudit, onReconnect, onRemove }: ConnectorInspectorProps): ReactElement {
   const detections = usePolledDetections();
   const [busy, setBusy] = useState(false);
   const [reconnectResult, setReconnectResult] = useState<ConnectResult | null>(null);
@@ -196,8 +197,17 @@ export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onR
           {TYPE_LABEL[connector.type]}
         </span>
         <span className={styles['headStatus']}>
-          <span className={`${styles['dot']} ${STATUS_DOT[connector.status]}`} />
-          {STATUS_LABEL[connector.status]}
+          {authAlert !== null ? (
+            <>
+              <span className={`${styles['dot']} ${styles['dotWarn']}`} />
+              Needs re-login
+            </>
+          ) : (
+            <>
+              <span className={`${styles['dot']} ${STATUS_DOT[connector.status]}`} />
+              {STATUS_LABEL[connector.status]}
+            </>
+          )}
         </span>
         {connector.status === 'not-audited' ? (
           <button
@@ -209,6 +219,18 @@ export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onR
           </button>
         ) : null}
       </div>
+
+      {authAlert !== null ? (
+        <div className={styles['authStrip']}>
+          <span className={styles['authStripIcon']} aria-hidden="true">{'⚠︎'}</span>
+          <div>
+            <div className={styles['authStripTitle']}>Authorization expired</div>
+            <div className={styles['authStripBody']}>
+              Reconnect to resume auditing, then restart Claude Desktop.
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <dl className={styles['rows']}>
         <div className={styles['row']}>
@@ -272,7 +294,9 @@ export function ConnectorInspector({ connector, onOpenInDetections, onAudit, onR
         <div className={styles['foot']}>
           <button
             type="button"
-            className={styles['reconnectButton']}
+            className={authAlert !== null
+              ? `${styles['reconnectButton']} ${styles['reconnectButtonPrimary']}`
+              : styles['reconnectButton']}
             onClick={() => void handleReconnect()}
             disabled={busy || removing}
           >

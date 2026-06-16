@@ -68,6 +68,14 @@
   --kraft-high-border: #efcbaa;
   --kraft-high-dot: #d87739;
 
+  /* Semantic warning alias — same amber as the high-severity family today, but
+     named for its meaning (connector needs re-login). One source for the three
+     re-login surfaces: row glyph, inspector status + strip. */
+  --kraft-warning-bg: var(--kraft-high-bg);
+  --kraft-warning-text: var(--kraft-high-text);
+  --kraft-warning-border: var(--kraft-high-border);
+  --kraft-warning-dot: var(--kraft-high-dot);
+
   /* Severity — Medium */
   --kraft-medium-bg: #faf1dc;
   --kraft-medium-text: #8a6520;
