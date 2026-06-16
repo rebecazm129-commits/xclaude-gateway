@@ -103,8 +103,9 @@ const GROUPS: readonly { id: Group; label: string; note?: ReactNode }[] = [
   { id: 'comingsoon', label: 'Coming soon' },
 ];
 
-// TODO: final destination is GitHub Issues once the repo is public.
-const REQUEST_URL = 'https://xclaude.ai';
+// Final destination: the website's contact page. Not published yet — must
+// resolve before the .dmg ships.
+const REQUEST_URL = 'https://xclaude.ai/contact';
 
 // Final destination for the one-time Google setup guide. The /docs site isn't
 // published yet; until it is, the content lives in the README. Opened via the
