@@ -106,10 +106,10 @@ const GROUPS: readonly { id: Group; label: string; note?: ReactNode }[] = [
 // TODO: final destination is GitHub Issues once the repo is public.
 const REQUEST_URL = 'https://xclaude.ai';
 
-// PLACEHOLDER — final target is the public README's Google section (+ anchor),
-// fixed in B2 once the repo is public. Opened via the existing external-link
-// pattern (openExternalUrl → shell.openExternal).
-const SETUP_GUIDE_URL = 'https://xclaude.ai';
+// Final destination for the one-time Google setup guide. The /docs site isn't
+// published yet; until it is, the content lives in the README. Opened via the
+// existing external-link pattern (openExternalUrl → shell.openExternal).
+const SETUP_GUIDE_URL = 'https://xclaude.ai/docs';
 
 const FOOT_NOTE =
   "Your authorization token is stored in the macOS Keychain. xCLAUDE observes the traffic on its way through — it doesn't reroute or withhold it.";
