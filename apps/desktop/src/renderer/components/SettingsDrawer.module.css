@@ -195,6 +195,14 @@
   line-height: 1.6;
 }
 
+/* Legal/trademark fine print under About — quieter than .about. */
+.legal {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--kraft-ink-disabled);
+  line-height: 1.5;
+}
+
 .auditRow {
   display: flex;
   align-items: center;
