@@ -5,9 +5,10 @@
 
 import type { DetectionEngine } from './detection/engine.js';
 import type { Direction, EventBody } from './events.js';
-import type { InflightTracker } from './latency.js';
+import { invertDirection, type InflightTracker } from './latency.js';
 import type { ClassifiedFrame } from './parser.js';
 import { buildDetectorInput } from './detection/engine.js';
+import { credentialDetected } from './detection/detectors/index.js';
 import type { AsyncDetector } from './detection/types.js';
 import { elapsedUs } from './timing.js';
 
@@ -28,11 +29,40 @@ export type FrameProcessor = (
   tsWallMs: number,
 ) => EventBody[];
 
+// Slice 1: extract ONLY the textual content of a tools/call result —
+// result.content[].text (type === 'text') + JSON.stringify(structuredContent).
+// This is the surface scanned for credentials, not the whole result.
+function extractResultText(result: unknown): string {
+  if (typeof result !== 'object' || result === null) return '';
+  const parts: string[] = [];
+  const content = (result as Record<string, unknown>)['content'];
+  if (Array.isArray(content)) {
+    for (const c of content) {
+      if (c && typeof c === 'object' && (c as Record<string, unknown>)['type'] === 'text') {
+        const text = (c as Record<string, unknown>)['text'];
+        if (typeof text === 'string') parts.push(text);
+      }
+    }
+  }
+  const sc = (result as Record<string, unknown>)['structuredContent'];
+  if (sc !== undefined) parts.push(JSON.stringify(sc));
+  return parts.join('\n');
+}
+
 export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
+  // (key -> request method): the tracker pairs by latency only, not method, so
+  // we keep our own map to know whether a response answered a tools/call. We
+  // replicate InflightTracker's keying — `${direction}:${rpcId}` set on the
+  // REQUEST's direction, looked up on `invertDirection(response.direction)` —
+  // so a server→client and a client→client request with the same rpcId don't
+  // collide. No TTL (mirrors InflightTracker): unmatched entries clear at
+  // session end.
+  const requestMethods = new Map<string, string>();
   return (frame, direction, bytes, line, tsObservedNs, tsWallMs) => {
     switch (frame.kind) {
       case 'request': {
         deps.tracker.trackRequest(direction, frame.id, tsWallMs);
+        requestMethods.set(`${direction}:${frame.id}`, frame.method);
         const envelope = {
           payload: frame.params,
           mcp: deps.mcp,
@@ -58,7 +88,13 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
       }
       case 'response': {
         const latencyMs = deps.tracker.matchResponse(direction, frame.id, tsWallMs);
-        return [
+        // Pair with the originating request using the tracker's keying: the
+        // request was tracked under its own direction; from the response we
+        // invert. Mirrors InflightTracker.matchResponse.
+        const reqKey = `${invertDirection(direction)}:${frame.id}`;
+        const reqMethod = requestMethods.get(reqKey);
+        requestMethods.delete(reqKey);
+        const events: EventBody[] = [
           {
             type: 'mcp.response',
             direction,
@@ -70,6 +106,23 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
             ...(latencyMs !== undefined ? { latencyMs } : {}),
           },
         ];
+        // Slice 1: classify credential leaks in the CONTENT of tools/call
+        // results. Inline regex (credentialDetected only); location 'result'.
+        if (reqMethod === 'tools/call' && 'result' in frame) {
+          const text = extractResultText(frame.result);
+          if (text.length > 0) {
+            const out = credentialDetected({
+              envelope: { payload: text, mcp: deps.mcp, method: 'tools/call', direction, sessionId: deps.session },
+              paramsJson: text,
+              toolName: undefined,
+            });
+            if (out) {
+              const detection = { ...out, findings: out.findings.map((f) => ({ ...f, location: 'result' })) };
+              events.push({ type: 'mcp.detection_enrichment', rpcId: frame.id, direction, detection, overheadUs: elapsedUs(tsObservedNs) });
+            }
+          }
+        }
+        return events;
       }
       case 'notification':
         return [

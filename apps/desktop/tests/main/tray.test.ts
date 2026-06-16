@@ -47,6 +47,21 @@ function reqEvent(ts: string, category: string, severity: string): EnrichableEve
   } as unknown as EnrichableEvent;
 }
 
+// Minimal mcp.detection_enrichment fixture: Slice 1 response-content detections
+// arrive server_to_client; NER request-enrichments arrive client_to_server.
+function enrEvent(
+  ts: string,
+  category: string,
+  severity: string,
+  direction: 'client_to_server' | 'server_to_client',
+): EnrichableEvent {
+  return {
+    id: ts + direction, ts, session: 's', mcp: 'm', type: 'mcp.detection_enrichment',
+    rpcId: 1, direction,
+    detection: { category, severity, findings: [] },
+  } as unknown as EnrichableEvent;
+}
+
 describe('computeTrayCounts', () => {
   const NOW = Date.parse('2026-06-11T12:00:00Z');
   const within = new Date(NOW - 60 * 60 * 1000).toISOString();       // 1h ago
@@ -68,6 +83,14 @@ describe('computeTrayCounts', () => {
 
   it('empty → zeros', () => {
     expect(computeTrayCounts([], NOW)).toEqual({ flagged24h: 0, critical24h: 0 });
+  });
+
+  it('counts server_to_client enrichment (Slice 1), ignores client_to_server (NER)', () => {
+    const events = [
+      enrEvent(within, 'credential_detected', 'critical', 'server_to_client'), // counts
+      enrEvent(within, 'pii_detected', 'medium', 'client_to_server'),          // NER: ignored
+    ];
+    expect(computeTrayCounts(events, NOW)).toEqual({ flagged24h: 1, critical24h: 1 });
   });
 });
 

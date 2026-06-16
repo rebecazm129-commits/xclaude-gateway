@@ -29,7 +29,14 @@ export function computeTrayCounts(events: readonly EnrichableEvent[], nowMs: num
   let flagged24h = 0;
   let critical24h = 0;
   for (const e of events) {
-    if (e.type !== 'mcp.request') continue;
+    // mcp.request carries its detection inline; a response-content detection
+    // (Slice 1) arrives as a server_to_client mcp.detection_enrichment. Count
+    // ONLY that direction so NER request-enrichments (client_to_server) keep
+    // their existing counting behavior untouched.
+    const counts =
+      e.type === 'mcp.request' ||
+      (e.type === 'mcp.detection_enrichment' && e.direction === 'server_to_client');
+    if (!counts) continue;
     if (new Date(e.ts).getTime() < cutoff) continue;
     if (e.detection.category !== 'tool_call_allowed') flagged24h++;
     if (e.detection.severity === 'critical') critical24h++;

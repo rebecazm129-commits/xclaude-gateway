@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { DetectionEngine } from '../src/detection/engine.js';
 import { createFrameProcessor } from '../src/frame-processor.js';
 import { InflightTracker } from '../src/latency.js';
-import type { DetectorInput, RpcId } from '../src/detection/types.js';
+import type { DetectorInput, RpcId, Direction } from '../src/detection/types.js';
 import type { ClassifiedFrame } from '../src/parser.js';
 
 function makeDeps(): {
@@ -136,5 +136,75 @@ describe('createFrameProcessor — async detector path', () => {
     const frame: ClassifiedFrame = { kind: 'parse_error', reason: 'invalid_json' };
     processFrame(frame, 'client_to_server', 10, '{bad', TS_NS, TS_MS);
     expect(enqueue).not.toHaveBeenCalled();
+  });
+});
+
+describe('createFrameProcessor — Slice 1: credential in tools/call result content', () => {
+  // Synthetic Anthropic-shaped key (test fixture, not a real secret).
+  const FAKE_KEY = 'sk-ant-api03-' + 'A'.repeat(40);
+
+  // Sends a request (populates the method map) then a response, on the same
+  // processor. reqMethod controls whether the response is treated as a tools/call.
+  function runReqThenResp(
+    result: unknown,
+    reqMethod = 'tools/call',
+    respDir: Direction = 'server_to_client',
+  ) {
+    const processFrame = createFrameProcessor(makeDeps());
+    processFrame(
+      { kind: 'request', id: 7, method: reqMethod, params: { name: 'x', arguments: {} } },
+      'client_to_server',
+      50,
+      '<req>',
+      TS_NS,
+      TS_MS,
+    );
+    return processFrame({ kind: 'response', id: 7, result }, respDir, 60, '<resp>', TS_NS, TS_MS);
+  }
+
+  it('emits mcp.detection_enrichment (location result) for a credential in content[].text', () => {
+    const events = runReqThenResp({ content: [{ type: 'text', text: `leak: ${FAKE_KEY}` }] });
+    expect(events.map((e) => e.type)).toEqual(['mcp.response', 'mcp.detection_enrichment']);
+    const enr = events[1];
+    if (enr?.type !== 'mcp.detection_enrichment') throw new Error('expected enrichment');
+    expect(enr.direction).toBe('server_to_client');
+    expect(enr.detection.category).toBe('credential_detected');
+    expect(enr.detection.severity).toBe('critical');
+    expect(enr.detection.findings.length).toBeGreaterThan(0);
+    expect(enr.detection.findings.every((f) => f.location === 'result')).toBe(true);
+    expect(enr.detection.findings.some((f) => f.type === 'anthropic_api_key')).toBe(true);
+  });
+
+  it('NEGATIVE: benign text content (no credential) → only mcp.response, no enrichment', () => {
+    const events = runReqThenResp({ content: [{ type: 'text', text: 'hello, here are your results' }] });
+    expect(events.map((e) => e.type)).toEqual(['mcp.response']);
+  });
+
+  it('non tools/call request → credential in result is NOT scanned', () => {
+    const events = runReqThenResp({ content: [{ type: 'text', text: `leak: ${FAKE_KEY}` }] }, 'resources/read');
+    expect(events.map((e) => e.type)).toEqual(['mcp.response']);
+  });
+
+  it('credential in structuredContent → emits enrichment', () => {
+    const events = runReqThenResp({ structuredContent: { note: `key=${FAKE_KEY}` } });
+    expect(events.map((e) => e.type)).toEqual(['mcp.response', 'mcp.detection_enrichment']);
+  });
+
+  it('credential outside content/structuredContent (e.g. result.meta) → not scanned', () => {
+    const events = runReqThenResp({ meta: `key=${FAKE_KEY}`, content: [{ type: 'text', text: 'clean' }] });
+    expect(events.map((e) => e.type)).toEqual(['mcp.response']);
+  });
+
+  it('keying: same rpcId on inverted directions does not cross request methods', () => {
+    const processFrame = createFrameProcessor(makeDeps());
+    // client→server tools/call id 9, and a server→client non-tools/call id 9.
+    processFrame({ kind: 'request', id: 9, method: 'tools/call', params: {} }, 'client_to_server', 1, '<a>', TS_NS, TS_MS);
+    processFrame({ kind: 'request', id: 9, method: 'sampling/createMessage', params: {} }, 'server_to_client', 1, '<b>', TS_NS, TS_MS);
+    // response to the client tools/call (server→client) → scanned.
+    const toTool = processFrame({ kind: 'response', id: 9, result: { content: [{ type: 'text', text: `k ${FAKE_KEY}` }] } }, 'server_to_client', 1, '<c>', TS_NS, TS_MS);
+    expect(toTool.map((e) => e.type)).toEqual(['mcp.response', 'mcp.detection_enrichment']);
+    // response to the server sampling request (client→server) → NOT scanned.
+    const toSampling = processFrame({ kind: 'response', id: 9, result: { content: [{ type: 'text', text: `k ${FAKE_KEY}` }] } }, 'client_to_server', 1, '<d>', TS_NS, TS_MS);
+    expect(toSampling.map((e) => e.type)).toEqual(['mcp.response']);
   });
 });
