@@ -13,7 +13,7 @@ export function usePolledDetections(): EnrichableEvent[] {
     async function refresh(): Promise<void> {
       try {
         const result = await window.xcg.listDetections();
-        if (!cancelled) setDetections(result);
+        if (!cancelled) setDetections(result.events);
       } catch (err) {
         console.error('listDetections failed:', err);
       }

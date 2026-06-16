@@ -7,7 +7,10 @@ import type {
   DetectionEnrichmentEvent,
   EnrichableEvent,
   ToolCount,
+  ConnectorAuthAlert,
+  DetectionListResult,
 } from '../shared/types.js';
+import { DAY_MS } from '../shared/types.js';
 import { SELFTEST_WRAPPER_NAME } from './selftest-runner.js';
 
 const DEFAULT_WRAPPERS_DIR = join(
@@ -83,13 +86,19 @@ async function listJsonlFiles(dir: string): Promise<string[]> {
   }
 }
 
-export async function readDetections(
+export async function readAudit(
   dir: string = DEFAULT_WRAPPERS_DIR,
-): Promise<EnrichableEvent[]> {
+  now: number = Date.now(),
+): Promise<DetectionListResult> {
   const jsonlFiles = await listJsonlFiles(dir);
   const seenIds = new Set<string>();
   const requests: DetectionEvent[] = [];
   const enrichments: DetectionEnrichmentEvent[] = [];
+  // Auth-alert tracking, same pass. ISO-Z timestamps compare lexicographically
+  // === chronologically, so string max/compare is safe.
+  const lastFailTs: Record<string, string> = {};
+  const lastFailMsg: Record<string, string> = {};
+  const lastLiveTs: Record<string, string> = {};
   for (const filename of jsonlFiles) {
     const filePath = join(dir, filename);
     const content = await readFile(filePath, 'utf8');
@@ -111,6 +120,29 @@ export async function readDetections(
         (parsed as Record<string, unknown>)['mcp'] === SELFTEST_WRAPPER_NAME
       ) {
         continue;
+      }
+      // Auth-alert tracking (proxy.error/oauth_failed vs live mcp.* traffic),
+      // same pass. These lines are not detection events, so they fall through
+      // the guards below; we capture them here before that.
+      {
+        const obj = parsed as Record<string, unknown>;
+        const ty = obj['type'];
+        const mcp = obj['mcp'];
+        const ts = obj['ts'];
+        if (typeof mcp === 'string' && typeof ts === 'string') {
+          if (ty === 'proxy.error' && obj['kind'] === 'oauth_failed') {
+            const prevFail = lastFailTs[mcp];
+            if (prevFail === undefined || ts > prevFail) {
+              lastFailTs[mcp] = ts;
+              lastFailMsg[mcp] = typeof obj['message'] === 'string' ? obj['message'] : '';
+            }
+          } else if (typeof ty === 'string' && ty.startsWith('mcp.')) {
+            const prevLive = lastLiveTs[mcp];
+            if (prevLive === undefined || ts > prevLive) {
+              lastLiveTs[mcp] = ts;
+            }
+          }
+        }
       }
       if (isDetectionEvent(parsed)) {
         if (seenIds.has(parsed.id)) continue;
@@ -180,9 +212,33 @@ export async function readDetections(
   const orphanEnrichments = enrichments.filter(
     (enr) => !matchedEnrichmentIds.has(enr.id),
   );
-  const results: EnrichableEvent[] = [...requests, ...orphanEnrichments];
-  results.sort((a, b) => b.ts.localeCompare(a.ts));
-  return results;
+  const events: EnrichableEvent[] = [...requests, ...orphanEnrichments];
+  events.sort((a, b) => b.ts.localeCompare(a.ts));
+  // needsRelogin: a recent failure (≤24h) with no later live traffic. Sorted
+  // deterministically: lastFailureTs desc, then mcp asc (stable banner/tests).
+  const authAlerts: ConnectorAuthAlert[] = [];
+  for (const mcp of Object.keys(lastFailTs)) {
+    const failTs = lastFailTs[mcp]!;
+    const failMs = Date.parse(failTs);
+    if (Number.isNaN(failMs) || now - failMs > DAY_MS) continue;
+    const liveTs = lastLiveTs[mcp];
+    if (liveTs !== undefined && failTs < liveTs) continue;
+    authAlerts.push({ mcp, lastFailureTs: failTs, message: lastFailMsg[mcp] ?? '' });
+  }
+  authAlerts.sort((a, b) =>
+    a.lastFailureTs === b.lastFailureTs
+      ? a.mcp.localeCompare(b.mcp)
+      : b.lastFailureTs.localeCompare(a.lastFailureTs),
+  );
+  return { events, authAlerts };
+}
+
+// Back-compat wrapper: callers/tests that only want the event list. Single pass
+// under the hood (delegates to readAudit), so no extra disk read.
+export async function readDetections(
+  dir: string = DEFAULT_WRAPPERS_DIR,
+): Promise<EnrichableEvent[]> {
+  return (await readAudit(dir)).events;
 }
 
 // Reads the most recent tools/list response's tool count for a given mcp. The

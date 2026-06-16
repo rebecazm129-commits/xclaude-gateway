@@ -1,7 +1,7 @@
 import { app, Menu, Tray, nativeImage, type MenuItemConstructorOptions } from 'electron';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { EnrichableEvent } from '../shared/types.js';
+import { DAY_MS, type EnrichableEvent } from '../shared/types.js';
 
 // Module-scope ref: keep the Tray alive. A local would be GC'd and the icon
 // would vanish (classic Electron bug). Exposed via getTray() so Pieza 2c can
@@ -25,7 +25,7 @@ export interface TrayCounts {
 // event is also flagged). Fields read verbatim from readDetections' output
 // (DetectionEvent.ts / detection.category / detection.severity).
 export function computeTrayCounts(events: readonly EnrichableEvent[], nowMs: number): TrayCounts {
-  const cutoff = nowMs - 24 * 60 * 60 * 1000;
+  const cutoff = nowMs - DAY_MS;
   let flagged24h = 0;
   let critical24h = 0;
   for (const e of events) {

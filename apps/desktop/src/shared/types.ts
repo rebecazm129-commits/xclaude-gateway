@@ -80,3 +80,23 @@ export interface DetectionEnrichmentEvent {
 // Solo sirve al Desktop (el proxy nunca la emite ni la lee) — por eso vive
 // aquí y no en @xcg/shared.
 export type EnrichableEvent = DetectionEvent | DetectionEnrichmentEvent;
+
+// One day in ms. Single source for the 24h audit windows (tray counts + auth
+// alerts); previously an inline literal in tray.ts.
+export const DAY_MS = 24 * 60 * 60 * 1000;
+
+// A connector whose most recent auth event is a (recent) oauth failure with no
+// later live traffic — i.e. it needs an interactive re-login. Derived by the
+// reader from proxy.error/oauth_failed lines; consumed by the desktop.
+export interface ConnectorAuthAlert {
+  mcp: string;
+  lastFailureTs: string; // ts ISO del oauth_failed más reciente
+  message: string; // message crudo de esa línea (para detalle)
+}
+
+// Payload of detection:list: the polled events (unchanged shape) plus the
+// derived auth alerts, both produced in a single disk pass.
+export interface DetectionListResult {
+  events: EnrichableEvent[];
+  authAlerts: ConnectorAuthAlert[];
+}

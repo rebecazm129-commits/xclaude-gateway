@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { readDetections, readLatestToolCount } from '../src/main/detection-reader.js';
+import { readAudit, readDetections, readLatestToolCount } from '../src/main/detection-reader.js';
 import { SELFTEST_WRAPPER_NAME } from '../src/main/selftest-runner.js';
 
 let tmpDir: string;
@@ -341,5 +341,60 @@ describe('readLatestToolCount', () => {
     expect(await readLatestToolCount('notion', dir)).toBeNull();
     expect(await readLatestToolCount('notion', join(dir, 'nope'))).toBeNull(); // ENOENT → null
     await rm(dir, { recursive: true, force: true });
+  });
+});
+
+describe('readAudit — authAlerts', () => {
+  const NOW = Date.parse('2026-06-16T12:00:00.000Z');
+  const HOUR = 60 * 60 * 1000;
+  const iso = (offsetMs: number): string => new Date(NOW + offsetMs).toISOString();
+
+  function oauthFail(id: string, mcp: string, ts: string, message = 'reauth required'): Record<string, unknown> {
+    return { v: 1, id, ts, session: 's', mcp, type: 'proxy.error', kind: 'oauth_failed', message };
+  }
+  function liveReq(id: string, mcp: string, ts: string): Record<string, unknown> {
+    return {
+      v: 1, id, ts, session: 's', mcp, type: 'mcp.request', direction: 'client_to_server',
+      rpcId: 1, method: 'tools/call', params: {}, bytes: 10, overheadUs: 5,
+      detection: { category: 'tool_call_allowed', severity: 'low', findings: [] },
+    };
+  }
+  async function write(name: string, ...events: Record<string, unknown>[]): Promise<string> {
+    const dir = join(tmpDir, name);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 's.jsonl'), events.map((e) => JSON.stringify(e)).join('\n') + '\n');
+    return dir;
+  }
+
+  it('a) recent oauth_failed with no later traffic → alert', async () => {
+    const dir = await write('auth-a', oauthFail('f1', 'notion', iso(-HOUR)));
+    const { authAlerts } = await readAudit(dir, NOW);
+    expect(authAlerts).toEqual([
+      { mcp: 'notion', lastFailureTs: iso(-HOUR), message: 'reauth required' },
+    ]);
+  });
+
+  it('b) oauth_failed followed by a later mcp.request (same mcp) → no alert', async () => {
+    const dir = await write('auth-b', oauthFail('f1', 'notion', iso(-2 * HOUR)), liveReq('r1', 'notion', iso(-HOUR)));
+    const { authAlerts } = await readAudit(dir, NOW);
+    expect(authAlerts).toEqual([]);
+  });
+
+  it('c) oauth_failed older than 24h → no alert', async () => {
+    const dir = await write('auth-c', oauthFail('f1', 'notion', iso(-25 * HOUR)));
+    const { authAlerts } = await readAudit(dir, NOW);
+    expect(authAlerts).toEqual([]);
+  });
+
+  it('d) two connectors, one down one healthy → only the down one', async () => {
+    const dir = await write('auth-d', oauthFail('f1', 'notion', iso(-HOUR)), liveReq('r1', 'linear', iso(-HOUR)));
+    const { authAlerts } = await readAudit(dir, NOW);
+    expect(authAlerts.map((a) => a.mcp)).toEqual(['notion']);
+  });
+
+  it('e) self-test wrapper never generates an alert', async () => {
+    const dir = await write('auth-e', oauthFail('f1', SELFTEST_WRAPPER_NAME, iso(-HOUR)));
+    const { authAlerts } = await readAudit(dir, NOW);
+    expect(authAlerts).toEqual([]);
   });
 });

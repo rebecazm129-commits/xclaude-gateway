@@ -22,7 +22,8 @@ import {
   runConfigUninstall,
 } from './config-handlers.js';
 import { runValidateHealth, runRepairWraps } from './health-handlers.js';
-import { readDetections, readLatestToolCount } from './detection-reader.js';
+import { readAudit, readLatestToolCount } from './detection-reader.js';
+import type { DetectionListResult } from '../shared/types.js';
 import { spawnWrapper, readDetectionsFromAudit, resolveNpxPath } from './selftest-runner.js';
 import { runSelfTest } from './selftest-handler.js';
 import { runConfigConnect } from './connect-handler.js';
@@ -74,12 +75,12 @@ function openWindow(): void {
   }
 }
 
-ipcMain.handle('detection:list', async () => {
-  const result = await readDetections();
+ipcMain.handle('detection:list', async (): Promise<DetectionListResult> => {
+  const audit = await readAudit();
   // Piggyback: refresh the tray off the data the renderer already polls — zero
   // extra JSONL reads.
-  updateTrayCounts(computeTrayCounts(result, Date.now()));
-  return result;
+  updateTrayCounts(computeTrayCounts(audit.events, Date.now()));
+  return audit;
 });
 
 ipcMain.handle('config:status', () => {
@@ -255,7 +256,7 @@ void app.whenReady().then(() => {
   // end — this and the renderer's usePolledDetections (2s) are candidates to
   // collapse into a single source-of-truth poll later.
   trayRefreshHandle = setInterval(() => {
-    void readDetections().then((events) => updateTrayCounts(computeTrayCounts(events, Date.now())));
+    void readAudit().then((audit) => updateTrayCounts(computeTrayCounts(audit.events, Date.now())));
   }, TRAY_REFRESH_MS);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

@@ -8,10 +8,10 @@ import type {
   StatusResult,
   UninstallResult,
 } from '@xcg/shared/config';
-import type { EnrichableEvent, ToolCount } from '../../shared/types.js';
+import type { ToolCount, DetectionListResult } from '../../shared/types.js';
 
 export interface XcgApi {
-  listDetections(): Promise<EnrichableEvent[]>;
+  listDetections(): Promise<DetectionListResult>;
   configStatus(): Promise<StatusResult>;
   configInstall(mode: 'dry-run' | 'yes', only?: string): Promise<InstallResult>;
   configUninstall(mode: 'dry-run' | 'yes'): Promise<UninstallResult>;

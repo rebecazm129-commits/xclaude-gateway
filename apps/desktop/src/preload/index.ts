@@ -10,10 +10,10 @@ import type {
   StatusResult,
   UninstallResult,
 } from '@xcg/shared/config';
-import type { EnrichableEvent, ToolCount } from '../shared/types.js';
+import type { ToolCount, DetectionListResult } from '../shared/types.js';
 
 contextBridge.exposeInMainWorld('xcg', {
-  listDetections: (): Promise<EnrichableEvent[]> => ipcRenderer.invoke('detection:list'),
+  listDetections: (): Promise<DetectionListResult> => ipcRenderer.invoke('detection:list'),
   configStatus: (): Promise<StatusResult> => ipcRenderer.invoke('config:status'),
   configInstall: (mode: 'dry-run' | 'yes', only?: string): Promise<InstallResult> =>
     ipcRenderer.invoke('config:install', mode, only),
