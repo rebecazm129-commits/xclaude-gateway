@@ -66,6 +66,15 @@
   box-shadow: inset 3px 0 0 var(--kraft-accent);
 }
 
+/* Left group: connector name + (optional) re-login glyph, kept inline so the
+ * row's 2-column grid (name group | trail) doesn't wrap onto a second line. */
+.entryNameGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .entryName {
   color: var(--kraft-ink);
   font-family: var(--kraft-font-mono);
@@ -73,7 +82,6 @@
 
 /* Re-login needed: amber warning glyph right after the connector name. */
 .authWarn {
-  margin-left: 6px;
   color: var(--kraft-warning-dot);
   font-size: 12px;
   line-height: 1;

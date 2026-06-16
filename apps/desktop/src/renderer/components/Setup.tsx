@@ -160,16 +160,18 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
                             }
                           }}
                         >
-                          <span className={styles['entryName']}>{c.name}</span>
-                          {alertedMcps.has(c.name) ? (
-                            <span
-                              className={styles['authWarn']}
-                              title="needs re-login"
-                              aria-label="needs re-login"
-                            >
-                              {'⚠︎'}
-                            </span>
-                          ) : null}
+                          <span className={styles['entryNameGroup']}>
+                            <span className={styles['entryName']}>{c.name}</span>
+                            {alertedMcps.has(c.name) ? (
+                              <span
+                                className={styles['authWarn']}
+                                title="needs re-login"
+                                aria-label="needs re-login"
+                              >
+                                {'⚠︎'}
+                              </span>
+                            ) : null}
+                          </span>
                           <span className={styles['entryTrail']}>
                             <span
                               className={
