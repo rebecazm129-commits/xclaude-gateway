@@ -2,7 +2,7 @@
   "name": "xclaude-gateway",
   "version": "0.0.0",
   "private": true,
-  "description": "Gateway MCP local-first para Claude Desktop — observa, clasifica, registra.",
+  "description": "Local-first MCP audit gateway for Claude Desktop — observes, classifies, records.",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@9.15.4",
