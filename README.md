@@ -4,7 +4,7 @@ A local audit layer for Claude Desktop's MCP traffic. It sits between Claude Des
 
 ## What it does
 
-Whether you connect a remote service through xCLAUDE (Notion, Linear, Atlassian, GitHub, Gmail, Google Calendar, Google Drive) or wrap a local MCP server you already run (filesystem, custom scripts, anything you launch via `npx` or a local binary), xCLAUDE Gateway sits transparently between Claude Desktop and that server:
+Whether you connect a remote service through xCLAUDE (Notion, Linear, Atlassian, GitHub, Stripe, Apollo, Slack, Gmail, Google Calendar, Google Drive) or wrap a local MCP server you already run (filesystem, custom scripts, anything you launch via `npx` or a local binary), xCLAUDE Gateway sits transparently between Claude Desktop and that server:
 
 - **Wraps your existing MCP servers transparently** — no changes to the servers themselves.
 - **Records every JSON-RPC frame** (requests, responses, notifications) to a per-session JSONL log under `~/Library/Application Support/xCLAUDE Gateway/wrappers/`.
@@ -33,13 +33,13 @@ What the proxy adds on top of that:
 
 - A **complete local audit trail** of every tool call that did happen. Forensics, not just detection. If in six months you wonder what crossed your Mac, the JSONL log tells you exactly.
 - A **second independent layer** of classification, useful in flows where the model is less cautious about each individual tool call (agentic workflows, long automated chains, future MCP clients with different safety postures).
-- A **foundation for active-blocking logic** in later milestones.
+- A **foundation for richer detection, alerting and reporting** as the audit engine grows.
 
 If you're looking for a tool that prevents Claude from making sensitive tool calls in the first place, the model itself is already doing most of that work. If you're looking for a tool that records, classifies and gives you visibility over the MCP traffic on your machine, this is it.
 
 ## What it does NOT do yet
 
-- **No active blocking of tool calls.** The detectors tag with severity; they do not stop the operation.
+- **No blocking or altering of tool calls.** The detectors record and classify with severity; xCLAUDE never stops, reroutes or withholds an operation — that is the design, not a limitation.
 - **Named-entity PII detection runs as an async enrichment** (transformers.js NER): persons, organizations and locations found in tool-call payloads are recorded in the audit log alongside the main detector chain. It is early stage — it complements the checksum-based `pii_structured` detector, and is not yet part of the synchronous detector chain.
 - **No auditing of native Connectors.** Services you connect with one click in Claude Desktop's settings are brokered through Anthropic's servers; their traffic never reaches your Mac, so xCLAUDE can't see it. To audit such a service, connect it through xCLAUDE instead (see "Remote connectors" below).
 - **No in-app UI yet for bringing your own OAuth client** (needed by the Google connectors — see "Google services" below). Seeding the client currently requires a one-time terminal step.
@@ -53,7 +53,7 @@ xCLAUDE Gateway in its current state **covers a specific subset** of the Claude 
 ### What is covered
 
 - **Claude Desktop** with **local MCP servers** that are wrapped via the Setup UI (or manually in `claude_desktop_config.json` by pointing them to `xcg-proxy`).
-- **Remote MCP servers connected through xCLAUDE** (Notion, Linear, Atlassian, GitHub, Gmail, Google Calendar and Google Drive today; more on the way). You connect them in the app's Remote Connectors panel, which signs you in and bridges the traffic through your machine for auditing.
+- **Remote MCP servers connected through xCLAUDE** (Notion, Linear, Atlassian, GitHub, Stripe, Apollo, Slack, Gmail, Google Calendar and Google Drive today; more on the way). You connect them in the app's Remote Connectors panel, which signs you in and bridges the traffic through your machine for auditing.
 
 ### What is NOT covered
 
@@ -68,7 +68,7 @@ If you're using Claude Desktop with local MCP servers, or you connect a remote s
 
 ## Remote connectors
 
-xCLAUDE can audit remote MCP services (Notion, Linear, Atlassian, GitHub, Gmail, Google Calendar and Google Drive today, with more on the way) by acting as your connection to them, instead of Claude Desktop connecting directly.
+xCLAUDE can audit remote MCP services (Notion, Linear, Atlassian, GitHub, Stripe, Apollo, Slack, Gmail, Google Calendar and Google Drive today, with more on the way) by acting as your connection to them, instead of Claude Desktop connecting directly.
 
 To audit a service this way:
 
@@ -179,6 +179,10 @@ A typical event:
 
 Each session writes its own file. The file name is the session ID (ULID). Open `xCLAUDE Gateway.app` and click the **Detections** tab to see the same events with severity and category filters.
 
+### Verify detection (self-test)
+
+The Connectors tab includes a **Verify detection** button — a safe, self-contained end-to-end check of the kind these tools usually ship. It runs a synthetic risky payload through the audit pipeline and confirms the event is recorded and flagged, so you can see the detectors working end to end without touching any real connector.
+
 ## Manual configuration
 
 If you prefer to edit your config by hand instead of using the Setup UI, back up your config first:
@@ -244,7 +248,7 @@ You must run the OAuth login once before this works — the Remote connectors pa
 
 In ordinary, day-to-day use of Claude Desktop with local MCP servers, most events will be `tool_call_allowed` at LOW severity. That is the intended baseline, not a sign that "nothing is happening". The Detections view highlights events at MEDIUM, HIGH or CRITICAL only when a detector matches. This typically happens rarely in normal use, because Claude Desktop's model already refuses many sensitive operations before any tool call is issued.
 
-The value of xCLAUDE Gateway in this phase comes from three places: the **complete local audit trail**, the **classification of patterns when they do appear**, and the **foundation for active blocking** in later milestones.
+The value of xCLAUDE Gateway in this phase comes from three places: the **complete local audit trail**, the **classification of patterns when they do appear**, and the **foundation for richer detection and reporting** as the engine matures.
 
 ## Troubleshooting
 
@@ -286,6 +290,10 @@ Monorepo with three workspaces:
 - `apps/desktop` — the Electron app shipping the Setup UI and live Detections view.
 
 Built with pnpm 9, Node 22, Electron, TypeScript.
+
+## Disclaimer
+
+xCLAUDE Gateway is an independent, open-source project, not affiliated with, endorsed by, or sponsored by Anthropic. "Claude" and "Claude Desktop" are trademarks of Anthropic. Other product names and logos — Google, Gmail, Slack, Notion, and the like — belong to their respective owners and are used for identification only.
 
 ## License
 
