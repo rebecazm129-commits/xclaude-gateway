@@ -111,7 +111,7 @@ unset CLIENT_ID CLIENT_SECRET
 
 ## Requirements
 
-- macOS 13 or later.
+- macOS 13 or later, on Apple Silicon (M1 or newer). The current build is arm64-only; Intel Macs are not supported.
 - Claude Desktop installed and working.
 - Optional: local MCP servers you already use (xCLAUDE wraps them). If you only want to audit remote services, no local server is needed. If you want to try local wrapping and don't have a server, `@modelcontextprotocol/server-filesystem` is an easy starting point (installable via `npx -y`).
 
