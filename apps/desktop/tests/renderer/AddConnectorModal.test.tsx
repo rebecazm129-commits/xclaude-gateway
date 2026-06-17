@@ -113,7 +113,7 @@ describe('AddConnectorModal', () => {
     const api = stubXcg();
     renderOpen();
     fireEvent.click(screen.getByRole('button', { name: /Request a connector/ }));
-    expect(api.openExternalUrl).toHaveBeenCalledWith('https://xclaude.ai');
+    expect(api.openExternalUrl).toHaveBeenCalledWith('https://xclaude.ai/contact');
   });
 
   it('Google without a seeded client shows "Set up…" and opens the explainer', async () => {
