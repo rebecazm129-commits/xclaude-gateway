@@ -20,7 +20,7 @@ function bannerFor(report: SelfTestReport): { tone: BannerTone; text: string } {
     case 'timeout_partial':
       return { tone: 'error', text: "Some checks didn't complete in time. Try again." };
     case 'timeout_no_data':
-      return { tone: 'error', text: 'No checks completed. The gateway may not be intercepting traffic.' };
+      return { tone: 'error', text: 'No checks completed. The gateway may not be receiving traffic.' };
     case 'spawn_failed':
       return { tone: 'error', text: `Couldn't run the self-test: ${outcome.reason}` };
     default: {
@@ -95,7 +95,7 @@ export function SelfTest(): ReactElement {
         <div className={styles['heading']}>
           <p className={styles['title']}>Verify detection</p>
           <p className={styles['subtitle']}>
-            Run a safe end-to-end check that the gateway intercepts and flags risky tool calls.
+            Run a safe end-to-end check that the gateway observes and flags risky tool calls.
           </p>
         </div>
         <button
