@@ -4,13 +4,11 @@
   "private": true,
   "description": "Local-first MCP audit gateway for Claude Desktop",
   "author": {
-    "name": "Rebeca Zambrano Moreno",
-    "email": "260829661+rebecazm129-commits@users.noreply.github.com"
+    "name": "Rebeca Zambrano Moreno"
   },
   "contributors": [
     {
-      "name": "Rebeca Zambrano Moreno",
-      "email": "260829661+rebecazm129-commits@users.noreply.github.com"
+      "name": "Rebeca Zambrano Moreno"
     },
     {
       "name": "Ignacio Lucea Artero"
