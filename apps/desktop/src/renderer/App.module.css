@@ -20,7 +20,7 @@
   border-bottom: var(--kraft-hairline) solid var(--kraft-border);
   height: 84px;
   box-sizing: border-box;
-  -webkit-app-region: drag;
+  -webkit-app-region: no-drag;
 }
 
 .headerActions {

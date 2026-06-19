@@ -43,6 +43,11 @@ function createWindow(): void {
     backgroundColor: '#f0ebe1',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
+      // macOS 26 (Tahoe): the native context menu queries the spellcheck
+      // service, and constructing that native menu crashes the browser process
+      // (EXC_BAD_ACCESS in CrBrowserMain). Disabling spellcheck removes the
+      // query path; suppressing the menu itself is done in the renderer.
+      spellcheck: false,
     },
   });
 
