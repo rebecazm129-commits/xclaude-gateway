@@ -126,6 +126,86 @@ describe('applyWrap — only parameter (single-connector wrap)', () => {
   });
 });
 
+describe('applyWrap — re-home already-wrapped entries to xcgPath (H4)', () => {
+  // A wrap written against the dev tree bin (basename xcg-proxy, valid contract
+  // args) — recognized as already-wrapped, but pointing at a non-canonical path.
+  const DEV = '/Users/r/code/xclaude-gateway/packages/proxy/bin/xcg-proxy';
+
+  it('a) stdio form at a dev path → command re-homed to xcgPath, args/env/cwd intact', () => {
+    const raw = {
+      mcpServers: {
+        fs: {
+          command: DEV,
+          args: ['stdio', '--wrap', '/usr/local/bin/npx', '--name', 'fs', '--', '@mcpf/fs'],
+          env: { TOKEN: 'abc' },
+          cwd: '/work',
+        },
+      },
+    };
+    // Empty wrappable plan: fs is not a wrap target (it's already-wrapped).
+    const out = applyWrap(raw, plan(), XCG) as any;
+    expect(out.mcpServers.fs).toEqual({
+      command: XCG,
+      args: ['stdio', '--wrap', '/usr/local/bin/npx', '--name', 'fs', '--', '@mcpf/fs'],
+      env: { TOKEN: 'abc' },
+      cwd: '/work',
+    });
+  });
+
+  it('a) legacy --wrap form at a dev path → command re-homed, args verbatim', () => {
+    const raw = {
+      mcpServers: {
+        fs: { command: DEV, args: ['--wrap', '/usr/local/bin/npx', '--name', 'fs', '--', '@mcpf/fs'] },
+      },
+    };
+    const out = applyWrap(raw, plan(), XCG) as any;
+    expect(out.mcpServers.fs).toEqual({
+      command: XCG,
+      args: ['--wrap', '/usr/local/bin/npx', '--name', 'fs', '--', '@mcpf/fs'],
+    });
+  });
+
+  it('b) already-wrapped at xcgPath → untouched (byte-identical, same reference)', () => {
+    const entry = { command: XCG, args: ['stdio', '--wrap', 'npx', '--name', 'fs', '--', 'a'] };
+    const raw = { mcpServers: { fs: entry } };
+    const out = applyWrap(raw, plan(), XCG) as any;
+    expect(out.mcpServers.fs).toEqual(entry);
+    expect(out.mcpServers.fs).toBe(entry); // no rewrite: same object reference
+  });
+
+  it('c) http/remote bridge at a dev path → same re-homing', () => {
+    const raw = {
+      mcpServers: {
+        notion: { command: DEV, args: ['http', '--url', 'https://mcp.notion.com/mcp', '--name', 'notion'] },
+      },
+    };
+    const out = applyWrap(raw, plan(), XCG) as any;
+    expect(out.mcpServers.notion).toEqual({
+      command: XCG,
+      args: ['http', '--url', 'https://mcp.notion.com/mcp', '--name', 'notion'],
+    });
+  });
+
+  it('does NOT re-home an entry whose command basename is not xcg-proxy', () => {
+    const entry = { command: '/usr/bin/other', args: ['stdio', '--wrap', 'x', '--name', 'a', '--'] };
+    const raw = { mcpServers: { a: entry } };
+    const out = applyWrap(raw, plan(), XCG) as any;
+    expect(out.mcpServers.a).toEqual(entry);
+  });
+
+  it('only=<X> re-homes X but leaves a different already-wrapped sibling untouched', () => {
+    const raw = {
+      mcpServers: {
+        a: { command: 'npx', args: ['-y', 'a'] }, // wrappable
+        b: { command: DEV, args: ['stdio', '--wrap', 'nb', '--name', 'b', '--'] }, // already-wrapped, dev path
+      },
+    };
+    const out = applyWrap(raw, plan('a'), XCG, 'a') as any;
+    expect(out.mcpServers.a.command).toBe(XCG);
+    expect(out.mcpServers.b).toEqual({ command: DEV, args: ['stdio', '--wrap', 'nb', '--name', 'b', '--'] });
+  });
+});
+
 describe('unwrap — inverse of applyWrap', () => {
   it('roundtrip: wrap then unwrap restores the original entry', () => {
     const raw = { mcpServers: { fs: { command: '/usr/local/bin/npx', args: ['@mcpf/filesystem', '/x'] } } };

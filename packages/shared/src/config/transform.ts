@@ -52,9 +52,13 @@ function unwrapEntry(entry: Record<string, unknown>): Record<string, unknown> {
 // --- Public surface ---
 
 // Apply the wrap plan to the raw config. Iterates mcpServers, transforms
-// only entries listed as wrappable in the plan, leaves everything else
-// (other top-level keys, skipped entries) byte-for-byte. Pure: returns a
-// new object; `raw` is not mutated.
+// only entries listed as wrappable in the plan. Already-wrapped entries are
+// left byte-for-byte EXCEPT when their command points at a non-canonical
+// xcg-proxy path (e.g. a stale dev-tree bin): those are re-homed by rewriting
+// ONLY `command` to xcgPath (args/env/cwd/unknown keys pass through verbatim).
+// When `only` is set, this re-homing is scoped to that entry too. Everything
+// else (other top-level keys, non-wrap skipped entries) is untouched.
+// Pure: returns a new object; `raw` is not mutated.
 export function applyWrap(
   raw: unknown,
   plan: WrapPlan,
@@ -73,6 +77,19 @@ export function applyWrap(
   for (const [name, entry] of Object.entries(mcp)) {
     if (targets.has(name) && isPlainObject(entry)) {
       newMcp[name] = wrapEntry(name, entry, xcgPath);
+    } else if (
+      isPlainObject(entry) &&
+      (only === undefined || only === name) &&
+      typeof entry.command === 'string' &&
+      isStringArray(entry.args) &&
+      isAlreadyWrapped(entry.command, entry.args) &&
+      entry.command !== xcgPath
+    ) {
+      // Re-home an already-wrapped entry whose command points at a
+      // non-canonical xcg-proxy path (e.g. a stale dev-tree bin) to xcgPath.
+      // Only `command` changes; args/env/cwd/unknown keys pass through
+      // verbatim. Scoped by `only`, exactly like the wrap branch above.
+      newMcp[name] = { ...entry, command: xcgPath };
     } else {
       newMcp[name] = entry;
     }
