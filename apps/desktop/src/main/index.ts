@@ -23,7 +23,23 @@ import {
 } from './config-handlers.js';
 import { runValidateHealth, runRepairWraps } from './health-handlers.js';
 import { readAudit, readLatestToolCount } from './detection-reader.js';
-import type { DetectionListResult } from '../shared/types.js';
+import type {
+  DetectionListResult,
+  RetentionConfig,
+  RetentionSetModeResult,
+  RetentionSizeSnapshot,
+  RetentionStatus,
+} from '../shared/types.js';
+import {
+  BASE_DIR,
+  WRAPPERS_DIR,
+  estimatePurgable,
+  isPurgeMode,
+  readLastPurgeMarker,
+  readRetentionConfig,
+  runSweep,
+  writeRetentionConfig,
+} from './retention.js';
 import { spawnWrapper, readDetectionsFromAudit, resolveNpxPath } from './selftest-runner.js';
 import { runSelfTest } from './selftest-handler.js';
 import { runConfigConnect } from './connect-handler.js';
@@ -92,8 +108,48 @@ ipcMain.handle('detection:list', async (): Promise<DetectionListResult> => {
   // Piggyback: refresh the tray off the data the renderer already polls — zero
   // extra JSONL reads.
   updateTrayCounts(computeTrayCounts(audit.events, Date.now()));
-  return audit;
+  // Piggyback the cached retention size/threshold for the Detections banner.
+  // Both come from in-memory caches (populated by the sweep) — no disk cost.
+  const retention =
+    retentionSizeCache !== null && retentionConfigCache !== null
+      ? {
+          totalBytes: retentionSizeCache.totalBytes,
+          sizeWarnBytes: retentionConfigCache.sizeWarnBytes,
+        }
+      : null;
+  return { ...audit, retention };
 });
+
+// Retention status for the Settings drawer. Reads config + last purge on
+// demand (only when Settings opens); size comes from the cached snapshot.
+ipcMain.handle('retention:status', async (): Promise<RetentionStatus> => {
+  const config = await readRetentionConfig(BASE_DIR);
+  retentionConfigCache = config;
+  const lastPurge = await readLastPurgeMarker(WRAPPERS_DIR);
+  return { config, size: retentionSizeCache, lastPurge };
+});
+
+// Change the purge mode. Persists via writeAtomic and returns the estimated
+// number of files the NEXT sweep would purge (by ULID decodeTime; nothing is
+// deleted here — the purge is deferred to the daily sweep).
+ipcMain.handle(
+  'retention:set-mode',
+  async (_event, params: { mode: unknown }): Promise<RetentionSetModeResult> => {
+    const current = retentionConfigCache ?? (await readRetentionConfig(BASE_DIR));
+    const mode = params?.mode;
+    if (!isPurgeMode(mode)) {
+      return { ok: false, config: current, purgableEstimate: 0 };
+    }
+    const next: RetentionConfig = { ...current, purgeMode: mode };
+    const wr = writeRetentionConfig(next, BASE_DIR);
+    if (!wr.ok) {
+      return { ok: false, config: current, purgableEstimate: 0 };
+    }
+    retentionConfigCache = next;
+    const purgableEstimate = await estimatePurgable(WRAPPERS_DIR, mode, Date.now());
+    return { ok: true, config: next, purgableEstimate };
+  },
+);
 
 ipcMain.handle('config:status', () => {
   return runConfigStatus({
@@ -271,6 +327,31 @@ function bootstrapStableSymlink(): void {
 
 const TRAY_REFRESH_MS = 60_000;
 let trayRefreshHandle: NodeJS.Timeout | null = null;
+
+// Retention: a daily sweep in the MAIN process (never the 2s poll). Handle +
+// caches are module state, same pattern as trayRefreshHandle. The size/config
+// caches feed the detection:list piggyback and the retention:status handler.
+const RETENTION_SWEEP_MS = 24 * 60 * 60 * 1000;
+let retentionSweepHandle: NodeJS.Timeout | null = null;
+let retentionSizeCache: RetentionSizeSnapshot | null = null;
+let retentionConfigCache: RetentionConfig | null = null;
+
+async function runRetentionSweep(): Promise<void> {
+  try {
+    const config = await readRetentionConfig(BASE_DIR);
+    retentionConfigCache = config;
+    const outcome = await runSweep(WRAPPERS_DIR, config, Date.now());
+    retentionSizeCache = outcome.size;
+    if (outcome.purged) {
+      console.log(
+        `[xcg] retention purge removed ${outcome.purged.filesPurged} session file(s) ` +
+          `(${outcome.purged.purgedFromTs} → ${outcome.purged.purgedUntilTs})`,
+      );
+    }
+  } catch (err) {
+    console.error('[xcg] retention sweep failed:', err);
+  }
+}
 // Re-login notification dedupe (slice C): same module-state pattern as
 // trayRefreshHandle. notifiedRelogin = connectors currently accounted for as
 // alerting; reloginSeeded = whether the first evaluation has run (the first
@@ -310,6 +391,15 @@ void app.whenReady().then(() => {
       }
     });
   }, TRAY_REFRESH_MS);
+  // Retention: one deferred sweep after the first audit read, then a daily
+  // interval. Never runs on the renderer's 2s poll. mode 'never' (default) is a
+  // no-op for deletion — the pass only refreshes the cached directory size.
+  void readAudit()
+    .then(() => runRetentionSweep())
+    .catch((err) => console.error('[xcg] initial retention sweep failed:', err));
+  retentionSweepHandle = setInterval(() => {
+    void runRetentionSweep();
+  }, RETENTION_SWEEP_MS);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -317,6 +407,7 @@ void app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   if (trayRefreshHandle) clearInterval(trayRefreshHandle);
+  if (retentionSweepHandle) clearInterval(retentionSweepHandle);
 });
 
 app.on('window-all-closed', () => {

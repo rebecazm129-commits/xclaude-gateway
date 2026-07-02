@@ -9,6 +9,18 @@
   align-items: center;
 }
 
+/* "Audit log has grown" advisory banner — shown when the wrappers dir exceeds
+   the configured sizeWarnBytes. Advisory only; it never limits auditing. */
+.retentionBanner {
+  margin: 0;
+  padding: 10px 20px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--kraft-ink);
+  background: var(--kraft-filter-bg);
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
+}
+
 .empty {
   flex: 1;
   display: flex;

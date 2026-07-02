@@ -246,3 +246,40 @@
   background: var(--kraft-filter-bg);
   border-color: var(--kraft-ink-soft);
 }
+
+/* Retention (audit-log lifecycle) controls, under the Audit log section. */
+.retentionRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.retentionLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--kraft-ink);
+}
+
+.retentionSelect {
+  font-family: var(--kraft-font-ui);
+  font-size: 12px;
+  color: var(--kraft-ink);
+  background: var(--kraft-surface);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  border-radius: var(--kraft-radius-sm);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.retentionSelect:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.retentionMeta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--kraft-ink-soft);
+  line-height: 1.5;
+}

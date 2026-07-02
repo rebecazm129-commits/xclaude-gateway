@@ -52,3 +52,44 @@ export function writeConnectorRecovered(
     console.error(`writeConnectorRecovered: failed to append ${filePath}:`, err);
   }
 }
+
+// Event type the retention reader (readLastPurgeMarker) consumes to surface the
+// last automatic purge in Settings. Inert for the detection pipeline: it matches
+// none of readAudit's guards (not proxy.error, not mcp.*, not the recovery
+// type), so it never shows up as a detection or affects auth alerts.
+export const RETENTION_PURGED_TYPE = 'app.retention_purged';
+
+export interface RetentionPurgedFields {
+  filesPurged: number;
+  purgedFromTs: string;
+  purgedUntilTs: string;
+  purgeMode: string;
+}
+
+// Appends ONE aggregated marker after a sweep that removed ≥1 session file.
+// Same durability model and best-effort contract as writeConnectorRecovered
+// (v:1, randomUUID, session:'desktop', mcp:'-', append-only, never throws).
+export function writeRetentionPurged(
+  fields: RetentionPurgedFields,
+  dir: string = DEFAULT_WRAPPERS_DIR,
+): void {
+  const envelope = {
+    v: 1,
+    id: randomUUID(),
+    ts: new Date().toISOString(),
+    session: 'desktop',
+    mcp: '-',
+    type: RETENTION_PURGED_TYPE,
+    filesPurged: fields.filesPurged,
+    purgedFromTs: fields.purgedFromTs,
+    purgedUntilTs: fields.purgedUntilTs,
+    purgeMode: fields.purgeMode,
+  };
+  const filePath = join(dir, APP_EVENTS_FILENAME);
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    appendFileSync(filePath, `${JSON.stringify(envelope)}\n`, { mode: 0o600 });
+  } catch (err) {
+    console.error(`writeRetentionPurged: failed to append ${filePath}:`, err);
+  }
+}

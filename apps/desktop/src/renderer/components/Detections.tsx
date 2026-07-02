@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FixedSizeList } from 'react-window';
 
-import { usePolledDetections } from '../hooks/usePolledDetections.js';
+import { usePolledAudit } from '../hooks/usePolledAudit.js';
 import type { EnrichableEvent, Severity, Category } from '../../shared/types.js';
 
 import { DetailDrawer } from './DetailDrawer.js';
@@ -24,6 +24,19 @@ const CATEGORY_OPTIONS: readonly Category[] = [
   'pii_structured',
 ];
 
+// Human-readable byte size for the retention banner (1024-based).
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let val = bytes / 1024;
+  let i = 0;
+  while (val >= 1024 && i < units.length - 1) {
+    val /= 1024;
+    i += 1;
+  }
+  return `${val >= 10 ? Math.round(val) : val.toFixed(1)} ${units[i]}`;
+}
+
 const ROW_HEIGHT = 40;
 // Chrome around the virtualized list: titlebar (42) + header (84) + tabs (40) +
 // filters bar, PLUS the bottom "Open audit folder" footer (~34px: padding 8×2 +
@@ -31,6 +44,12 @@ const ROW_HEIGHT = 40;
 // the titlebar landed too (328 had the same bug). The 42 mirrors
 // --kraft-titlebar-height in index.css (keep in sync — TS can't read the CSS var).
 const HEADER_AND_FILTERS_HEIGHT = 404;
+// Height reclaimed from the list when the retention size banner is visible.
+// Mirrors .retentionBanner in Detections.module.css: padding 10×2 + hairline +
+// ~2 wrapped lines of 13px/1.5 text ≈ 60px. Erring generous (vs. a 1-line
+// banner on a wide window) keeps the list from ever overflowing the footer;
+// worst case is a hair of empty space, never a row hidden below it.
+const RETENTION_BANNER_HEIGHT = 60;
 
 interface DetectionsProps {
   readonly mcpFilter: string | null;
@@ -38,7 +57,7 @@ interface DetectionsProps {
 }
 
 export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JSX.Element {
-  const detections = usePolledDetections();
+  const { events: detections, retention } = usePolledAudit();
   const [selectedSeverities, setSelectedSeverities] =
     useState<readonly Severity[]>(SEVERITY_OPTIONS);
   const [selectedCategories, setSelectedCategories] =
@@ -198,8 +217,24 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
     void window.xcg.openAuditFolder();
   }
 
+  const showSizeWarning =
+    retention !== null && retention.totalBytes > retention.sizeWarnBytes;
+
+  // The banner renders above the list, so shrink the list by its height when
+  // shown (listHeight itself stays keyed to the window/resize only).
+  const effectiveListHeight = showSizeWarning
+    ? listHeight - RETENTION_BANNER_HEIGHT
+    : listHeight;
+
   return (
     <>
+      {showSizeWarning && retention !== null && (
+        <div className={styles['retentionBanner']} role="status">
+          xCLAUDE Gateway keeps every audit event by default — your log has grown
+          to {formatBytes(retention.totalBytes)}. Open Settings to turn on
+          automatic cleanup by age.
+        </div>
+      )}
       <SeverityBreakdown
         counts={counts}
         total={categoryFiltered.length}
@@ -277,7 +312,7 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
           </div>
           <FixedSizeList
             ref={listRef}
-            height={listHeight}
+            height={effectiveListHeight}
             width="100%"
             itemSize={ROW_HEIGHT}
             itemCount={filtered.length}

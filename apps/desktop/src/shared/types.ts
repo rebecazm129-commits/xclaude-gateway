@@ -99,4 +99,62 @@ export interface ConnectorAuthAlert {
 export interface DetectionListResult {
   events: EnrichableEvent[];
   authAlerts: ConnectorAuthAlert[];
+  // Cached retention size/threshold, piggybacked for the Detections "log has
+  // grown" banner. Optional + null until the main's first sweep populates the
+  // cache — costs zero extra disk reads (in-memory value).
+  retention?: RetentionBannerInfo | null;
+}
+
+// ---- Retention (audit-log lifecycle) ----
+
+// Purge modes offered in Settings. 'never' (default) keeps everything.
+export type PurgeMode = 'never' | '30d' | '90d' | '365d';
+
+// Persisted in ~/Library/Application Support/xCLAUDE Gateway/settings.json
+// under { v:1, retention: {...} }.
+export interface RetentionConfig {
+  purgeMode: PurgeMode;
+  sizeWarnBytes: number;
+}
+
+// Cached in the main after each sweep + at startup. Never recomputed on the 2s poll.
+export interface RetentionSizeSnapshot {
+  totalBytes: number;
+  fileCount: number;
+  computedAtTs: string;
+}
+
+// The most recent app.retention_purged marker in app-events.jsonl, surfaced in
+// Settings so every automatic purge is visible.
+export interface RetentionPurgedMarker {
+  ts: string;
+  filesPurged: number;
+  purgedFromTs: string;
+  purgedUntilTs: string;
+  purgeMode: string;
+}
+
+// retention:status payload — config + cached size + last purge (on-demand read
+// when Settings opens, not on the poll path).
+export interface RetentionStatus {
+  config: RetentionConfig;
+  size: RetentionSizeSnapshot | null;
+  lastPurge: RetentionPurgedMarker | null;
+}
+
+// retention:set-mode payload.
+export interface RetentionSetModeResult {
+  ok: boolean;
+  config: RetentionConfig;
+  // Session files that WOULD be purged at the new mode (by ULID decodeTime;
+  // nothing deleted). 0 for 'never'. Lets the UI record the impact before the
+  // next daily sweep acts.
+  purgableEstimate: number;
+}
+
+// Minimal size info piggybacked on detection:list for the Detections banner.
+// Both fields come from the main's in-memory cache — zero extra disk cost.
+export interface RetentionBannerInfo {
+  totalBytes: number;
+  sizeWarnBytes: number;
 }
