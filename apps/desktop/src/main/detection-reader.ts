@@ -101,7 +101,18 @@ export async function readAudit(
   const lastLiveTs: Record<string, string> = {};
   for (const filename of jsonlFiles) {
     const filePath = join(dir, filename);
-    const content = await readFile(filePath, 'utf8');
+    let content: string;
+    try {
+      content = await readFile(filePath, 'utf8');
+    } catch (err) {
+      // A single unreadable entry (EACCES, EISDIR from a directory named
+      // *.jsonl, a file deleted mid-scan, etc.) must NOT blank the whole
+      // audit. The reader is the only authority of "what's shown", so we
+      // degrade partially: log the offending path and keep reading the rest.
+      // Mirrors the per-line tolerance for malformed JSON below.
+      console.error(`readAudit: skipping unreadable file ${filePath}:`, err);
+      continue;
+    }
     for (const line of content.split('\n')) {
       if (line.trim() === '') continue;
       let parsed: unknown;

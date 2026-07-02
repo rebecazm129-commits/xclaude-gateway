@@ -113,6 +113,20 @@ describe('readDetections', () => {
     expect(result).toHaveLength(1);
   });
 
+  it('skips an unreadable .jsonl entry (a directory named *.jsonl) and still returns the valid events', async () => {
+    const dir = join(tmpDir, 'unreadable-file');
+    await mkdir(dir, { recursive: true });
+    const event = baseEvent('e1', '2025-05-14T12:34:56.000Z');
+    await writeFile(join(dir, 'good.jsonl'), JSON.stringify(event) + '\n');
+    // A directory whose name ends in .jsonl passes listJsonlFiles' filter,
+    // but readFile throws EISDIR on it. readAudit must skip it and keep the
+    // valid file's events rather than rejecting the whole read.
+    await mkdir(join(dir, 'bad.jsonl'));
+    const result = await readAudit(dir);
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]?.id).toBe('e1');
+  });
+
   it('sorts results by ts descending', async () => {
     const dir = join(tmpDir, 'sorted');
     await mkdir(dir, { recursive: true });
