@@ -12,6 +12,7 @@ import type {
 } from '../shared/types.js';
 import { DAY_MS } from '../shared/types.js';
 import { SELFTEST_WRAPPER_NAME } from './selftest-runner.js';
+import { CONNECTOR_RECOVERED_TYPE } from './recovery-writer.js';
 
 const DEFAULT_WRAPPERS_DIR = join(
   homedir(),
@@ -99,6 +100,7 @@ export async function readAudit(
   const lastFailTs: Record<string, string> = {};
   const lastFailMsg: Record<string, string> = {};
   const lastLiveTs: Record<string, string> = {};
+  const lastRecoveryTs: Record<string, string> = {};
   for (const filename of jsonlFiles) {
     const filePath = join(dir, filename);
     let content: string;
@@ -151,6 +153,14 @@ export async function readAudit(
             const prevLive = lastLiveTs[mcp];
             if (prevLive === undefined || ts > prevLive) {
               lastLiveTs[mcp] = ts;
+            }
+          } else if (ty === CONNECTOR_RECOVERED_TYPE) {
+            // Desktop-written positive signal after a successful reconnect.
+            // Tracked separately from live mcp.* traffic (honest semantics),
+            // but consumed the same way: a later recovery supersedes a failure.
+            const prevRecovery = lastRecoveryTs[mcp];
+            if (prevRecovery === undefined || ts > prevRecovery) {
+              lastRecoveryTs[mcp] = ts;
             }
           }
         }
@@ -232,8 +242,18 @@ export async function readAudit(
     const failTs = lastFailTs[mcp]!;
     const failMs = Date.parse(failTs);
     if (Number.isNaN(failMs) || now - failMs > DAY_MS) continue;
+    // A later positive signal supersedes the failure: real MCP traffic OR a
+    // desktop recovery marker (app.connector_recovered). Whichever is most
+    // recent wins; if it postdates the failure, the alert is cleared.
     const liveTs = lastLiveTs[mcp];
-    if (liveTs !== undefined && failTs < liveTs) continue;
+    const recoveryTs = lastRecoveryTs[mcp];
+    const laterSignal =
+      liveTs !== undefined && recoveryTs !== undefined
+        ? liveTs > recoveryTs
+          ? liveTs
+          : recoveryTs
+        : liveTs ?? recoveryTs;
+    if (laterSignal !== undefined && failTs < laterSignal) continue;
     authAlerts.push({ mcp, lastFailureTs: failTs, message: lastFailMsg[mcp] ?? '' });
   }
   authAlerts.sort((a, b) =>

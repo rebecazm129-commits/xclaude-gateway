@@ -32,6 +32,7 @@ import { hasStoredCredentials, hasStoredClient } from '@xcg/proxy/credentials';
 import { createTray, computeTrayCounts, updateTrayCounts } from './tray.js';
 import { computeReloginTransitions } from './relogin-notify.js';
 import { isAllowedNavigation } from './navigation-guard.js';
+import { writeConnectorRecovered } from './recovery-writer.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -137,8 +138,8 @@ ipcMain.handle('config:remove-remote', (_event, params: { name: string }) => {
   );
 });
 
-ipcMain.handle('config:connect', (_event, params: { name: string; url: string; scope?: string }) => {
-  return runConfigConnect(
+ipcMain.handle('config:connect', async (_event, params: { name: string; url: string; scope?: string }) => {
+  const result = await runConfigConnect(
     { login: runLoginProcess },
     {
       configPath: CLAUDE_DESKTOP_CONFIG_PATH,
@@ -150,6 +151,15 @@ ipcMain.handle('config:connect', (_event, params: { name: string; url: string; s
       timeoutMs: 360_000,
     },
   );
+  // A successful reconnect re-authorized a connector that may still carry a
+  // stale re-login alert (derived from a past oauth_failed with no later
+  // signal). Emit a recovery marker so readAudit clears it on the next 2s
+  // poll, instead of only after a Claude Desktop restart. Fresh connects
+  // (reconnected === false) can't have a prior alert, so they're skipped.
+  if (result.ok && result.reconnected) {
+    writeConnectorRecovered(params.name);
+  }
+  return result;
 });
 
 ipcMain.handle('config:is-connected', (_event, params: { name: string }) => {

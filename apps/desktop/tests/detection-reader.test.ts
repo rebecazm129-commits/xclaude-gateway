@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { readAudit, readDetections, readLatestToolCount } from '../src/main/detection-reader.js';
 import { SELFTEST_WRAPPER_NAME } from '../src/main/selftest-runner.js';
+import { CONNECTOR_RECOVERED_TYPE } from '../src/main/recovery-writer.js';
 
 let tmpDir: string;
 
@@ -373,6 +374,9 @@ describe('readAudit — authAlerts', () => {
       detection: { category: 'tool_call_allowed', severity: 'low', findings: [] },
     };
   }
+  function recovered(id: string, mcp: string, ts: string): Record<string, unknown> {
+    return { v: 1, id, ts, session: 'desktop', mcp, type: CONNECTOR_RECOVERED_TYPE };
+  }
   async function write(name: string, ...events: Record<string, unknown>[]): Promise<string> {
     const dir = join(tmpDir, name);
     await mkdir(dir, { recursive: true });
@@ -408,6 +412,42 @@ describe('readAudit — authAlerts', () => {
 
   it('e) self-test wrapper never generates an alert', async () => {
     const dir = await write('auth-e', oauthFail('f1', SELFTEST_WRAPPER_NAME, iso(-HOUR)));
+    const { authAlerts } = await readAudit(dir, NOW);
+    expect(authAlerts).toEqual([]);
+  });
+
+  it('f) oauth_failed followed by a later recovery marker → no alert', async () => {
+    const dir = await write('auth-f', oauthFail('f1', 'stripe', iso(-2 * HOUR)), recovered('rec1', 'stripe', iso(-HOUR)));
+    const { authAlerts } = await readAudit(dir, NOW);
+    expect(authAlerts).toEqual([]);
+  });
+
+  it('g) recovery marker OLDER than the failure → alert persists', async () => {
+    const dir = await write('auth-g', recovered('rec1', 'stripe', iso(-2 * HOUR)), oauthFail('f1', 'stripe', iso(-HOUR)));
+    const { authAlerts } = await readAudit(dir, NOW);
+    expect(authAlerts.map((a) => a.mcp)).toEqual(['stripe']);
+  });
+
+  it('h) fail → recovery → later re-failure → alert reappears', async () => {
+    const dir = await write(
+      'auth-h',
+      oauthFail('f1', 'stripe', iso(-3 * HOUR)),
+      recovered('rec1', 'stripe', iso(-2 * HOUR)),
+      oauthFail('f2', 'stripe', iso(-HOUR)),
+    );
+    const { authAlerts } = await readAudit(dir, NOW);
+    expect(authAlerts).toEqual([
+      { mcp: 'stripe', lastFailureTs: iso(-HOUR), message: 'reauth required' },
+    ]);
+  });
+
+  it('i) both live traffic and recovery after failure → no alert (later signal wins)', async () => {
+    const dir = await write(
+      'auth-i',
+      oauthFail('f1', 'stripe', iso(-3 * HOUR)),
+      recovered('rec1', 'stripe', iso(-2 * HOUR)),
+      liveReq('r1', 'stripe', iso(-HOUR)),
+    );
     const { authAlerts } = await readAudit(dir, NOW);
     expect(authAlerts).toEqual([]);
   });
