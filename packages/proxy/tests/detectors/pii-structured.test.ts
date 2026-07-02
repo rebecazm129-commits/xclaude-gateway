@@ -116,6 +116,17 @@ describe('piiStructured', () => {
       const out = piiStructured(input('{"nif":"500012342"}'));
       expect(out?.findings.some((f) => f.type === 'pt_nif')).toBe(true);
     });
+
+    it('multi-label: a 9-digit value valid under BOTH BSN and NIF → exactly 2 findings', () => {
+      // 100000010 passes the Dutch elfproef AND the Portuguese NIF mod-11. The
+      // detector cannot know which identifier a bare 9-digit number really is,
+      // so it emits both — intentional multi-label, NOT a de-dup bug (see the
+      // rule-table note in pii-structured.ts).
+      const out = piiStructured(input('{"id":"100000010"}'));
+      expect(out?.findings).toHaveLength(2);
+      expect(out?.findings.map((f) => f.type).sort()).toEqual(['nl_bsn', 'pt_nif']);
+      expect(out?.findings.every((f) => f.location === 'params')).toBe(true);
+    });
   });
 
   describe('negatives', () => {

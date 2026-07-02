@@ -339,6 +339,14 @@ const PII_RULES: readonly PiiRule[] = [
     pattern: /\b[A-Za-z]{6}\d{2}[A-Za-z]\d{2}[A-Za-z0-9]{4}[A-Za-z]\b/g,
     validate: cfValid,
   },
+  // nl_bsn and pt_nif share the exact 9-digit shape (\b\d{9}\b). A value that
+  // satisfies BOTH checksums (the Dutch elfproef AND the Portuguese mod-11) is
+  // emitted as TWO findings — one per type — on purpose. A bare 9-digit number
+  // carries no country context, so the detector reports every checksum it
+  // passes (multi-label, like the request side) rather than guessing one. This
+  // is deliberate, NOT a de-dup bug: collapsing the pair would hide a real
+  // ambiguity, which an audit tool must surface, not resolve. The behavior is
+  // pinned in tests/detectors/pii-structured.test.ts ("multi-label").
   {
     type: 'nl_bsn',
     pattern: /\b\d{9}\b/g,
