@@ -14,12 +14,13 @@
 // The full result is rebuilt each get() via the shared, pure assembleAudit,
 // which correlates and sorts over COPIES — entry.events is never mutated.
 
-import { open, readdir, stat } from 'node:fs/promises';
+import { open, readFile, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type {
   DetectionCursor,
   DetectionDetail,
+  DetectionEvent,
   DetectionFilter,
   DetectionListResult,
   EnrichableEvent,
@@ -74,7 +75,7 @@ interface FileCacheEntry {
   offset: number; // next read starts here
   pendingTail: string; // decoded bytes after the last '\n' (unparsed partial)
   mtimeMs: number;
-  events: EnrichableEvent[];
+  events: EnrichableEvent[]; // LEAN (see slimEvent) — no argumentsJson/params
   authSignals: AuthSignal[];
 }
 
@@ -86,6 +87,40 @@ function newEntry(): FileCacheEntry {
     mtimeMs: 0,
     events: [],
     authSignals: [],
+  };
+}
+
+// Projects a parsed event to the LEAN shape kept in the cache: only the fields
+// the list/filters/counts/correlation need. Drops the heavy fields (argumentsJson,
+// overheadUs, and the raw JSON siblings like params/bytes that JSON.parse leaves
+// on the object) so 1M cached events stay small. The full detail is reconstructed
+// on demand by re-reading the source line (getDetail). detection (small) is kept
+// by reference; the heavy fields live on the discarded parent object and get GC'd.
+function slimEvent(e: EnrichableEvent): EnrichableEvent {
+  if (e.type === 'mcp.request') {
+    const slim: DetectionEvent = {
+      id: e.id,
+      ts: e.ts,
+      session: e.session,
+      mcp: e.mcp,
+      type: 'mcp.request',
+      method: e.method,
+      rpcId: e.rpcId,
+      direction: e.direction,
+      detection: e.detection,
+    };
+    if (e.toolName !== undefined) slim.toolName = e.toolName;
+    return slim;
+  }
+  return {
+    id: e.id,
+    ts: e.ts,
+    session: e.session,
+    mcp: e.mcp,
+    type: 'mcp.detection_enrichment',
+    rpcId: e.rpcId,
+    direction: e.direction,
+    detection: e.detection,
   };
 }
 
@@ -184,7 +219,8 @@ export function createAuditStore(
         const complete = combined.slice(0, lastNl + 1);
         entry.pendingTail = combined.slice(lastNl + 1);
         const parsed = parseAuditContent(complete);
-        if (parsed.events.length > 0) entry.events.push(...parsed.events);
+        // Store the LEAN form only — heavy fields are re-read on demand.
+        for (const ev of parsed.events) entry.events.push(slimEvent(ev));
         if (parsed.authSignals.length > 0) {
           entry.authSignals.push(...parsed.authSignals);
         }
@@ -255,8 +291,28 @@ export function createAuditStore(
   }
 
   async function getDetail(id: string): Promise<DetectionDetail | null> {
-    const full = await get();
-    const event = full.events.find((e) => e.id === id);
+    // Keep the cache coherent first (drops purged/invalidated files). The cache
+    // is slim, so we can't build the heavy detail from it — instead we locate the
+    // source file via the id-in-cache index and re-read that ONE file. Locating
+    // by id (not a byte offset) is naturally robust to fail-safe re-reads, which
+    // rebuild entry.events from current file content.
+    await get();
+    let file: string | null = null;
+    for (const [name, entry] of cache) {
+      if (entry.events.some((e) => e.id === id)) {
+        file = name;
+        break;
+      }
+    }
+    if (file === null) return null;
+    let content: string;
+    try {
+      content = await readFile(join(dir, file), 'utf8');
+    } catch {
+      // Purged/unreadable between locate and read → cleanly unavailable.
+      return null;
+    }
+    const event = parseAuditContent(content).events.find((e) => e.id === id);
     return event ? toDetail(event) : null;
   }
 

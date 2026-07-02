@@ -1,4 +1,4 @@
-import { mkdtemp, rm, unlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, unlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -182,6 +182,48 @@ describe('AuditStore.getDetail', () => {
     await unlink(join(dir, 'b.jsonl'));
     store.invalidate(['b.jsonl']);
     expect(await store.getDetail('x2')).toBeNull();
+  });
+});
+
+describe('AuditStore — slim cache (entrega 2)', () => {
+  it('get() events carry no heavy fields; detail reconstructs them from disk', async () => {
+    const store = createAuditStore(dir, { minRefreshMs: 0, now: () => NOW });
+    const bigArgs = { blob: 'z'.repeat(1000) };
+    await writeFile(
+      join(dir, 'a.jsonl'),
+      reqJson('x1', new Date(NOW).toISOString(), { args: bigArgs }) + '\n',
+    );
+    const full = await store.get();
+    const ev = full.events[0] as Record<string, unknown>;
+    // Presentation fields kept:
+    expect(ev['id']).toBe('x1');
+    expect(ev['toolName']).toBe('echo');
+    expect((ev['detection'] as { severity: string }).severity).toBe('low');
+    // Heavy / raw fields dropped from the cache (and thus from get()):
+    expect('argumentsJson' in ev).toBe(false);
+    expect('params' in ev).toBe(false);
+    expect('bytes' in ev).toBe(false);
+    expect('overheadUs' in ev).toBe(false);
+    // Detail re-reads the source line → heavy fields available again.
+    const d = await store.getDetail('x1');
+    expect(d?.argumentsJson).toBe(JSON.stringify(bigArgs, null, 2));
+    expect(d?.overheadUs).toBe(7);
+  });
+
+  it('getDetail stays correct after a fail-safe full re-read (truncation)', async () => {
+    const store = createAuditStore(dir, { minRefreshMs: 0, now: () => NOW });
+    const l1 = reqJson('k1', new Date(NOW).toISOString(), { args: { a: 1 } });
+    const l2 = reqJson('k2', new Date(NOW - 1000).toISOString(), { args: { b: 2 } });
+    await writeFile(join(dir, 'a.jsonl'), l1 + '\n' + l2 + '\n');
+    await store.get();
+    expect((await store.getDetail('k2'))?.argumentsJson).toBe(JSON.stringify({ b: 2 }, null, 2));
+
+    // Rewrite shorter (drop k2): size < offset → fail-safe full re-read.
+    await writeFile(join(dir, 'a.jsonl'), l1 + '\n');
+    await utimes(join(dir, 'a.jsonl'), new Date(NOW + 5000), new Date(NOW + 5000));
+    await store.get();
+    expect(await store.getDetail('k2')).toBeNull(); // gone
+    expect((await store.getDetail('k1'))?.argumentsJson).toBe(JSON.stringify({ a: 1 }, null, 2));
   });
 });
 
