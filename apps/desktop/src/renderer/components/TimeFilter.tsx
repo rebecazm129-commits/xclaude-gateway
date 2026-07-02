@@ -1,6 +1,8 @@
+import type { TimeRange } from '../../shared/types.js';
+
 import styles from './TimeFilter.module.css';
 
-export type TimeRange = '1h' | '24h' | '7d' | 'all';
+export type { TimeRange };
 
 const TIME_RANGE_OPTIONS: readonly { value: TimeRange; label: string }[] = [
   { value: '1h', label: '1h' },

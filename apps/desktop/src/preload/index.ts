@@ -13,6 +13,10 @@ import type {
 import type {
   ToolCount,
   DetectionListResult,
+  DetectionCursor,
+  DetectionDetail,
+  DetectionFilter,
+  DetectionPageResult,
   PurgeMode,
   RetentionSetModeResult,
   RetentionStatus,
@@ -20,6 +24,13 @@ import type {
 
 contextBridge.exposeInMainWorld('xcg', {
   listDetections: (): Promise<DetectionListResult> => ipcRenderer.invoke('detection:list'),
+  listDetectionPage: (params: {
+    filter: DetectionFilter;
+    limit: number;
+    cursor: DetectionCursor | null;
+  }): Promise<DetectionPageResult> => ipcRenderer.invoke('detection:page', params),
+  detectionDetail: (id: string): Promise<DetectionDetail | null> =>
+    ipcRenderer.invoke('detection:detail', { id }),
   retentionStatus: (): Promise<RetentionStatus> => ipcRenderer.invoke('retention:status'),
   retentionSetMode: (mode: PurgeMode): Promise<RetentionSetModeResult> =>
     ipcRenderer.invoke('retention:set-mode', { mode }),

@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FixedSizeList } from 'react-window';
 
-import { usePolledAudit } from '../hooks/usePolledAudit.js';
-import type { EnrichableEvent, Severity, Category } from '../../shared/types.js';
+import { useDetectionPage } from '../hooks/useDetectionPage.js';
+import type {
+  DetectionFilter,
+  DetectionRowSlim,
+  Severity,
+  Category,
+} from '../../shared/types.js';
 
 import { DetailDrawer } from './DetailDrawer.js';
 import { DetectionRow } from './DetectionRow.js';
@@ -50,6 +55,8 @@ const HEADER_AND_FILTERS_HEIGHT = 404;
 // banner on a wide window) keeps the list from ever overflowing the footer;
 // worst case is a hair of empty space, never a row hidden below it.
 const RETENTION_BANNER_HEIGHT = 60;
+// Rows from the end at which we prefetch the next page (infinite scroll).
+const LOAD_MORE_THRESHOLD = 20;
 
 interface DetectionsProps {
   readonly mcpFilter: string | null;
@@ -57,12 +64,11 @@ interface DetectionsProps {
 }
 
 export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JSX.Element {
-  const { events: detections, retention } = usePolledAudit();
   const [selectedSeverities, setSelectedSeverities] =
     useState<readonly Severity[]>(SEVERITY_OPTIONS);
   const [selectedCategories, setSelectedCategories] =
     useState<readonly Category[]>(CATEGORY_OPTIONS);
-  const [selectedEvent, setSelectedEvent] = useState<EnrichableEvent | null>(null);
+  const [selectedRow, setSelectedRow] = useState<DetectionRowSlim | null>(null);
   const [openDropdown, setOpenDropdown] = useState<'severity' | 'category' | null>(null);
   const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('all');
   const severityRef = useRef<HTMLDivElement>(null);
@@ -74,6 +80,20 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
   const listRef = useRef<FixedSizeList>(null);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [lastSeenTopId, setLastSeenTopId] = useState<string | null>(null);
+
+  // The full filter is computed server-side; the renderer no longer filters.
+  const filter: DetectionFilter = useMemo(
+    () => ({
+      mcp: mcpFilter,
+      timeRange: selectedTimeRange,
+      categories: [...selectedCategories],
+      severities: [...selectedSeverities],
+    }),
+    [mcpFilter, selectedTimeRange, selectedCategories, selectedSeverities],
+  );
+
+  const page = useDetectionPage(filter);
+  const { rows, retention } = page;
 
   useEffect(() => {
     function onResize(): void {
@@ -105,64 +125,28 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
     };
   }, [openDropdown]);
 
-  const mcpFiltered = useMemo(() => {
-    if (mcpFilter === null) return detections;
-    return detections.filter((d) => d.mcp === mcpFilter);
-  }, [detections, mcpFilter]);
-
-  const timeFiltered = useMemo(() => {
-    if (selectedTimeRange === 'all') return mcpFiltered;
-    const now = Date.now();
-    const windowMs =
-      selectedTimeRange === '1h' ? 60 * 60 * 1000 :
-      selectedTimeRange === '24h' ? 24 * 60 * 60 * 1000 :
-      7 * 24 * 60 * 60 * 1000;
-    const cutoff = now - windowMs;
-    return mcpFiltered.filter((d) => {
-      const t = Date.parse(d.ts);
-      return !Number.isNaN(t) && t >= cutoff;
-    });
-  }, [mcpFiltered, selectedTimeRange]);
-
-  const categoryFiltered = useMemo(() => {
-    const catSet = new Set(selectedCategories);
-    return timeFiltered.filter((d) => catSet.has(d.detection.category));
-  }, [timeFiltered, selectedCategories]);
-
-  const counts = useMemo(() => {
-    const result: Record<Severity, number> = { low: 0, medium: 0, high: 0, critical: 0 };
-    for (const d of categoryFiltered) {
-      result[d.detection.severity] += 1;
-    }
-    return result;
-  }, [categoryFiltered]);
-
-  const filtered = useMemo(() => {
-    const sevSet = new Set(selectedSeverities);
-    return categoryFiltered.filter((d) => sevSet.has(d.detection.severity));
-  }, [categoryFiltered, selectedSeverities]);
-
   useEffect(() => {
-    if (scrollOffset === 0 && filtered.length > 0) {
-      const topId = filtered[0]?.id ?? null;
+    if (scrollOffset === 0 && rows.length > 0) {
+      const topId = rows[0]?.id ?? null;
       if (topId !== null && topId !== lastSeenTopId) {
         setLastSeenTopId(topId);
       }
     }
-  }, [scrollOffset, filtered, lastSeenTopId]);
+  }, [scrollOffset, rows, lastSeenTopId]);
 
   useEffect(() => {
-    setLastSeenTopId(filtered[0]?.id ?? null);
+    setLastSeenTopId(rows[0]?.id ?? null);
     setScrollOffset(0);
-  }, [selectedSeverities, selectedCategories, selectedTimeRange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSeverities, selectedCategories, selectedTimeRange, mcpFilter]);
 
   const newCount = useMemo(() => {
     if (lastSeenTopId === null) return 0;
     if (scrollOffset === 0) return 0;
-    const idx = filtered.findIndex((d) => d.id === lastSeenTopId);
+    const idx = rows.findIndex((d) => d.id === lastSeenTopId);
     if (idx === -1) return 0;
     return idx;
-  }, [filtered, lastSeenTopId, scrollOffset]);
+  }, [rows, lastSeenTopId, scrollOffset]);
 
   const hasActiveFilters =
     mcpFilter !== null ||
@@ -171,16 +155,16 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
     selectedTimeRange !== 'all';
 
   const counterLabel = hasActiveFilters
-    ? `${filtered.length} of ${detections.length}`
-    : `${detections.length} events`;
+    ? `${page.totalMatching} of ${page.total}`
+    : `${page.total} events`;
 
-  function handleRowClick(event: EnrichableEvent): void {
+  function handleRowClick(row: DetectionRowSlim): void {
     triggerRef.current = document.activeElement as HTMLElement | null;
-    setSelectedEvent(event);
+    setSelectedRow(row);
   }
 
   function handleDrawerClose(): void {
-    setSelectedEvent(null);
+    setSelectedRow(null);
     const trigger = triggerRef.current;
     if (trigger !== null && document.body.contains(trigger)) {
       trigger.focus();
@@ -203,7 +187,7 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
 
   function handlePillClick(): void {
     listRef.current?.scrollTo(0);
-    setLastSeenTopId(filtered[0]?.id ?? null);
+    setLastSeenTopId(rows[0]?.id ?? null);
   }
 
   function handleClearFilters(): void {
@@ -236,8 +220,8 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
         </div>
       )}
       <SeverityBreakdown
-        counts={counts}
-        total={categoryFiltered.length}
+        counts={page.severityCounts}
+        total={page.categoryFilteredTotal}
         selectedSeverities={selectedSeverities}
         totalSeverityOptionsCount={SEVERITY_OPTIONS.length}
         onSelectTotal={handleSelectTotal}
@@ -281,7 +265,7 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
           <TimeFilter value={selectedTimeRange} onChange={setSelectedTimeRange} />
         </div>
       </div>
-      {filtered.length === 0 ? (
+      {rows.length === 0 ? (
         hasActiveFilters ? (
           <div className={styles['emptyFiltered']}>
             <h2 className={styles['emptyFilteredHeading']}>No matches with current filters</h2>
@@ -315,18 +299,23 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
             height={effectiveListHeight}
             width="100%"
             itemSize={ROW_HEIGHT}
-            itemCount={filtered.length}
-            itemKey={(index) => filtered[index]?.id ?? index}
+            itemCount={rows.length}
+            itemKey={(index) => rows[index]?.id ?? index}
             onScroll={({ scrollOffset: offset }) => setScrollOffset(offset)}
+            onItemsRendered={({ visibleStopIndex }) => {
+              if (page.hasMore && visibleStopIndex >= rows.length - LOAD_MORE_THRESHOLD) {
+                page.loadMore();
+              }
+            }}
           >
             {({ index, style }) => {
-              const item = filtered[index];
+              const item = rows[index];
               if (item === undefined) return null;
               return (
                 <div style={style}>
                   <DetectionRow
-                    event={item}
-                    selected={selectedEvent?.id === item.id}
+                    row={item}
+                    selected={selectedRow?.id === item.id}
                     onClick={() => handleRowClick(item)}
                   />
                 </div>
@@ -338,15 +327,15 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
           )}
         </div>
       )}
-      {selectedEvent !== null && (
-        <DetailDrawer event={selectedEvent} onClose={handleDrawerClose} />
+      {selectedRow !== null && (
+        <DetailDrawer row={selectedRow} onClose={handleDrawerClose} />
       )}
       <div className={styles['footer']}>
         <button
           type="button"
           className={styles['footerLink']}
           onClick={handleOpenAuditFolder}
-          disabled={detections.length === 0}
+          disabled={page.total === 0}
         >
           Open audit folder <span aria-hidden="true">↗</span>
         </button>

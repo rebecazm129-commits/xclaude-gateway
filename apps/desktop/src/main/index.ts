@@ -24,7 +24,11 @@ import {
 import { runValidateHealth, runRepairWraps } from './health-handlers.js';
 import { readLatestToolCount } from './detection-reader.js';
 import type {
+  DetectionCursor,
+  DetectionDetail,
+  DetectionFilter,
   DetectionListResult,
+  DetectionPageResult,
   RetentionConfig,
   RetentionSetModeResult,
   RetentionSizeSnapshot,
@@ -104,22 +108,48 @@ function openWindow(): void {
   }
 }
 
+// Retention banner info from the in-memory caches (populated by the sweep). No
+// disk cost. Shared by detection:list (back-compat) and detection:page.
+function retentionBanner(): DetectionListResult['retention'] {
+  return retentionSizeCache !== null && retentionConfigCache !== null
+    ? {
+        totalBytes: retentionSizeCache.totalBytes,
+        sizeWarnBytes: retentionConfigCache.sizeWarnBytes,
+      }
+    : null;
+}
+
+// Back-compat: the full unpaginated list. Still used by Setup and
+// ConnectorInspector (not yet migrated to detection:page).
 ipcMain.handle('detection:list', async (): Promise<DetectionListResult> => {
   const audit = await auditStore.get();
-  // Piggyback: refresh the tray off the data the renderer already polls — zero
-  // extra JSONL reads.
   updateTrayCounts(computeTrayCounts(audit.events, Date.now()));
-  // Piggyback the cached retention size/threshold for the Detections banner.
-  // Both come from in-memory caches (populated by the sweep) — no disk cost.
-  const retention =
-    retentionSizeCache !== null && retentionConfigCache !== null
-      ? {
-          totalBytes: retentionSizeCache.totalBytes,
-          sizeWarnBytes: retentionConfigCache.sizeWarnBytes,
-        }
-      : null;
-  return { ...audit, retention };
+  return { ...audit, retention: retentionBanner() };
 });
+
+// Paginated, server-filtered slim page for the Detections view.
+ipcMain.handle(
+  'detection:page',
+  async (
+    _event,
+    params: { filter: DetectionFilter; limit: number; cursor: DetectionCursor | null },
+  ): Promise<DetectionPageResult> => {
+    const page = await auditStore.getPage(params);
+    // Tray counts over the FULL store set, independent of filter/limit (the
+    // second get() is coalesced with getPage's internal one — no extra disk).
+    const full = await auditStore.get();
+    updateTrayCounts(computeTrayCounts(full.events, Date.now()));
+    return { ...page, retention: retentionBanner() };
+  },
+);
+
+// Heavy detail for one event, fetched lazily when the DetailDrawer opens.
+ipcMain.handle(
+  'detection:detail',
+  async (_event, params: { id: string }): Promise<DetectionDetail | null> => {
+    return auditStore.getDetail(params.id);
+  },
+);
 
 // Retention status for the Settings drawer. Reads config + last purge on
 // demand (only when Settings opens); size comes from the cached snapshot.

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import type { Category, EnrichableEvent } from '../../shared/types.js';
+import type { Category, DetectionDetail, DetectionRowSlim } from '../../shared/types.js';
 import { Badge } from './Badge.js';
 
 import styles from './DetailDrawer.module.css';
@@ -32,18 +32,46 @@ function formatTimestamp(iso: string): string {
 }
 
 interface DetailDrawerProps {
-  event: EnrichableEvent;
+  row: DetectionRowSlim;
   onClose: () => void;
 }
 
-export function DetailDrawer({ event, onClose }: DetailDrawerProps): JSX.Element {
+// The heavy view is fetched lazily by id when the drawer opens. The header
+// renders immediately from the slim row; the body shows a loading state, the
+// fetched detail, or a clean "no longer available" note if the event's session
+// file was purged between the list poll and the click.
+type DetailState =
+  | { kind: 'loading' }
+  | { kind: 'ready'; detail: DetectionDetail }
+  | { kind: 'unavailable' };
+
+export function DetailDrawer({ row, onClose }: DetailDrawerProps): JSX.Element {
   const drawerRef = useRef<HTMLDivElement>(null);
-  const headingId = `drawer-heading-${event.id}`;
+  const headingId = `drawer-heading-${row.id}`;
   const [technicalOpen, setTechnicalOpen] = useState(false);
+  const [state, setState] = useState<DetailState>({ kind: 'loading' });
 
   useEffect(() => {
     drawerRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ kind: 'loading' });
+    void window.xcg
+      .detectionDetail(row.id)
+      .then((detail) => {
+        if (cancelled) return;
+        setState(detail === null ? { kind: 'unavailable' } : { kind: 'ready', detail });
+      })
+      .catch((err) => {
+        console.error('detection:detail failed:', err);
+        if (!cancelled) setState({ kind: 'unavailable' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [row.id]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent): void {
@@ -74,15 +102,17 @@ export function DetailDrawer({ event, onClose }: DetailDrawerProps): JSX.Element
     };
   }, [onClose]);
 
+  const detail = state.kind === 'ready' ? state.detail : null;
+
   function handleCopyJson(): void {
-    void navigator.clipboard.writeText(JSON.stringify(event, null, 2));
+    void navigator.clipboard.writeText(JSON.stringify(detail ?? row, null, 2));
   }
 
-  const isRequest = event.type === 'mcp.request';
-  const toolName = isRequest ? event.toolName : undefined;
-  const method = isRequest ? event.method : undefined;
-  const argumentsJson = isRequest ? event.argumentsJson : undefined;
-  const overheadUs = isRequest ? event.overheadUs : undefined;
+  const isRequest = detail?.type === 'mcp.request';
+  const toolName = isRequest ? detail?.toolName : undefined;
+  const method = isRequest ? detail?.method : undefined;
+  const argumentsJson = isRequest ? detail?.argumentsJson : undefined;
+  const overheadUs = isRequest ? detail?.overheadUs : undefined;
 
   return (
     <div
@@ -93,10 +123,10 @@ export function DetailDrawer({ event, onClose }: DetailDrawerProps): JSX.Element
       tabIndex={-1}
     >
       <div className={styles['header']}>
-        <span className={styles['timestamp']}>{formatTimestamp(event.ts)}</span>
-        <Badge severity={event.detection.severity} />
+        <span className={styles['timestamp']}>{formatTimestamp(row.ts)}</span>
+        <Badge severity={row.severity} />
         <span id={headingId} className={styles['category']}>
-          {CATEGORY_LABELS[event.detection.category]}
+          {CATEGORY_LABELS[row.category]}
         </span>
         <button
           className={styles['closeButton']}
@@ -109,86 +139,100 @@ export function DetailDrawer({ event, onClose }: DetailDrawerProps): JSX.Element
       </div>
 
       <div className={styles['body']}>
-        <section className={styles['block']}>
-          <div className={styles['blockLabel']}>Tool call</div>
-          <div className={styles['kvList']}>
-            {toolName !== undefined && (
-              <div className={styles['kvRow']}>
-                <span className={styles['kvKey']}>tool:</span>
-                <span className={styles['kvValue']}>{toolName}</span>
-              </div>
-            )}
-            {method !== undefined && (
-              <div className={styles['kvRow']}>
-                <span className={styles['kvKey']}>method:</span>
-                <span className={styles['kvValue']}>{method}</span>
-              </div>
-            )}
-            <div className={styles['kvRow']}>
-              <span className={styles['kvKey']}>mcp:</span>
-              <span className={styles['kvValue']}>{event.mcp}</span>
-            </div>
-            <div className={styles['kvRow']}>
-              <span className={styles['kvKey']}>direction:</span>
-              <span className={styles['kvValue']}>{event.direction}</span>
-            </div>
-          </div>
-        </section>
-
-        {argumentsJson !== undefined && (
-          <section className={styles['block']}>
-            <div className={styles['blockLabel']}>Arguments</div>
-            <pre className={styles['code']}>{argumentsJson}</pre>
-          </section>
+        {state.kind === 'loading' && (
+          <div className={styles['emptyFindings']}>Loading details…</div>
         )}
 
-        <section className={styles['block']}>
-          <div className={styles['blockLabel']}>Detection</div>
-          {event.detection.findings.length === 0 ? (
-            <div className={styles['emptyFindings']}>No findings</div>
-          ) : (
-            <div className={styles['findings']}>
-              {event.detection.findings.map((finding, idx) => (
-                <div key={idx} className={styles['finding']}>
-                  <span className={styles['findingType']}>{finding.type}</span>
-                  {finding.location !== undefined && (
-                    <span className={styles['findingMatch']}>{finding.location}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
+        {state.kind === 'unavailable' && (
+          <div className={styles['emptyFindings']}>
+            Details are no longer available — this event’s session log was removed.
+          </div>
+        )}
 
-        <section className={styles['blockCollapsible']}>
-          <button
-            className={styles['collapsibleToggle']}
-            onClick={() => setTechnicalOpen((v) => !v)}
-            aria-expanded={technicalOpen}
-            type="button"
-          >
-            <span className={styles['caret']}>{technicalOpen ? '▾' : '▸'}</span>
-            <span className={styles['blockLabel']}>Technical details</span>
-          </button>
-          {technicalOpen && (
-            <div className={styles['kvList']}>
-              <div className={styles['kvRow']}>
-                <span className={styles['kvKey']}>rpcId:</span>
-                <span className={styles['kvValue']}>{String(event.rpcId)}</span>
-              </div>
-              <div className={styles['kvRow']}>
-                <span className={styles['kvKey']}>session:</span>
-                <span className={styles['kvValue']}>{event.session}</span>
-              </div>
-              {overheadUs !== undefined && (
+        {detail !== null && (
+          <>
+            <section className={styles['block']}>
+              <div className={styles['blockLabel']}>Tool call</div>
+              <div className={styles['kvList']}>
+                {toolName !== undefined && (
+                  <div className={styles['kvRow']}>
+                    <span className={styles['kvKey']}>tool:</span>
+                    <span className={styles['kvValue']}>{toolName}</span>
+                  </div>
+                )}
+                {method !== undefined && (
+                  <div className={styles['kvRow']}>
+                    <span className={styles['kvKey']}>method:</span>
+                    <span className={styles['kvValue']}>{method}</span>
+                  </div>
+                )}
                 <div className={styles['kvRow']}>
-                  <span className={styles['kvKey']}>overheadUs:</span>
-                  <span className={styles['kvValue']}>{overheadUs}</span>
+                  <span className={styles['kvKey']}>mcp:</span>
+                  <span className={styles['kvValue']}>{detail.mcp}</span>
+                </div>
+                <div className={styles['kvRow']}>
+                  <span className={styles['kvKey']}>direction:</span>
+                  <span className={styles['kvValue']}>{detail.direction}</span>
+                </div>
+              </div>
+            </section>
+
+            {argumentsJson !== undefined && (
+              <section className={styles['block']}>
+                <div className={styles['blockLabel']}>Arguments</div>
+                <pre className={styles['code']}>{argumentsJson}</pre>
+              </section>
+            )}
+
+            <section className={styles['block']}>
+              <div className={styles['blockLabel']}>Detection</div>
+              {detail.findings.length === 0 ? (
+                <div className={styles['emptyFindings']}>No findings</div>
+              ) : (
+                <div className={styles['findings']}>
+                  {detail.findings.map((finding, idx) => (
+                    <div key={idx} className={styles['finding']}>
+                      <span className={styles['findingType']}>{finding.type}</span>
+                      {finding.location !== undefined && (
+                        <span className={styles['findingMatch']}>{finding.location}</span>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
-            </div>
-          )}
-        </section>
+            </section>
+
+            <section className={styles['blockCollapsible']}>
+              <button
+                className={styles['collapsibleToggle']}
+                onClick={() => setTechnicalOpen((v) => !v)}
+                aria-expanded={technicalOpen}
+                type="button"
+              >
+                <span className={styles['caret']}>{technicalOpen ? '▾' : '▸'}</span>
+                <span className={styles['blockLabel']}>Technical details</span>
+              </button>
+              {technicalOpen && (
+                <div className={styles['kvList']}>
+                  <div className={styles['kvRow']}>
+                    <span className={styles['kvKey']}>rpcId:</span>
+                    <span className={styles['kvValue']}>{String(detail.rpcId)}</span>
+                  </div>
+                  <div className={styles['kvRow']}>
+                    <span className={styles['kvKey']}>session:</span>
+                    <span className={styles['kvValue']}>{detail.session}</span>
+                  </div>
+                  {overheadUs !== undefined && (
+                    <div className={styles['kvRow']}>
+                      <span className={styles['kvKey']}>overheadUs:</span>
+                      <span className={styles['kvValue']}>{overheadUs}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          </>
+        )}
       </div>
 
       <div className={styles['footer']}>

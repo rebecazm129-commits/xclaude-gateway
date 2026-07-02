@@ -17,17 +17,40 @@
 import { open, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { DetectionListResult, EnrichableEvent } from '../shared/types.js';
+import type {
+  DetectionCursor,
+  DetectionDetail,
+  DetectionFilter,
+  DetectionListResult,
+  EnrichableEvent,
+} from '../shared/types.js';
 import {
   assembleAudit,
   parseAuditContent,
   type AuthSignal,
   type ParsedFile,
 } from './detection-reader.js';
+import { paginate, toDetail, type PageSlice } from './detection-page.js';
+
+export interface DetectionPageParams {
+  filter: DetectionFilter;
+  limit: number;
+  cursor: DetectionCursor | null;
+}
+
+// PageSlice plus the passthrough authAlerts. Retention is added by the handler.
+export type StorePage = PageSlice & {
+  authAlerts: DetectionListResult['authAlerts'];
+};
 
 export interface AuditStore {
   // Refreshes the cache incrementally and returns the full current result.
   get(): Promise<DetectionListResult>;
+  // Filtered + paginated slim page over the full set (filters applied before the
+  // cut). authAlerts pass through; retention is added by the IPC handler.
+  getPage(params: DetectionPageParams): Promise<StorePage>;
+  // Heavy detail for one event by id, or null if it's no longer present.
+  getDetail(id: string): Promise<DetectionDetail | null>;
   // Marks files removed out-of-band (e.g. the retention sweep's unlink) so the
   // next get() drops their events immediately, bypassing the refresh window.
   invalidate(filenames: readonly string[]): void;
@@ -219,10 +242,28 @@ export function createAuditStore(
     return inFlight;
   }
 
+  async function getPage(params: DetectionPageParams): Promise<StorePage> {
+    const full = await get();
+    const slice = paginate(
+      full.events,
+      params.filter,
+      params.limit,
+      params.cursor,
+      now(),
+    );
+    return { ...slice, authAlerts: full.authAlerts };
+  }
+
+  async function getDetail(id: string): Promise<DetectionDetail | null> {
+    const full = await get();
+    const event = full.events.find((e) => e.id === id);
+    return event ? toDetail(event) : null;
+  }
+
   function invalidate(filenames: readonly string[]): void {
     for (const name of filenames) pendingInvalidations.add(name);
     if (filenames.length > 0) dirty = true;
   }
 
-  return { get, invalidate };
+  return { get, getPage, getDetail, invalidate };
 }

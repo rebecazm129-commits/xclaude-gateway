@@ -4,7 +4,14 @@
 // (runtime-shape del Desktop, no contrato cross-package — el proxy emite
 // DetectionEnrichment "puro" en @xcg/shared; el orquestador lo envuelve con
 // campos de Envelope al escribir la línea mcp.detection_enrichment).
-import type { DetectionBlock, RpcId, Direction } from '@xcg/shared';
+import type {
+  Category,
+  DetectionBlock,
+  DetectionFinding,
+  Direction,
+  RpcId,
+  Severity,
+} from '@xcg/shared';
 
 export type {
   Severity,
@@ -157,4 +164,73 @@ export interface RetentionSetModeResult {
 export interface RetentionBannerInfo {
   totalBytes: number;
   sizeWarnBytes: number;
+}
+
+// ---- Detections pagination (detection:page / detection:detail) ----
+
+// Time window for the Detections view. Single source of truth (TimeFilter
+// re-exports it); crosses IPC inside DetectionFilter.
+export type TimeRange = '1h' | '24h' | '7d' | 'all';
+
+// The full filter the renderer sends to the main. Applied server-side BEFORE the
+// top-N cut so the page (and its counts) never lie.
+export interface DetectionFilter {
+  mcp: string | null;
+  timeRange: TimeRange;
+  categories: Category[];
+  severities: Severity[];
+}
+
+// Compound cursor for stable pagination over a total (ts desc, id desc) order.
+export interface DetectionCursor {
+  ts: string;
+  id: string;
+}
+
+// Slim row shipped in a page: everything the list + filters + breakdown need,
+// WITHOUT the heavy fields (argumentsJson, raw params). Deliberately NOT
+// EnrichableEvent — the heavy view is fetched lazily via detection:detail.
+export interface DetectionRowSlim {
+  id: string;
+  ts: string;
+  mcp: string;
+  type: 'mcp.request' | 'mcp.detection_enrichment';
+  category: Category;
+  severity: Severity;
+  // request-only presentation
+  toolName?: string;
+  method?: string;
+}
+
+// detection:page payload. Counts are server-computed so the renderer never needs
+// the whole event set: severityCounts/categoryFilteredTotal feed SeverityBreakdown,
+// total/totalMatching feed the "X of N" counter.
+export interface DetectionPageResult {
+  rows: DetectionRowSlim[];
+  total: number; // whole event set (unfiltered)
+  totalMatching: number; // after the full filter (mcp+time+category+severity)
+  severityCounts: Record<Severity, number>; // over the category-filtered set (pre-severity)
+  categoryFilteredTotal: number; // size of that category-filtered set
+  nextCursor: DetectionCursor | null;
+  authAlerts: ConnectorAuthAlert[];
+  retention: RetentionBannerInfo | null;
+}
+
+// detection:detail payload — the heavy view for the DetailDrawer, fetched on
+// open by id. null when the event is gone (e.g. its session file was purged).
+export interface DetectionDetail {
+  id: string;
+  ts: string;
+  session: string;
+  mcp: string;
+  type: 'mcp.request' | 'mcp.detection_enrichment';
+  rpcId: RpcId;
+  direction: Direction;
+  category: Category;
+  severity: Severity;
+  findings: DetectionFinding[];
+  method?: string;
+  toolName?: string;
+  argumentsJson?: string;
+  overheadUs?: number;
 }

@@ -11,6 +11,10 @@ import type {
 import type {
   ToolCount,
   DetectionListResult,
+  DetectionCursor,
+  DetectionDetail,
+  DetectionFilter,
+  DetectionPageResult,
   PurgeMode,
   RetentionSetModeResult,
   RetentionStatus,
@@ -18,6 +22,12 @@ import type {
 
 export interface XcgApi {
   listDetections(): Promise<DetectionListResult>;
+  listDetectionPage(params: {
+    filter: DetectionFilter;
+    limit: number;
+    cursor: DetectionCursor | null;
+  }): Promise<DetectionPageResult>;
+  detectionDetail(id: string): Promise<DetectionDetail | null>;
   retentionStatus(): Promise<RetentionStatus>;
   retentionSetMode(mode: PurgeMode): Promise<RetentionSetModeResult>;
   configStatus(): Promise<StatusResult>;
