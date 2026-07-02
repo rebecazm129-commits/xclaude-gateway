@@ -22,7 +22,7 @@ import {
   runConfigUninstall,
 } from './config-handlers.js';
 import { runValidateHealth, runRepairWraps } from './health-handlers.js';
-import { readAudit, readLatestToolCount } from './detection-reader.js';
+import { readLatestToolCount } from './detection-reader.js';
 import type {
   DetectionListResult,
   RetentionConfig,
@@ -40,6 +40,7 @@ import {
   runSweep,
   writeRetentionConfig,
 } from './retention.js';
+import { createAuditStore } from './audit-store.js';
 import { spawnWrapper, readDetectionsFromAudit, resolveNpxPath } from './selftest-runner.js';
 import { runSelfTest } from './selftest-handler.js';
 import { runConfigConnect } from './connect-handler.js';
@@ -104,7 +105,7 @@ function openWindow(): void {
 }
 
 ipcMain.handle('detection:list', async (): Promise<DetectionListResult> => {
-  const audit = await readAudit();
+  const audit = await auditStore.get();
   // Piggyback: refresh the tray off the data the renderer already polls — zero
   // extra JSONL reads.
   updateTrayCounts(computeTrayCounts(audit.events, Date.now()));
@@ -336,12 +337,21 @@ let retentionSweepHandle: NodeJS.Timeout | null = null;
 let retentionSizeCache: RetentionSizeSnapshot | null = null;
 let retentionConfigCache: RetentionConfig | null = null;
 
+// Single source of truth for the audit trail: detection:list, the tray loop and
+// the retention sweep all read through this incremental cache.
+const auditStore = createAuditStore(WRAPPERS_DIR);
+
 async function runRetentionSweep(): Promise<void> {
   try {
     const config = await readRetentionConfig(BASE_DIR);
     retentionConfigCache = config;
     const outcome = await runSweep(WRAPPERS_DIR, config, Date.now());
     retentionSizeCache = outcome.size;
+    // Drop purged sessions from the incremental cache right away (they're also
+    // gone from readdir, but this bypasses the refresh window).
+    if (outcome.purgedFiles.length > 0) {
+      auditStore.invalidate(outcome.purgedFiles);
+    }
     if (outcome.purged) {
       console.log(
         `[xcg] retention purge removed ${outcome.purged.filesPurged} session file(s) ` +
@@ -368,7 +378,7 @@ void app.whenReady().then(() => {
   // end — this and the renderer's usePolledDetections (2s) are candidates to
   // collapse into a single source-of-truth poll later.
   trayRefreshHandle = setInterval(() => {
-    void readAudit().then((audit) => {
+    void auditStore.get().then((audit) => {
       updateTrayCounts(computeTrayCounts(audit.events, Date.now()));
       // Re-login transitions: notify once when a connector enters the alert set.
       const currentMcps = new Set(audit.authAlerts.map((a) => a.mcp));
@@ -394,7 +404,8 @@ void app.whenReady().then(() => {
   // Retention: one deferred sweep after the first audit read, then a daily
   // interval. Never runs on the renderer's 2s poll. mode 'never' (default) is a
   // no-op for deletion — the pass only refreshes the cached directory size.
-  void readAudit()
+  void auditStore
+    .get()
     .then(() => runRetentionSweep())
     .catch((err) => console.error('[xcg] initial retention sweep failed:', err));
   retentionSweepHandle = setInterval(() => {

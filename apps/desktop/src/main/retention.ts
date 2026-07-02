@@ -225,6 +225,9 @@ export interface SweepOutcome {
     purgedFromTs: string;
     purgedUntilTs: string;
   } | null;
+  // Filenames actually unlinked this pass (empty when none). The caller passes
+  // these to AuditStore.invalidate so the removed sessions drop immediately.
+  purgedFiles: string[];
 }
 
 // Runs one sweep: purges (if opted in) then recomputes the cached size. Emits
@@ -238,6 +241,7 @@ export async function runSweep(
     writeRetentionPurged(f, dir),
 ): Promise<SweepOutcome> {
   let purged: SweepOutcome['purged'] = null;
+  const purgedFiles: string[] = [];
   if (config.purgeMode !== 'never') {
     const targets = await collectPurgable(dir, config.purgeMode, now);
     const removedTimes: number[] = [];
@@ -245,6 +249,7 @@ export async function runSweep(
       try {
         await unlink(join(dir, t.name));
         removedTimes.push(t.ulidTimeMs);
+        purgedFiles.push(t.name);
       } catch {
         // Already gone / unreadable — skip; a single failure never fails the sweep.
         continue;
@@ -271,6 +276,7 @@ export async function runSweep(
   return {
     size: { totalBytes, fileCount, computedAtTs: new Date(now).toISOString() },
     purged,
+    purgedFiles,
   };
 }
 
