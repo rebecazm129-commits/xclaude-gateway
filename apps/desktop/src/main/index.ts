@@ -44,6 +44,11 @@ function createWindow(): void {
     backgroundColor: '#f0ebe1',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
+      // Defense-in-depth: pin Electron's secure defaults explicitly rather
+      // than relying on them. The renderer runs untrusted MCP output, so it
+      // must stay isolated from Node and the preload's context.
+      contextIsolation: true,
+      nodeIntegration: false,
       // macOS 26 (Tahoe): the native context menu queries the spellcheck
       // service, and constructing that native menu crashes the browser process
       // (EXC_BAD_ACCESS in CrBrowserMain). Disabling spellcheck removes the

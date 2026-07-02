@@ -12,6 +12,8 @@
   },
   "scripts": {
     "postinstall": "node node_modules/electron/install.js",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
     "build:proxy": "pnpm --filter @xcg/proxy build",
     "build:desktop": "pnpm --filter @xcg/desktop build",
     "package:mac": "pnpm run build:proxy && pnpm run build:desktop && pnpm --filter @xcg/desktop run package"

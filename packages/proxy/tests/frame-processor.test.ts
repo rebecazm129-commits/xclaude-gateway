@@ -195,6 +195,18 @@ describe('createFrameProcessor — Slice 1: credential in tools/call result cont
     expect(events.map((e) => e.type)).toEqual(['mcp.response']);
   });
 
+  it('H2.4: response with no request previously seen (reqMethod undefined) → not scanned, no crash', () => {
+    const processFrame = createFrameProcessor(makeDeps());
+    // No request was tracked for id 7 (e.g. the proxy started mid-session and
+    // only saw the response). requestMethods has no entry → reqMethod is
+    // undefined → the result is NOT scanned. Must emit only mcp.response.
+    const events = processFrame(
+      { kind: 'response', id: 7, result: { content: [{ type: 'text', text: `leak ${FAKE_KEY}` }] } },
+      'server_to_client', 60, '<resp>', TS_NS, TS_MS,
+    );
+    expect(events.map((e) => e.type)).toEqual(['mcp.response']);
+  });
+
   it('keying: same rpcId on inverted directions does not cross request methods', () => {
     const processFrame = createFrameProcessor(makeDeps());
     // client→server tools/call id 9, and a server→client non-tools/call id 9.
