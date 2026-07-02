@@ -93,6 +93,31 @@ describe('AsyncDetectorNer', () => {
     expect(enriched).toHaveLength(0);
   });
 
+  it('emits an error drop marker on job-level error and drains the next job', () => {
+    const { child, drops, det } = setup();
+    emit(child, { kind: 'ready' });
+    det.enqueue(input('{"a":1}'), 1);
+    det.enqueue(input('{"b":2}'), 2);
+    // Job 1 is in flight (dispatched on ready); job 2 is queued.
+    expect(child.send).toHaveBeenCalledTimes(1);
+    // Worker reports a job-level error for the in-flight job.
+    emit(child, { kind: 'error', jobId: 'j1', message: 'boom' });
+    // Marker recorded via the same onDrop mechanism as queue_full/worker_dead...
+    expect(drops).toEqual([{ reason: 'error', rpcId: 1 }]);
+    // ...and drain dispatched the next queued job (worker not stalled).
+    expect(child.send).toHaveBeenCalledTimes(2);
+  });
+
+  it('no phantom marker when an error arrives with no job in flight', () => {
+    const { child, drops, det } = setup();
+    emit(child, { kind: 'ready' });
+    det.enqueue(input('{"a":1}'), 1);
+    // Resolve the in-flight job cleanly, then a stray error with nothing pending.
+    emit(child, { kind: 'skip', jobId: 'j1' });
+    emit(child, { kind: 'error', jobId: 'stray', message: 'boom' });
+    expect(drops).toEqual([]);
+  });
+
   it('processes one in-flight at a time', () => {
     const { child, det } = setup();
     emit(child, { kind: 'ready' });

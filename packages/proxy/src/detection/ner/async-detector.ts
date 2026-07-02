@@ -12,10 +12,12 @@ import type {
 } from '../types.js';
 import type { WorkerJobRequest, WorkerJobResponse } from './worker-pure.js';
 
-// Razon por la que un job NER se descarta. Exportado para que events.ts tipe
-// la variante proxy.ner_dropped sin duplicar el literal (paralelo a
-// SocketDropReason desde socket.js).
-export type NerDropReason = 'queue_full' | 'worker_dead';
+// Razon por la que un job NER no produjo enrichment. Exportado para que
+// events.ts tipe la variante proxy.ner_dropped sin duplicar el literal
+// (paralelo a SocketDropReason desde socket.js). 'error' es un fallo de
+// inferencia job-level (el worker sigue vivo); 'queue_full'/'worker_dead'
+// son descartes que ni llegan a inferir.
+export type NerDropReason = 'queue_full' | 'worker_dead' | 'error';
 
 export type OnNerDrop = (
   reason: NerDropReason,
@@ -143,9 +145,16 @@ export class AsyncDetectorNer implements AsyncDetector {
         overheadUs: elapsedUs(completed.t0Ns),
       };
       this.enrichmentSink(enrichment);
+    } else if (msg.kind === 'error' && completed !== undefined) {
+      // Job-level inference failure: the worker stays alive, but this job
+      // produced no enrichment. Emit the same drop marker as queue_full/
+      // worker_dead (reason 'error') so the JSONL gap is honest instead of
+      // silent, then drain the next job. rpcId comes from the in-flight job
+      // (the worker's error message carries no rpcId). No in-flight job
+      // (completed undefined) → no phantom marker, just drain below.
+      this.onDrop('error', msg.jobId, completed.request.rpcId);
     }
-    // 'skip' y 'error' no invocan al sink (no hay enrichment). 'error' es
-    // job-level: el worker sigue vivo, solo se drena el siguiente.
+    // 'skip' is a clean "no PII found": no enrichment AND no marker (not a loss).
     this.drain();
   }
 
