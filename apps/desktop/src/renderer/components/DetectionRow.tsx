@@ -42,6 +42,10 @@ export function DetectionRow({ row, selected, onClick }: DetectionRowProps): JSX
         <span className={styles['method']}>
           {row.toolName ?? row.method}
         </span>
+      ) : row.category === 'tool_manifest_changed' ? (
+        // Manifest-change enrichment: it rides on the tools/list response, not
+        // the async NER path, so label the source method, not [NER].
+        <span className={styles['method']}>tools/list</span>
       ) : (
         <span className={styles['ner']}>[NER]</span>
       )}

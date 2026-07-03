@@ -19,7 +19,9 @@ import { TimeFilter, type TimeRange } from './TimeFilter.js';
 import styles from './Detections.module.css';
 
 const SEVERITY_OPTIONS: readonly Severity[] = ['low', 'medium', 'high', 'critical'];
-const CATEGORY_OPTIONS: readonly Category[] = [
+// Exported so the default-filter membership is unit-testable. The filter is
+// server-side, so a category absent here is filtered OUT by default.
+export const CATEGORY_OPTIONS: readonly Category[] = [
   'credential_detected',
   'prompt_injection',
   'email_send_warning',
@@ -27,6 +29,7 @@ const CATEGORY_OPTIONS: readonly Category[] = [
   'tool_call_allowed',
   'pii_detected',
   'pii_structured',
+  'tool_manifest_changed',
 ];
 
 // Human-readable byte size for the retention banner (1024-based).
