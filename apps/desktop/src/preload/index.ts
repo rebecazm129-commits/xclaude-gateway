@@ -17,6 +17,8 @@ import type {
   DetectionDetail,
   DetectionFilter,
   DetectionPageResult,
+  AuditExportFormat,
+  AuditExportResult,
   PurgeMode,
   RetentionSetModeResult,
   RetentionStatus,
@@ -31,6 +33,8 @@ contextBridge.exposeInMainWorld('xcg', {
   }): Promise<DetectionPageResult> => ipcRenderer.invoke('detection:page', params),
   detectionDetail: (id: string): Promise<DetectionDetail | null> =>
     ipcRenderer.invoke('detection:detail', { id }),
+  exportAudit: (filter: DetectionFilter, format: AuditExportFormat): Promise<AuditExportResult> =>
+    ipcRenderer.invoke('audit:export', { filter, format }),
   retentionStatus: (): Promise<RetentionStatus> => ipcRenderer.invoke('retention:status'),
   retentionSetMode: (mode: PurgeMode): Promise<RetentionSetModeResult> =>
     ipcRenderer.invoke('retention:set-mode', { mode }),

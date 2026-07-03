@@ -29,6 +29,43 @@ function cmp(
   return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
 }
 
+function withinTimeWindow(
+  e: EnrichableEvent,
+  filter: DetectionFilter,
+  now: number,
+): boolean {
+  if (filter.timeRange === 'all') return true;
+  const t = Date.parse(e.ts);
+  return !Number.isNaN(t) && t >= now - TIME_WINDOW_MS[filter.timeRange];
+}
+
+// mcp + time + category (pre-severity). paginate uses this for the category-
+// filtered set (the severity breakdown is computed over it); matchesFilter
+// composes the full predicate on top.
+export function matchesPreSeverity(
+  e: EnrichableEvent,
+  filter: DetectionFilter,
+  now: number,
+): boolean {
+  if (filter.mcp !== null && e.mcp !== filter.mcp) return false;
+  if (!withinTimeWindow(e, filter, now)) return false;
+  return filter.categories.includes(e.detection.category);
+}
+
+// Full filter (mcp + time + category + severity). Equals paginate's `matching`
+// predicate by construction — the audit exporter reuses exactly this, so the
+// export and the view filter identically.
+export function matchesFilter(
+  e: EnrichableEvent,
+  filter: DetectionFilter,
+  now: number,
+): boolean {
+  return (
+    matchesPreSeverity(e, filter, now) &&
+    filter.severities.includes(e.detection.severity)
+  );
+}
+
 export function toSlim(e: EnrichableEvent): DetectionRowSlim {
   const row: DetectionRowSlim = {
     id: e.id,
@@ -90,17 +127,7 @@ export function paginate(
 
   // Pre-severity filter: mcp + time + category. severityCounts and the
   // breakdown total are computed over THIS set (matches the old client).
-  const catSet = new Set(filter.categories);
-  const cutoff =
-    filter.timeRange === 'all' ? null : now - TIME_WINDOW_MS[filter.timeRange];
-  const categoryFiltered = events.filter((e) => {
-    if (filter.mcp !== null && e.mcp !== filter.mcp) return false;
-    if (cutoff !== null) {
-      const t = Date.parse(e.ts);
-      if (Number.isNaN(t) || t < cutoff) return false;
-    }
-    return catSet.has(e.detection.category);
-  });
+  const categoryFiltered = events.filter((e) => matchesPreSeverity(e, filter, now));
 
   const severityCounts: Record<Severity, number> = {
     low: 0,
@@ -112,9 +139,8 @@ export function paginate(
   const categoryFilteredTotal = categoryFiltered.length;
 
   // Severity filter → the matching set.
-  const sevSet = new Set(filter.severities);
   const matching = categoryFiltered.filter((e) =>
-    sevSet.has(e.detection.severity),
+    filter.severities.includes(e.detection.severity),
   );
   const totalMatching = matching.length;
 

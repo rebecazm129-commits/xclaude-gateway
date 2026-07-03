@@ -15,6 +15,8 @@ import type {
   DetectionDetail,
   DetectionFilter,
   DetectionPageResult,
+  AuditExportFormat,
+  AuditExportResult,
   PurgeMode,
   RetentionSetModeResult,
   RetentionStatus,
@@ -28,6 +30,7 @@ export interface XcgApi {
     cursor: DetectionCursor | null;
   }): Promise<DetectionPageResult>;
   detectionDetail(id: string): Promise<DetectionDetail | null>;
+  exportAudit(filter: DetectionFilter, format: AuditExportFormat): Promise<AuditExportResult>;
   retentionStatus(): Promise<RetentionStatus>;
   retentionSetMode(mode: PurgeMode): Promise<RetentionSetModeResult>;
   retentionEstimate(mode: PurgeMode): Promise<number>;

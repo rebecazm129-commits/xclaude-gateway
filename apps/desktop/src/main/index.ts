@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Notification, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, Notification, dialog, ipcMain, shell } from 'electron';
 import { homedir } from 'node:os';
 import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -24,6 +24,7 @@ import {
 import { runValidateHealth, runRepairWraps } from './health-handlers.js';
 import { readLatestToolCount } from './detection-reader.js';
 import type {
+  AuditExportResult,
   DetectionCursor,
   DetectionDetail,
   DetectionFilter,
@@ -34,6 +35,7 @@ import type {
   RetentionSizeSnapshot,
   RetentionStatus,
 } from '../shared/types.js';
+import { exportAudit, type AuditExportFormat } from './audit-export.js';
 import {
   BASE_DIR,
   WRAPPERS_DIR,
@@ -149,6 +151,50 @@ ipcMain.handle(
   'detection:detail',
   async (_event, params: { id: string }): Promise<DetectionDetail | null> => {
     return auditStore.getDetail(params.id);
+  },
+);
+
+// Export the filtered audit trail to a user-chosen file (raw JSONL or CSV). The
+// dialog picks the destination (first write outside the baseDir); the exporter
+// re-reads disk and streams the result. Format follows the chosen extension.
+ipcMain.handle(
+  'audit:export',
+  async (
+    _event,
+    params: { filter: DetectionFilter; format: AuditExportFormat },
+  ): Promise<AuditExportResult> => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
+    const defaultExt = params.format === 'csv' ? 'csv' : 'jsonl';
+    const options = {
+      title: 'Export audit trail',
+      defaultPath: `xcg-audit-export.${defaultExt}`,
+      filters:
+        params.format === 'csv'
+          ? [
+              { name: 'CSV', extensions: ['csv'] },
+              { name: 'JSONL', extensions: ['jsonl'] },
+            ]
+          : [
+              { name: 'JSONL', extensions: ['jsonl'] },
+              { name: 'CSV', extensions: ['csv'] },
+            ],
+    };
+    const { canceled, filePath } =
+      win !== null ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+    if (canceled || filePath === undefined) return { ok: false, canceled: true };
+    // Actual format follows the chosen extension (the user may switch filters).
+    const format: AuditExportFormat = filePath.toLowerCase().endsWith('.csv') ? 'csv' : 'jsonl';
+    try {
+      const { count } = await exportAudit({
+        dir: WRAPPERS_DIR,
+        destPath: filePath,
+        filter: params.filter,
+        format,
+      });
+      return { ok: true, path: filePath, count };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   },
 );
 

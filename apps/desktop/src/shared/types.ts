@@ -216,6 +216,17 @@ export interface DetectionPageResult {
   retention: RetentionBannerInfo | null;
 }
 
+// ---- Audit export (audit:export) ----
+
+export type AuditExportFormat = 'jsonl' | 'csv';
+
+// Discriminated result of an export: written path + event count, user-canceled,
+// or a failure message.
+export type AuditExportResult =
+  | { ok: true; path: string; count: number }
+  | { ok: false; canceled: true }
+  | { ok: false; error: string };
+
 // detection:detail payload — the heavy view for the DetailDrawer, fetched on
 // open by id. null when the event is gone (e.g. its session file was purged).
 export interface DetectionDetail {

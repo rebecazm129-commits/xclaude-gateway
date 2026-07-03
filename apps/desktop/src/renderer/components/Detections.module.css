@@ -126,9 +126,9 @@
 
 .footer {
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
   align-items: center;
-  padding: 8px 20px;
+  padding: 12px 20px;
   background: var(--kraft-bg);
   border-top: var(--kraft-hairline) solid var(--kraft-border);
   box-sizing: border-box;
@@ -157,6 +157,56 @@
 }
 
 .footerLink:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Right-aligned export cluster: status text + the outline Export button. */
+.exportGroup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Export status (to the left of the button): muted on success, danger on error. */
+.exportStatus {
+  font-size: 12px;
+  color: var(--kraft-ink-disabled);
+}
+
+.exportError {
+  font-size: 12px;
+  color: var(--kraft-critical-text);
+}
+
+/* Kraft outline pill (segmented/TimeFilter shell) for Export…. */
+.exportButton {
+  background: var(--kraft-surface);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  color: var(--kraft-ink);
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--kraft-font-ui);
+  border-radius: var(--kraft-radius-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--kraft-transition-fast) ease,
+    border-color var(--kraft-transition-fast) ease;
+}
+
+.exportButton:hover:not(:disabled) {
+  background: var(--kraft-filter-bg);
+  border-color: var(--kraft-ink-soft);
+}
+
+.exportButton:focus-visible {
+  outline: 2px solid var(--kraft-accent);
+  outline-offset: 2px;
+}
+
+.exportButton:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }

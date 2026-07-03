@@ -45,6 +45,12 @@ function formatBytes(bytes: number): string {
   return `${val >= 10 ? Math.round(val) : val.toFixed(1)} ${units[i]}`;
 }
 
+// First clause of an error message (drop the path/detail after the first comma
+// or newline) so the footer status stays on one line.
+function briefError(message: string): string {
+  return message.split(/[\n,]/)[0] ?? message;
+}
+
 const ROW_HEIGHT = 40;
 // Chrome around the virtualized list: titlebar (42) + header (84) + tabs (40) +
 // filters bar, PLUS the bottom "Open audit folder" footer (~34px: padding 8×2 +
@@ -83,6 +89,8 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
   const listRef = useRef<FixedSizeList>(null);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [lastSeenTopId, setLastSeenTopId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportResult, setExportResult] = useState<{ count: number } | { error: string } | null>(null);
 
   // The full filter is computed server-side; the renderer no longer filters.
   const filter: DetectionFilter = useMemo(
@@ -140,6 +148,9 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
   useEffect(() => {
     setLastSeenTopId(rows[0]?.id ?? null);
     setScrollOffset(0);
+    // A new filter means a new export target: clear the last result so the
+    // button reverts to "Export {N} events" for the new count.
+    setExportResult(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSeverities, selectedCategories, selectedTimeRange, mcpFilter]);
 
@@ -202,6 +213,26 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
 
   function handleOpenAuditFolder(): void {
     void window.xcg.openAuditFolder();
+  }
+
+  // Export "what you see": the active DetectionFilter, to a user-chosen file.
+  async function handleExport(): Promise<void> {
+    setExporting(true);
+    setExportResult(null);
+    try {
+      const result = await window.xcg.exportAudit(filter, 'jsonl');
+      if (result.ok) {
+        setExportResult({ count: result.count });
+      } else if ('error' in result) {
+        setExportResult({ error: briefError(result.error) });
+      }
+      // canceled → leave the status cleared
+    } catch (err) {
+      console.error('audit:export failed:', err);
+      setExportResult({ error: briefError(err instanceof Error ? err.message : 'Unexpected error') });
+    } finally {
+      setExporting(false);
+    }
   }
 
   const showSizeWarning =
@@ -340,8 +371,32 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
           onClick={handleOpenAuditFolder}
           disabled={page.total === 0}
         >
-          Open audit folder <span aria-hidden="true">↗</span>
+          Open audit folder
         </button>
+        <div className={styles['exportGroup']}>
+          {exportResult !== null && 'count' in exportResult && (
+            <span className={styles['exportStatus']}>
+              Exported {exportResult.count} event{exportResult.count === 1 ? '' : 's'}
+            </span>
+          )}
+          {exportResult !== null && 'error' in exportResult && (
+            <span className={styles['exportError']}>
+              Export failed — {exportResult.error}
+            </span>
+          )}
+          <button
+            type="button"
+            className={styles['exportButton']}
+            onClick={() => void handleExport()}
+            disabled={page.totalMatching === 0 || exporting}
+          >
+            {exporting
+              ? 'Exporting…'
+              : exportResult !== null
+                ? 'Export…'
+                : `Export ${page.totalMatching} event${page.totalMatching === 1 ? '' : 's'}`}
+          </button>
+        </div>
       </div>
     </>
   );
