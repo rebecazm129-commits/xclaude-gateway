@@ -183,6 +183,17 @@ Each session writes its own file. The file name is the session ID (ULID). Open `
 
 The Connectors tab includes a **Verify detection** button — a safe, self-contained end-to-end check of the kind these tools usually ship. It runs a synthetic risky payload through the audit pipeline and confirms the event is recorded and flagged, so you can see the detectors working end to end without touching any real connector.
 
+## Audit log retention
+
+The audit trail is the product, so **nothing is ever deleted by default**. Session logs accumulate in the wrappers directory and stay there until you decide otherwise.
+
+- **A visible size warning.** When the wrappers directory grows past a configured threshold (default **500 MiB**), the app shows a warning in the Detections view. It only warns — auditing continues unchanged.
+- **Optional automatic purge by age.** In Settings you can opt in to automatic cleanup of session logs older than **30, 90 or 365 days**. It is **off by default**. Every purge is recorded as a visible `app.retention_purged` event in the audit log — a purge is never silent.
+- **Live sessions are never purged.** A session's age is the later of its start time (from the session ULID) and its last write, so an active or recently written session is always kept, even under an aggressive setting.
+- **Where the setting lives.** Retention configuration is stored in `settings.json`, next to the wrappers directory under `~/Library/Application Support/xCLAUDE Gateway/`.
+
+Retention mode, current audit log size, and the last cleanup are shown under Settings → Audit log.
+
 ## Manual configuration
 
 If you prefer to edit your config by hand instead of using the Setup UI, back up your config first:
