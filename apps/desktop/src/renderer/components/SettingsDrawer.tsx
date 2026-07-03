@@ -34,11 +34,11 @@ function formatDate(iso: string): string {
   });
 }
 
-const PURGE_MODE_LABELS: Record<PurgeMode, string> = {
-  never: 'Never — keep everything',
-  '30d': 'Remove sessions older than 30 days',
-  '90d': 'Remove sessions older than 90 days',
-  '365d': 'Remove sessions older than 365 days',
+const SEGMENT_LABELS: Record<PurgeMode, string> = {
+  never: 'Never',
+  '30d': '30 days',
+  '90d': '90 days',
+  '365d': '365 days',
 };
 
 interface SettingsDrawerProps {
@@ -77,8 +77,11 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
   const [lastAction, setLastAction] = useState<LastAction>(null);
   const [retention, setRetention] = useState<RetentionStatus | null>(null);
   const [pendingMode, setPendingMode] = useState<PurgeMode | null>(null);
+  const [pendingEstimate, setPendingEstimate] = useState<number | null>(null);
   const [applying, setApplying] = useState(false);
   const [retentionNotice, setRetentionNotice] = useState<string | null>(null);
+  // Guards the async estimate against stale responses when the user taps fast.
+  const estimateModeRef = useRef<PurgeMode | null>(null);
 
   useEffect(() => {
     drawerRef.current?.focus();
@@ -112,6 +115,7 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
       }
       setRetention((prev) => (prev ? { ...prev, config: result.config } : prev));
       setPendingMode(null);
+      setPendingEstimate(null);
       if (result.config.purgeMode === 'never') {
         setRetentionNotice(
           'Automatic cleanup is off. xCLAUDE Gateway keeps every audit event.',
@@ -135,6 +139,39 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
     } finally {
       setApplying(false);
     }
+  }
+
+  // Tapping the saved value clears any pending change; a different value becomes
+  // pending and shows the inline confirmation. For an age-based mode we fetch a
+  // read-only estimate (retention:estimate — persists nothing) so the prompt can
+  // name how many sessions the next sweep would remove.
+  function handleSegmentClick(mode: PurgeMode): void {
+    const saved = retention?.config.purgeMode ?? 'never';
+    setRetentionNotice(null);
+    if (mode === saved) {
+      estimateModeRef.current = null;
+      setPendingMode(null);
+      setPendingEstimate(null);
+      return;
+    }
+    setPendingMode(mode);
+    setPendingEstimate(null);
+    estimateModeRef.current = mode;
+    if (mode !== 'never') {
+      void window.xcg
+        .retentionEstimate(mode)
+        .then((n) => {
+          if (estimateModeRef.current === mode) setPendingEstimate(n);
+        })
+        .catch((err) => console.error('retention:estimate failed:', err));
+    }
+  }
+
+  function handleCancelPending(): void {
+    estimateModeRef.current = null;
+    setPendingMode(null);
+    setPendingEstimate(null);
+    setRetentionNotice(null);
   }
 
   useEffect(() => {
@@ -254,7 +291,7 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
           <div className={styles[`feedback_${action.tone}`]}>{action.text}</div>
         ) : null}
 
-        <div className={styles['sectionLabel']}>Audit log</div>
+        <div className={`${styles['sectionLabel']} ${styles['sectionDivider']}`}>Audit log</div>
         <div className={styles['auditRow']}>
           <code className={styles['auditPath']}>~/Library/Application Support/xCLAUDE Gateway/wrappers/</code>
           <button
@@ -266,51 +303,82 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
           </button>
         </div>
 
-        <div className={styles['retentionRow']}>
-          <label className={styles['retentionLabel']} htmlFor="retention-mode">
-            Automatic cleanup by age
-          </label>
-          <select
-            id="retention-mode"
-            className={styles['retentionSelect']}
-            value={pendingMode ?? retention?.config.purgeMode ?? 'never'}
-            onChange={(e) => setPendingMode(e.target.value as PurgeMode)}
-            disabled={retention === null || applying}
-          >
-            {(['never', '30d', '90d', '365d'] as const).map((m) => (
-              <option key={m} value={m}>
-                {PURGE_MODE_LABELS[m]}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            className={styles['auditButton']}
-            onClick={() => void handleApplyMode()}
-            disabled={
-              retention === null ||
-              applying ||
-              pendingMode === null ||
-              pendingMode === retention.config.purgeMode
-            }
-          >
-            {applying ? 'Saving…' : 'Apply'}
-          </button>
-        </div>
-
         {retention?.size != null && (
-          <p className={styles['retentionMeta']}>
-            Current audit log: {formatBytes(retention.size.totalBytes)} across{' '}
-            {retention.size.fileCount} file
-            {retention.size.fileCount === 1 ? '' : 's'}.
+          <p className={styles['auditCaption']}>
+            Audit log: {formatBytes(retention.size.totalBytes)} ·{' '}
+            {retention.size.fileCount} session{retention.size.fileCount === 1 ? '' : 's'}
           </p>
         )}
 
-        {retention?.lastPurge != null && (
-          <p className={styles['retentionMeta']}>
-            Last automatic cleanup removed {retention.lastPurge.filesPurged}{' '}
-            session file{retention.lastPurge.filesPurged === 1 ? '' : 's'}{' '}
-            (through {formatDate(retention.lastPurge.purgedUntilTs)}).
+        <span className={styles['retentionSubhead']} id="retention-cleanup-label">
+          Automatic cleanup
+        </span>
+
+        <div
+          className={styles['segmented']}
+          role="radiogroup"
+          aria-labelledby="retention-cleanup-label"
+        >
+          {(['never', '30d', '90d', '365d'] as const).map((m) => {
+            const saved = retention?.config.purgeMode ?? 'never';
+            const isPending = pendingMode === m;
+            const isSaved = pendingMode === null && m === saved;
+            const cls = isPending
+              ? `${styles['segment']} ${styles['segmentPending']}`
+              : isSaved
+                ? `${styles['segment']} ${styles['segmentSaved']}`
+                : styles['segment'];
+            return (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={m === (pendingMode ?? saved)}
+                className={cls}
+                disabled={retention === null || applying}
+                onClick={() => handleSegmentClick(m)}
+              >
+                {SEGMENT_LABELS[m]}
+              </button>
+            );
+          })}
+        </div>
+
+        {pendingMode !== null ? (
+          <div className={styles['retentionConfirm']}>
+            <span className={styles['retentionConfirmText']}>
+              {pendingMode === 'never'
+                ? 'Turn off automatic cleanup? xCLAUDE Gateway will keep every audit event.'
+                : pendingEstimate === null
+                  ? `Switch to “${SEGMENT_LABELS[pendingMode]}”? The next daily cleanup will remove older sessions — nothing is deleted until it runs.`
+                  : pendingEstimate === 0
+                    ? `No sessions are older than ${SEGMENT_LABELS[pendingMode]} yet — nothing will be removed until they age past it.`
+                    : `This will remove about ${pendingEstimate} session${pendingEstimate === 1 ? '' : 's'} older than ${SEGMENT_LABELS[pendingMode]}. Nothing is deleted until the next daily cleanup runs.`}
+            </span>
+            <div className={styles['retentionConfirmActions']}>
+              <button
+                type="button"
+                className={styles['retentionApply']}
+                onClick={() => void handleApplyMode()}
+                disabled={applying}
+              >
+                {applying ? 'Saving…' : 'Confirm'}
+              </button>
+              <button
+                type="button"
+                className={styles['auditButton']}
+                onClick={handleCancelPending}
+                disabled={applying}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className={styles['retentionCaption']}>
+            {retention?.lastPurge != null
+              ? `Last automatic cleanup: ${formatDate(retention.lastPurge.ts)} — ${retention.lastPurge.filesPurged} session${retention.lastPurge.filesPurged === 1 ? '' : 's'} removed.`
+              : 'No automatic cleanup has run.'}
           </p>
         )}
 
@@ -318,7 +386,7 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
           <div className={styles['feedback_noop']}>{retentionNotice}</div>
         )}
 
-        <div className={styles['sectionLabel']}>About</div>
+        <div className={`${styles['sectionLabel']} ${styles['sectionDivider']}`}>About</div>
         <p className={styles['about']}>
           xCLAUDE Gateway audits every tool call Claude makes through your MCP
           connectors, classified by risk across 6 risk categories and 4 severity

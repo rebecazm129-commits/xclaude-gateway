@@ -30,6 +30,7 @@ export interface XcgApi {
   detectionDetail(id: string): Promise<DetectionDetail | null>;
   retentionStatus(): Promise<RetentionStatus>;
   retentionSetMode(mode: PurgeMode): Promise<RetentionSetModeResult>;
+  retentionEstimate(mode: PurgeMode): Promise<number>;
   configStatus(): Promise<StatusResult>;
   configInstall(mode: 'dry-run' | 'yes', only?: string): Promise<InstallResult>;
   configUninstall(mode: 'dry-run' | 'yes'): Promise<UninstallResult>;

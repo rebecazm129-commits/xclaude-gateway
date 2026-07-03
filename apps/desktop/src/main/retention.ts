@@ -307,6 +307,18 @@ export async function estimatePurgable(
   return count;
 }
 
+// Read-only estimate for an ARBITRARY (untrusted) mode: validates the enum and
+// delegates to estimatePurgable. Persists nothing. The pure piece the
+// retention:estimate IPC handler wraps (index.ts isn't unit-testable).
+export async function estimatePurgableForMode(
+  dir: string,
+  mode: unknown,
+  now: number,
+): Promise<number> {
+  if (!isPurgeMode(mode)) return 0;
+  return estimatePurgable(dir, mode, now);
+}
+
 // ---- last purge marker (for Settings "last cleanup" line) ----
 
 export async function readLastPurgeMarker(

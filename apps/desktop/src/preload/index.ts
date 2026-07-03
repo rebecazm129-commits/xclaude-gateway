@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld('xcg', {
   retentionStatus: (): Promise<RetentionStatus> => ipcRenderer.invoke('retention:status'),
   retentionSetMode: (mode: PurgeMode): Promise<RetentionSetModeResult> =>
     ipcRenderer.invoke('retention:set-mode', { mode }),
+  retentionEstimate: (mode: PurgeMode): Promise<number> =>
+    ipcRenderer.invoke('retention:estimate', { mode }),
   configStatus: (): Promise<StatusResult> => ipcRenderer.invoke('config:status'),
   configInstall: (mode: 'dry-run' | 'yes', only?: string): Promise<InstallResult> =>
     ipcRenderer.invoke('config:install', mode, only),

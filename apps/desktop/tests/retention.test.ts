@@ -8,6 +8,7 @@ import {
   DEFAULT_RETENTION_CONFIG,
   decodeUlidTime,
   estimatePurgable,
+  estimatePurgableForMode,
   isPurgeMode,
   isSessionFile,
   readLastPurgeMarker,
@@ -189,6 +190,26 @@ describe('estimatePurgable', () => {
     await writeFileWithMtime('app-events.jsonl', OLDER_MS);
     await writeFileWithMtime('plain-name.jsonl', OLDER_MS);
     expect(await estimatePurgable(dir, '30d', now)).toBe(0);
+  });
+});
+
+describe('estimatePurgableForMode (retention:estimate pure piece)', () => {
+  it('returns 0 for an invalid / non-enum mode (no throw)', async () => {
+    await writeFileWithMtime(`${OLD_ULID}.jsonl`, OLD_MS);
+    expect(await estimatePurgableForMode(dir, '7d', OLD_MS + 100 * DAY_MS)).toBe(0);
+    expect(await estimatePurgableForMode(dir, null, OLD_MS + 100 * DAY_MS)).toBe(0);
+    expect(await estimatePurgableForMode(dir, 42, OLD_MS + 100 * DAY_MS)).toBe(0);
+  });
+
+  it('returns 0 for never', async () => {
+    await writeFileWithMtime(`${OLD_ULID}.jsonl`, OLD_MS);
+    expect(await estimatePurgableForMode(dir, 'never', OLD_MS + 1000 * DAY_MS)).toBe(0);
+  });
+
+  it('counts purgable sessions (by decodeTime) for a valid mode', async () => {
+    await writeFileWithMtime(`${OLD_ULID}.jsonl`, OLD_MS);
+    await writeFileWithMtime(`${OLDER_ULID}.jsonl`, OLDER_MS);
+    expect(await estimatePurgableForMode(dir, '30d', OLD_MS + 100 * DAY_MS)).toBe(2);
   });
 });
 

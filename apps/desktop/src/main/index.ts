@@ -38,6 +38,7 @@ import {
   BASE_DIR,
   WRAPPERS_DIR,
   estimatePurgable,
+  estimatePurgableForMode,
   isPurgeMode,
   readLastPurgeMarker,
   readRetentionConfig,
@@ -179,6 +180,16 @@ ipcMain.handle(
     retentionConfigCache = next;
     const purgableEstimate = await estimatePurgable(WRAPPERS_DIR, mode, Date.now());
     return { ok: true, config: next, purgableEstimate };
+  },
+);
+
+// Read-only preview: how many session files the NEXT sweep would purge at
+// `mode`. Persists NOTHING (unlike retention:set-mode) — used to show the impact
+// before the user confirms a change.
+ipcMain.handle(
+  'retention:estimate',
+  async (_event, params: { mode: unknown }): Promise<number> => {
+    return estimatePurgableForMode(WRAPPERS_DIR, params?.mode, Date.now());
   },
 );
 
