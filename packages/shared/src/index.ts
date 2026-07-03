@@ -24,7 +24,8 @@ export type Category =
   | 'data_export_warning'
   | 'tool_call_allowed'
   | 'pii_detected'
-  | 'pii_structured';
+  | 'pii_structured'
+  | 'tool_manifest_changed';
 
 export interface DetectionFinding {
   type: string;

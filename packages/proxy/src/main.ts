@@ -19,6 +19,7 @@ import { KeychainOAuthProvider, ReauthRequiredError } from './oauth-provider.js'
 import { JsonlWriter } from './audit.js';
 import { DetectionEngine } from './detection/engine.js';
 import { ACTIVE_DETECTORS } from './detection/detectors/index.js';
+import { createManifestStore } from './detection/manifest.js';
 import { AsyncDetectorNer } from './detection/ner/async-detector.js';
 import { EventSink, createEnrichmentSink, type Direction } from './events.js';
 import { createFrameProcessor, type FrameProcessor } from './frame-processor.js';
@@ -187,7 +188,8 @@ export function runStdio(opts: ParsedArgs): void {
       sink.emit({ type: 'proxy.ner_worker_died', cause, pendingDropped });
     },
   });
-  const processFrame = createFrameProcessor({ tracker, engine, asyncDetector, mcp: name, session });
+  const manifestStore = createManifestStore(baseDir);
+  const processFrame = createFrameProcessor({ tracker, engine, asyncDetector, manifestStore, mcp: name, session });
   let framesIn = 0;
   let framesOut = 0;
   let framesStderr = 0;
@@ -338,7 +340,8 @@ async function runHttp(opts: HttpArgs): Promise<void> {
     onDrop: (reason, jobId, rpcId) => { sink.emit({ type: 'proxy.ner_dropped', reason, jobId, rpcId }); },
     onWorkerDied: (cause, pendingDropped) => { sink.emit({ type: 'proxy.ner_worker_died', cause, pendingDropped }); },
   });
-  const processFrame = createFrameProcessor({ tracker, engine, asyncDetector, mcp: name, session });
+  const manifestStore = createManifestStore(baseDir);
+  const processFrame = createFrameProcessor({ tracker, engine, asyncDetector, manifestStore, mcp: name, session });
 
   // Auth provider always attached (probe 4.b.2 confirma: si el remoto no pide
   // auth, el SDK no invoca auth() → tokens() devuelve undefined cacheado y

@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { DetectionEngine } from '../src/detection/engine.js';
 import { createFrameProcessor } from '../src/frame-processor.js';
 import { InflightTracker } from '../src/latency.js';
-import type { DetectorInput, RpcId, Direction } from '../src/detection/types.js';
+import type { DetectorInput, RpcId, Direction, DetectionBlock } from '../src/detection/types.js';
+import type { ManifestOutcome, ManifestStore } from '../src/detection/manifest.js';
+import type { EventBody } from '../src/events.js';
 import type { ClassifiedFrame } from '../src/parser.js';
 
 function makeDeps(): {
@@ -311,6 +313,79 @@ describe('createFrameProcessor — inbound: pii_structured / data_export / email
     // request-side fallback in emitDetections); a clean result emits no
     // enrichment at all — the correct "clean" assertion here.
     const events = respWithText('here are the three results you asked for');
+    expect(events.map((e) => e.type)).toEqual(['mcp.response']);
+  });
+});
+
+describe('createFrameProcessor — tool_manifest_changed (tools/list)', () => {
+  const TOOLS = { tools: [{ name: 'search', description: 'find', inputSchema: { type: 'object' } }] };
+
+  function stubStore(outcome: ManifestOutcome): {
+    store: ManifestStore;
+    checkAndUpdate: ReturnType<typeof vi.fn>;
+  } {
+    const checkAndUpdate = vi.fn((_mcp: string, _result: unknown): ManifestOutcome => outcome);
+    return { store: { checkAndUpdate }, checkAndUpdate };
+  }
+
+  // Sends a request (populates the method map) then a response on the same
+  // processor, so reqMethod === 'tools/list' when the response is processed.
+  function runListReqResp(store: ManifestStore, result: unknown): EventBody[] {
+    const processFrame = createFrameProcessor({ ...makeDeps(), manifestStore: store });
+    processFrame(
+      { kind: 'request', id: 9, method: 'tools/list', params: {} },
+      'client_to_server', 20, '<req>', TS_NS, TS_MS,
+    );
+    return processFrame({ kind: 'response', id: 9, result }, 'server_to_client', 30, '<resp>', TS_NS, TS_MS);
+  }
+
+  it('emits an mcp.detection_enrichment when the store reports a change', () => {
+    const detection: DetectionBlock = {
+      category: 'tool_manifest_changed',
+      severity: 'high',
+      findings: [{ type: 'description_changed', location: 'search' }],
+    };
+    const { store, checkAndUpdate } = stubStore({ changed: true, detection });
+    const events = runListReqResp(store, TOOLS);
+    expect(events.map((e) => e.type)).toEqual(['mcp.response', 'mcp.detection_enrichment']);
+    const enr = events[1];
+    if (enr?.type !== 'mcp.detection_enrichment') throw new Error('expected enrichment');
+    expect(enr.direction).toBe('server_to_client'); // response direction → own row
+    expect(enr.rpcId).toBe(9);
+    expect(enr.detection.category).toBe('tool_manifest_changed');
+    expect(enr.detection.severity).toBe('high');
+    expect(checkAndUpdate).toHaveBeenCalledWith('test-mcp', TOOLS);
+  });
+
+  it('no enrichment when the store reports no change (seed / unchanged)', () => {
+    const { store } = stubStore({ changed: false });
+    const events = runListReqResp(store, TOOLS);
+    expect(events.map((e) => e.type)).toEqual(['mcp.response']);
+  });
+
+  it('no manifest check without a store (undefined dep) → only mcp.response', () => {
+    const processFrame = createFrameProcessor(makeDeps());
+    processFrame(
+      { kind: 'request', id: 9, method: 'tools/list', params: {} },
+      'client_to_server', 20, '<req>', TS_NS, TS_MS,
+    );
+    const events = processFrame({ kind: 'response', id: 9, result: TOOLS }, 'server_to_client', 30, '<resp>', TS_NS, TS_MS);
+    expect(events.map((e) => e.type)).toEqual(['mcp.response']);
+  });
+
+  it('does NOT run the manifest check on a tools/call response', () => {
+    const detection: DetectionBlock = { category: 'tool_manifest_changed', severity: 'high', findings: [] };
+    const { store, checkAndUpdate } = stubStore({ changed: true, detection });
+    const processFrame = createFrameProcessor({ ...makeDeps(), manifestStore: store });
+    processFrame(
+      { kind: 'request', id: 9, method: 'tools/call', params: { name: 'x', arguments: {} } },
+      'client_to_server', 20, '<req>', TS_NS, TS_MS,
+    );
+    const events = processFrame(
+      { kind: 'response', id: 9, result: { content: [{ type: 'text', text: 'ok' }] } },
+      'server_to_client', 30, '<resp>', TS_NS, TS_MS,
+    );
+    expect(checkAndUpdate).not.toHaveBeenCalled();
     expect(events.map((e) => e.type)).toEqual(['mcp.response']);
   });
 });

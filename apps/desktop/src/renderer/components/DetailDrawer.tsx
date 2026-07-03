@@ -13,6 +13,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
   tool_call_allowed: 'Tool call',
   pii_detected: 'PII detected',
   pii_structured: 'Structured PII',
+  tool_manifest_changed: 'Tool manifest changed',
 };
 
 const MONTH_SHORT: readonly string[] = [
