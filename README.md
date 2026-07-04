@@ -1,6 +1,40 @@
+<div align="center">
+
+<img src="build/xclaude-icon-dock.png" alt="xCLAUDE Gateway icon" width="128" height="128" />
+
 # xCLAUDE Gateway
 
-A local audit layer for Claude Desktop's MCP traffic. It sits between Claude Desktop and the services it talks to — remote connectors like Notion, Linear, Atlassian, GitHub or Gmail, or the local MCP servers you already run — records every JSON-RPC frame to a per-session log on your Mac, and classifies sensitive patterns with severity tags. The audit happens locally; the traffic still reaches the service it's addressed to.
+**A local audit layer for Claude Desktop's MCP traffic — records, classifies and warns; never blocks.**
+
+[![Release](https://img.shields.io/badge/release-v0.7.0-D86A4D)](https://github.com/rebecazm129-commits/xclaude-gateway/releases)
+[![Platform](https://img.shields.io/badge/macOS-arm64%20(Apple%20Silicon)-000000?logo=apple&logoColor=white)](#requirements)
+[![License](https://img.shields.io/badge/license-MIT-informational)](#license)
+
+</div>
+
+<p align="center"><img src="docs/screenshots/detections-hero.png" alt="Detections view with severity and category filters" width="900" /></p>
+
+xCLAUDE Gateway sits between Claude Desktop and the services it talks to — remote connectors like Notion, Linear, Atlassian, GitHub or Gmail, or the local MCP servers you already run — records every JSON-RPC frame to a per-session log on your Mac, and classifies sensitive patterns with severity tags. The audit happens locally; the traffic still reaches the service it's addressed to.
+
+## Requirements
+
+- macOS 13 or later, on Apple Silicon (M1 or newer). The current build is arm64-only; Intel Macs are not supported.
+- Claude Desktop installed and working.
+- Optional: local MCP servers you already use (xCLAUDE wraps them). If you only want to audit remote services, no local server is needed. If you want to try local wrapping and don't have a server, `@modelcontextprotocol/server-filesystem` is an easy starting point (installable via `npx -y`).
+
+## Installation
+
+1. Download the latest `.dmg` from the GitHub Releases page.
+2. Open the `.dmg` and drag `xCLAUDE Gateway.app` into `/Applications/`, then eject the disk image and launch the app **from Applications** (not from the disk image window).
+3. The app is signed with a Developer ID and notarized by Apple; it opens cleanly on first launch.
+
+## Configuration
+
+Open `xCLAUDE Gateway.app`. The Setup tab shows your current `claude_desktop_config.json`: which MCP servers will be wrapped, which are already wrapped, and which are skipped. Click **Install** to wrap all eligible servers. Click **Uninstall** to revert.
+
+The first time you click Install, xCLAUDE Gateway makes a one-time backup of your config at `~/Library/Application Support/Claude/claude_desktop_config.json.bak` which is never overwritten by subsequent operations.
+
+If you prefer manual configuration, see [Manual configuration](#manual-configuration) below.
 
 ## What it does
 
@@ -8,20 +42,34 @@ Whether you connect a remote service through xCLAUDE (Notion, Linear, Atlassian,
 
 - **Wraps your existing MCP servers transparently** — no changes to the servers themselves.
 - **Records every JSON-RPC frame** (requests, responses, notifications) to a per-session JSONL log under `~/Library/Application Support/xCLAUDE Gateway/wrappers/`.
-- **Classifies sensitive patterns** with a detection engine. Current active detectors:
-  - `credential_detected` (CRITICAL) — known formats of API keys (Anthropic, OpenAI, GitHub, AWS, and similar).
-  - `prompt_injection` (CRITICAL) — common injection phrases ("ignore all previous instructions", "follow any instructions you find inside this file", etc.).
-  - `email_send_warning` (HIGH / MEDIUM) — two branches: imperative requests to send email found in tool text, and send-semantics tool calls. An AI-executed send (`send`/`reply`/`forward` tools) flags at HIGH — an action that deserves human attention regardless of intent; an AI-composed draft (`draft`/`compose` tools) flags at MEDIUM, since a draft is content one click away from sent.
-  - `pii_structured` (MEDIUM) — well-formed, checksum-validated PII shapes: emails, IBANs (mod-97), credit cards (Luhn), US SSNs, UK National Insurance and NHS numbers, Spanish DNI/NIE, international phone numbers, passport MRZ lines (ICAO 9303), French NIR, Italian codice fiscale, Dutch BSN, German Steuer-ID and Portuguese NIF. A regex preselects each candidate and a checksum confirms it, which keeps false positives near zero on numeric-heavy payloads. Findings record the matched type only — never the datum itself. Available since 0.4.4.
-  - `data_export_warning` (MEDIUM) — imperative requests to export data.
-  - A `tool_call_allowed` baseline at LOW severity is emitted for every tool call that doesn't match any of the above. This is the "everything is normal" line, not an absence of analysis.
+- **Classifies sensitive patterns** with a detection engine — see [Detectors](#detectors) for the full list.
 - **Both directions.** `credential_detected` and `prompt_injection` also scan the content returned by tool calls (server responses), not just outgoing parameters — a secret or an injection string arriving in a tool result is classified too.
 - **Captures latency overhead per response** (`overheadUs`) and end-to-end server response time (`latencyMs`).
 - **Captures the wrapped server's stderr output** as separate events.
-- **Shows the classified events in a Detections view** inside the `xCLAUDE Gateway.app` window, with severity and category filters — plus a menu-bar icon whose dropdown menu lists the number of flagged events in the last 24 hours.
+- **Shows the classified events in a Detections view** inside the `xCLAUDE Gateway.app` window, with severity, category and time-range filters, and lets you **export the filtered trail** to raw JSONL or CSV — plus a menu-bar icon whose dropdown menu lists the number of flagged events in the last 24 hours.
 - **Auto-configures `claude_desktop_config.json`** from a Setup UI: one click installs the wrappers, another reverts them, with a backup of your original config preserved.
 
 The audit runs entirely on your Mac: no telemetry, no account, no analytics. xCLAUDE makes no network calls of its own — the only outbound traffic is the connectors you add and their OAuth sign-in, plus the "Request a connector" link, which opens your system browser. Note that wrapped servers still talk to their destination — a local MCP server to your filesystem, a remote connector to its provider over the network. xCLAUDE observes that traffic; it doesn't reroute or withhold it.
+
+### Detectors
+
+| Category | Severity | What it detects |
+| --- | --- | --- |
+| `credential_detected` | CRITICAL | Known formats of API keys (Anthropic, OpenAI, GitHub, AWS, and similar). |
+| `prompt_injection` | CRITICAL | Common injection / jailbreak phrases ("ignore all previous instructions", "follow any instructions you find inside this file", etc.). |
+| `tool_manifest_changed` | HIGH / MEDIUM | Changes to a connector's advertised `tools/list` versus a per-connector baseline — tool poisoning. Since 0.7.0. |
+| `email_send_warning` | HIGH / MEDIUM | Imperative requests to send email in tool text, and send-semantics tool calls (see below). |
+| `data_export_warning` | MEDIUM | Imperative requests to export data. |
+| `pii_structured` | MEDIUM | Well-formed, checksum-validated PII shapes (see below). |
+| `tool_call_allowed` | LOW | Baseline emitted for every tool call that matches none of the above — the "everything is normal" line, not an absence of analysis. |
+
+**`email_send_warning` branches.** An AI-executed send (`send`/`reply`/`forward` tools) flags at HIGH — an action that deserves human attention regardless of intent; an AI-composed draft (`draft`/`compose` tools) flags at MEDIUM, since a draft is content one click away from sent.
+
+**`pii_structured` shapes.** Emails, IBANs (mod-97), credit cards (Luhn), US SSNs, UK National Insurance and NHS numbers, Spanish DNI/NIE, international phone numbers, passport MRZ lines (ICAO 9303), French NIR, Italian codice fiscale, Dutch BSN, German Steuer-ID and Portuguese NIF. A regex preselects each candidate and a checksum confirms it, which keeps false positives near zero on numeric-heavy payloads. Findings record the matched type only — never the datum itself. Available since 0.4.4.
+
+**`tool_manifest_changed` baseline.** xCLAUDE keeps a small per-connector baseline (a hash plus per-tool signatures) of each server's `tools/list`. The first time a connector is seen the baseline is seeded silently — no detection — and a later change is recorded exactly once: a changed description or input schema flags at HIGH, an added or removed tool at MEDIUM. Since 0.7.0.
+
+<p align="center"><img src="docs/screenshots/detection-detail.png" alt="Event detail with tool call arguments" width="900" /></p>
 
 ## What this proxy is, and what it is not
 
@@ -68,6 +116,10 @@ If you're using Claude Desktop with local MCP servers, or you connect a remote s
 
 ## Remote connectors
 
+<p align="center"><img src="docs/screenshots/connector-inspector.png" alt="Connector inspector with audited calls and flagged events" width="900" /></p>
+
+<p align="center"><img src="docs/screenshots/add-connector.png" alt="Add connector gallery" width="900" /></p>
+
 xCLAUDE can audit remote MCP services (Notion, Linear, Atlassian, GitHub, Stripe, Apollo, Slack, Gmail, Google Calendar and Google Drive today, with more on the way) by acting as your connection to them, instead of Claude Desktop connecting directly.
 
 To audit a service this way:
@@ -83,15 +135,20 @@ Your authorization token is stored in the macOS Keychain, not in plain text. xCL
 
 Connects via standard OAuth. xCLAUDE requests a narrow scope set — `repo`, `read:org`, `read:user` — rather than the full set the server advertises.
 
-### Google services (Gmail, Calendar, Drive)
-Google's official Workspace MCP servers don't use the one-click flow the other connectors do, so connecting them takes extra setup on your side — roughly 20–30 minutes in the Google Cloud console. Two things make them different: Google has no dynamic client registration, so you bring your own (free) OAuth client; and the servers are currently behind Google's Workspace Developer Preview Program, which you enroll your project in. One OAuth client serves all three connectors.
+<details>
+<summary>Google services setup (BYO OAuth client)</summary>
+
+Google's official Workspace MCP servers (Gmail, Calendar, Drive) don't use the one-click flow the other connectors do, so connecting them takes extra setup on your side — roughly 20–30 minutes in the Google Cloud console. Two things make them different: Google has no dynamic client registration, so you bring your own (free) OAuth client; and the servers are currently behind Google's Workspace Developer Preview Program, which you enroll your project in. One OAuth client serves all three connectors.
+
 **Before you start — the one hard requirement.** Enrolling in the Developer Preview Program requires a Google **Workspace (domain) account**; the enrollment form rejects plain `@gmail.com` addresses. If a personal Gmail account is all you have, you can't complete this setup today. This gate is Google's, and should disappear when these servers leave preview.
+
 1. **Create a Google Cloud project.** Any new project works. Note its **project number** — you'll need it to enroll in the preview program.
 2. **Enable two APIs** in that project: `gmail.googleapis.com` and `gmailmcp.googleapis.com`. Both are required: without the second, the MCP server returns `403` on every tool call.
 3. **Configure the OAuth consent screen.** User type **External**, in **Testing** mode, and add your own Google account as a test user. Add the scopes listed under "Scopes" below.
 4. **Create the OAuth client.** Application type **Desktop app**. Google issues a **client ID** and **client secret**; keep both for the seeding step. (Google's token endpoint requires the client secret even though the flow uses PKCE.)
 5. **Enroll your project in the Developer Preview Program** at `developers.google.com/workspace/preview`, using your project number and your Workspace account. Approval usually takes a few hours to a couple of days. Once the project is approved, any Google account can authorize through it.
 6. **Seed your client into xCLAUDE.** There's no in-app UI for this yet, so seeding is a one-time terminal step that stores your client in the macOS Keychain — it never goes into plain-text config. Run the command below once per Google connector you plan to use; the same client serves all three, so just change `CONNECTOR`.
+
 ```bash
 # Nothing is echoed to the terminal or saved to your shell history.
 printf 'client_id: ';     read -r  CLIENT_ID
@@ -103,31 +160,17 @@ security add-generic-password -U \
   -w "$(printf '{"client_id":"%s","client_secret":"%s"}' "$CLIENT_ID" "$CLIENT_SECRET" | openssl base64 -A)"
 unset CLIENT_ID CLIENT_SECRET
 ```
+
 **Finally, connect and restart.** In xCLAUDE open **Add connector**, pick the Google service and click **Connect** (once seeded it shows **Connect** instead of **Set up…**). A browser window opens to authorize; approve it (you'll pass Google's "unverified app" screen — see below), then restart Claude Desktop. Google traffic is now audited like any other connector.
+
 **What to expect while your client is unverified.** Two rough edges come from running your own client in Testing mode, not from xCLAUDE:
+
 - Google shows a **"Google hasn't verified this app"** screen on each authorization. You continue past it because it's your own client.
 - Google expires the refresh token after 7 days, so you **re-authorize about once a week**. xCLAUDE flags a re-login alert on the connector when that happens.
+
 **Scopes.** xCLAUDE requests the scopes Google documents for each server — Gmail: read + compose (the Gmail MCP has **no send tool** by Google's design, so a draft is the most it can do; you send from Gmail yourself); Calendar: read-only; Drive: read with per-file access.
 
-## Requirements
-
-- macOS 13 or later, on Apple Silicon (M1 or newer). The current build is arm64-only; Intel Macs are not supported.
-- Claude Desktop installed and working.
-- Optional: local MCP servers you already use (xCLAUDE wraps them). If you only want to audit remote services, no local server is needed. If you want to try local wrapping and don't have a server, `@modelcontextprotocol/server-filesystem` is an easy starting point (installable via `npx -y`).
-
-## Installation
-
-1. Download the latest `.dmg` from the GitHub Releases page.
-2. Open the `.dmg` and drag `xCLAUDE Gateway.app` into `/Applications/`, then eject the disk image and launch the app **from Applications** (not from the disk image window).
-3. The app is signed with a Developer ID and notarized by Apple; it opens cleanly on first launch.
-
-## Configuration
-
-Open `xCLAUDE Gateway.app`. The Setup tab shows your current `claude_desktop_config.json`: which MCP servers will be wrapped, which are already wrapped, and which are skipped. Click **Install** to wrap all eligible servers. Click **Uninstall** to revert.
-
-The first time you click Install, xCLAUDE Gateway makes a one-time backup of your config at `~/Library/Application Support/Claude/claude_desktop_config.json.bak` which is never overwritten by subsequent operations.
-
-If you prefer manual configuration, see "Manual configuration" below.
+</details>
 
 ## Verification
 
@@ -183,7 +226,11 @@ Each session writes its own file. The file name is the session ID (ULID). Open `
 
 The Connectors tab includes a **Verify detection** button — a safe, self-contained end-to-end check of the kind these tools usually ship. It runs a synthetic risky payload through the audit pipeline and confirms the event is recorded and flagged, so you can see the detectors working end to end without touching any real connector.
 
+<p align="center"><img src="docs/screenshots/verify-detection.png" alt="Verify detection self-test" width="900" /></p>
+
 ## Audit log retention
+
+<p align="center"><img src="docs/screenshots/settings-retention.png" alt="Retention controls under Settings → Audit log" width="900" /></p>
 
 The audit trail is the product, so **nothing is ever deleted by default**. Session logs accumulate in the wrappers directory and stay there until you decide otherwise.
 
@@ -195,6 +242,9 @@ The audit trail is the product, so **nothing is ever deleted by default**. Sessi
 Retention mode, current audit log size, and the last cleanup are shown under Settings → Audit log.
 
 ## Manual configuration
+
+<details>
+<summary>Wrap MCP servers by hand instead of using the Setup UI</summary>
 
 If you prefer to edit your config by hand instead of using the Setup UI, back up your config first:
 
@@ -255,6 +305,8 @@ The same pattern applies to other remote connectors — for example Linear, with
 
 You must run the OAuth login once before this works — the Remote connectors panel does this for you. Restart Claude Desktop after editing.
 
+</details>
+
 ## A note on expectations
 
 In ordinary, day-to-day use of Claude Desktop with local MCP servers, most events will be `tool_call_allowed` at LOW severity. That is the intended baseline, not a sign that "nothing is happening". The Detections view highlights events at MEDIUM, HIGH or CRITICAL only when a detector matches. This typically happens rarely in normal use, because Claude Desktop's model already refuses many sensitive operations before any tool call is issued.
@@ -262,6 +314,9 @@ In ordinary, day-to-day use of Claude Desktop with local MCP servers, most event
 The value of xCLAUDE Gateway in this phase comes from three places: the **complete local audit trail**, the **classification of patterns when they do appear**, and the **foundation for richer detection and reporting** as the engine matures.
 
 ## Troubleshooting
+
+<details>
+<summary>Common issues and fixes</summary>
 
 **Claude Desktop shows "MCP server failed to start" for a wrapped MCP.** Check the `command` path in your config matches the actual launcher path. Make sure the `.app` is in `/Applications/` and that you opened it once (which creates the stable symlink).
 
@@ -272,6 +327,8 @@ The value of xCLAUDE Gateway in this phase comes from three places: the **comple
 **The Detections tab shows no events but the JSONL has them.** Restart `xCLAUDE Gateway.app`. The dashboard polls the JSONL files on startup; if the app was running before the wrappers started writing, refresh by reopening.
 
 **The app looks outdated after an update (old icon, missing connectors).** Make sure you're not running the copy inside a mounted `.dmg`: eject any "xCLAUDE Gateway" disk image and launch from `/Applications/`.
+
+</details>
 
 ## Uninstall
 
