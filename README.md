@@ -12,7 +12,7 @@
 
 </div>
 
-<p align="center"><img src="docs/screenshots/detections-hero.png" alt="Detections view with severity and category filters" width="900" /></p>
+<p align="center"><img src="docs/screenshots/detections-hero.png" alt="Detections view with severity, category and time-range filters" width="900" /></p>
 
 xCLAUDE Gateway sits between Claude Desktop and the services it talks to — remote connectors like Notion, Linear, Atlassian, GitHub or Gmail, or the local MCP servers you already run — records every JSON-RPC frame to a per-session log on your Mac, and classifies sensitive patterns with severity tags. The audit happens locally; the traffic still reaches the service it's addressed to.
 
@@ -100,6 +100,8 @@ xCLAUDE Gateway in its current state **covers a specific subset** of the Claude 
 
 ### What is covered
 
+What's audited is Claude Desktop's MCP JSON-RPC traffic — nothing else on your Mac.
+
 - **Claude Desktop** with **local MCP servers** that are wrapped via the Setup UI (or manually in `claude_desktop_config.json` by pointing them to `xcg-proxy`).
 - **Remote MCP servers connected through xCLAUDE** (Notion, Linear, Atlassian, GitHub, Stripe, Apollo, Slack, Gmail, Google Calendar and Google Drive today; more on the way). You connect them in the app's Remote Connectors panel, which signs you in and bridges the traffic through your machine for auditing.
 
@@ -143,7 +145,12 @@ Google's official Workspace MCP servers (Gmail, Calendar, Drive) don't use the o
 **Before you start — the one hard requirement.** Enrolling in the Developer Preview Program requires a Google **Workspace (domain) account**; the enrollment form rejects plain `@gmail.com` addresses. If a personal Gmail account is all you have, you can't complete this setup today. This gate is Google's, and should disappear when these servers leave preview.
 
 1. **Create a Google Cloud project.** Any new project works. Note its **project number** — you'll need it to enroll in the preview program.
-2. **Enable two APIs** in that project: `gmail.googleapis.com` and `gmailmcp.googleapis.com`. Both are required: without the second, the MCP server returns `403` on every tool call.
+2. **Enable the required APIs** in that project. Each Google MCP server needs two: the service's base API and its MCP API. Enable the pair for every connector you plan to use:
+   - **Gmail** — `gmail.googleapis.com` and `gmailmcp.googleapis.com`
+   - **Google Calendar** — the Google Calendar API and `calendarmcp.googleapis.com`
+   - **Google Drive** — the Google Drive API and `drivemcp.googleapis.com`
+
+   The `*mcp.googleapis.com` API is the one that's easy to miss: without it, that connector's MCP server returns `403` on every tool call.
 3. **Configure the OAuth consent screen.** User type **External**, in **Testing** mode, and add your own Google account as a test user. Add the scopes listed under "Scopes" below.
 4. **Create the OAuth client.** Application type **Desktop app**. Google issues a **client ID** and **client secret**; keep both for the seeding step. (Google's token endpoint requires the client secret even though the flow uses PKCE.)
 5. **Enroll your project in the Developer Preview Program** at `developers.google.com/workspace/preview`, using your project number and your Workspace account. Approval usually takes a few hours to a couple of days. Once the project is approved, any Google account can authorize through it.
@@ -220,7 +227,7 @@ A typical event:
 }
 ```
 
-Each session writes its own file. The file name is the session ID (ULID). Open `xCLAUDE Gateway.app` and click the **Detections** tab to see the same events with severity and category filters.
+Each session writes its own file. The file name is the session ID (ULID). Open `xCLAUDE Gateway.app` and click the **Detections** tab to see the same events with severity, category and time-range filters.
 
 ### Verify detection (self-test)
 
