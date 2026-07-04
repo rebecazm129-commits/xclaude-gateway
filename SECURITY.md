@@ -4,10 +4,10 @@
 
 xCLAUDE Gateway is pre-1.0 and ships as a single line of releases. Only the latest published release receives security fixes.
 
-| Version                | Supported |
-| ---------------------- | --------- |
-| Latest release (0.6.x) | ✅         |
-| Older releases         | ❌         |
+| Version                  | Supported |
+| ------------------------ | --------- |
+| Latest published release | ✅         |
+| Older releases           | ❌         |
 
 ## Reporting a vulnerability
 

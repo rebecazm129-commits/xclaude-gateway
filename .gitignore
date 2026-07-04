@@ -2,6 +2,9 @@ node_modules/
 dist/
 out/
 build/
+# El build/ raíz no es output: contiene los recursos de packaging
+# (entitlements, iconos) que electron-builder.yml y el README referencian.
+!/build/
 release/
 *.tsbuildinfo
 *.dmg
@@ -23,3 +26,6 @@ packages/proxy/models/
 
 # Disposable empirical spikes — never committed.
 spike/
+
+# Local manual backups (e.g. apps/desktop/dist_0.6.0_manual.bak/).
+*.bak/
