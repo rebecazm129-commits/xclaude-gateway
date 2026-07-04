@@ -225,7 +225,7 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
           </span>
           <h2 className={styles['emptyHeading']}>See what Claude does.</h2>
           <p className={styles['emptyDetail']}>
-            Every tool call Claude makes, classified by risk — 6 risk categories, 4 severity levels.
+            Every tool call Claude makes, classified by risk — 7 risk categories, 4 severity levels.
           </p>
           <p className={styles['emptyDetail']}>Audited locally. No account. No telemetry.</p>
           <p className={styles['emptyHint']}>
