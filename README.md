@@ -14,7 +14,7 @@
 
 <p align="center"><img src="docs/screenshots/detections-hero.png" alt="Detections view with severity, category and time-range filters" width="900" /></p>
 
-xCLAUDE Gateway sits between Claude Desktop and the services it talks to — remote connectors like Notion, Linear, Atlassian, GitHub or Gmail, or the local MCP servers you already run — records every JSON-RPC frame to a per-session log on your Mac, and classifies sensitive patterns with severity tags. The audit happens locally; the traffic still reaches the service it's addressed to.
+xCLAUDE Gateway sits between Claude Desktop and the services it talks to — remote connectors like Notion, Linear, Atlassian, GitHub or Gmail, or the local MCP servers you already run — records every JSON-RPC frame to a per-session log on your Mac, and classifies sensitive patterns with severity tags. The audit happens locally; the traffic still reaches the service it's addressed to. The audit covers both sides of the conversation: what Claude Desktop asks your tools to do, and what those tools send back.
 
 ## Requirements
 
@@ -30,7 +30,7 @@ xCLAUDE Gateway sits between Claude Desktop and the services it talks to — rem
 
 ## Configuration
 
-Open `xCLAUDE Gateway.app`. The Setup tab shows your current `claude_desktop_config.json`: which MCP servers will be wrapped, which are already wrapped, and which are skipped. Click **Install** to wrap all eligible servers. Click **Uninstall** to revert.
+Open `xCLAUDE Gateway.app`. The **Connectors** tab lists every entry in your `claude_desktop_config.json` with its audit state: **auditing** (already wrapped), **not audited** (eligible for wrapping) or **unsupported**. To wrap the eligible servers, open **Settings** (the gear icon in the header) and click **Install**; click **Uninstall** there to revert.
 
 The first time you click Install, xCLAUDE Gateway makes a one-time backup of your config at `~/Library/Application Support/Claude/claude_desktop_config.json.bak` which is never overwritten by subsequent operations.
 
@@ -43,11 +43,11 @@ Whether you connect a remote service through xCLAUDE (Notion, Linear, Atlassian,
 - **Wraps your existing MCP servers transparently** — no changes to the servers themselves.
 - **Records every JSON-RPC frame** (requests, responses, notifications) to a per-session JSONL log under `~/Library/Application Support/xCLAUDE Gateway/wrappers/`.
 - **Classifies sensitive patterns** with a detection engine — see [Detectors](#detectors) for the full list.
-- **Both directions.** `credential_detected` and `prompt_injection` also scan the content returned by tool calls (server responses), not just outgoing parameters — a secret or an injection string arriving in a tool result is classified too.
+- **Both directions.** All five regex detectors scan tool-call results as well as outgoing arguments — a secret, an injected instruction or a checksum-valid identifier arriving in a server's response is classified too. Named-entity PII (async enrichment) runs on requests only.
 - **Captures latency overhead per response** (`overheadUs`) and end-to-end server response time (`latencyMs`).
 - **Captures the wrapped server's stderr output** as separate events.
 - **Shows the classified events in a Detections view** inside the `xCLAUDE Gateway.app` window, with severity, category and time-range filters, and lets you **export the filtered trail** to raw JSONL or CSV — plus a menu-bar icon whose dropdown menu lists the number of flagged events in the last 24 hours.
-- **Auto-configures `claude_desktop_config.json`** from a Setup UI: one click installs the wrappers, another reverts them, with a backup of your original config preserved.
+- **Auto-configures `claude_desktop_config.json`** from the app: one click on **Install** (in the Settings drawer) wraps the eligible servers, another reverts them, with a backup of your original config preserved.
 
 The audit runs entirely on your Mac: no telemetry, no account, no analytics. xCLAUDE makes no network calls of its own — the only outbound traffic is the connectors you add and their OAuth sign-in, plus the "Request a connector" link, which opens your system browser. Note that wrapped servers still talk to their destination — a local MCP server to your filesystem, a remote connector to its provider over the network. xCLAUDE observes that traffic; it doesn't reroute or withhold it.
 
@@ -102,8 +102,8 @@ xCLAUDE Gateway in its current state **covers a specific subset** of the Claude 
 
 What's audited is Claude Desktop's MCP JSON-RPC traffic — nothing else on your Mac.
 
-- **Claude Desktop** with **local MCP servers** that are wrapped via the Setup UI (or manually in `claude_desktop_config.json` by pointing them to `xcg-proxy`).
-- **Remote MCP servers connected through xCLAUDE** (Notion, Linear, Atlassian, GitHub, Stripe, Apollo, Slack, Gmail, Google Calendar and Google Drive today; more on the way). You connect them in the app's Remote Connectors panel, which signs you in and bridges the traffic through your machine for auditing.
+- **Claude Desktop** with **local MCP servers** that are wrapped via the app's **Install** action (or manually in `claude_desktop_config.json` by pointing them to `xcg-proxy`).
+- **Remote MCP servers connected through xCLAUDE** (Notion, Linear, Atlassian, GitHub, Stripe, Apollo, Slack, Gmail, Google Calendar and Google Drive today; more on the way). You connect them from the Connectors tab (+ Add connector), which signs you in and bridges the traffic through your machine for auditing.
 
 ### What is NOT covered
 
@@ -127,7 +127,7 @@ xCLAUDE can audit remote MCP services (Notion, Linear, Atlassian, GitHub, Stripe
 To audit a service this way:
 
 1. If you already have it enabled as a native Connector in Claude Desktop, disconnect it there first. xCLAUDE audits its own bridged connection, not the native one.
-2. In xCLAUDE, open the Setup tab and click **Add connector** to open the connector gallery. Pick the service and click **Connect**. (Not listed? Use the **Request a connector** link.)
+2. In xCLAUDE, open the **Connectors** tab and click **+ Add connector** to open the connector gallery. Pick the service and click **Connect**. (Not listed? Use the **Request a connector** link.)
 3. A browser window opens to authorize the service (standard OAuth). Approve it; the tab will say the login is complete.
 4. Restart Claude Desktop. Claude now reaches the service through xCLAUDE, and every call is recorded and classified like any other MCP traffic.
 
@@ -251,9 +251,9 @@ Retention mode, current audit log size, and the last cleanup are shown under Set
 ## Manual configuration
 
 <details>
-<summary>Wrap MCP servers by hand instead of using the Setup UI</summary>
+<summary>Wrap MCP servers by hand instead of using the app's Install action</summary>
 
-If you prefer to edit your config by hand instead of using the Setup UI, back up your config first:
+If you prefer to edit your config by hand instead of clicking **Install** in the app, back up your config first:
 
 ```bash
 cp ~/Library/Application\ Support/Claude/claude_desktop_config.json \
@@ -339,7 +339,7 @@ The value of xCLAUDE Gateway in this phase comes from three places: the **comple
 
 ## Uninstall
 
-1. Open `xCLAUDE Gateway.app` and click **Uninstall** on the Setup tab. This reverts all wrapped MCP servers in your config.
+1. Open `xCLAUDE Gateway.app`, open **Settings** (the gear icon) and click **Uninstall**. This reverts all wrapped MCP servers in your config.
 2. Move `xCLAUDE Gateway.app` from `/Applications/` to the Trash.
 3. Optionally delete the logs:
 
@@ -362,7 +362,7 @@ Monorepo with three workspaces:
 
 - `packages/proxy` — the MCP proxy itself plus the `xcg-config` CLI.
 - `packages/shared` — types and utilities shared between proxy and desktop.
-- `apps/desktop` — the Electron app shipping the Setup UI and live Detections view.
+- `apps/desktop` — the Electron app shipping the Connectors and Detections views.
 
 Built with pnpm 9, Node 22, Electron, TypeScript.
 
