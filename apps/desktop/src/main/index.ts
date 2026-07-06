@@ -55,6 +55,7 @@ import { runSelfTest } from './selftest-handler.js';
 import { runConfigConnect } from './connect-handler.js';
 import { runLoginProcess } from './login-runner.js';
 import { hasStoredCredentials, hasStoredClient, seedStoredClient } from '@xcg/proxy/credentials';
+import { seedClientWarnings } from './seed-client-warnings.js';
 import { createTray, computeTrayCounts, updateTrayCounts } from './tray.js';
 import { computeReloginTransitions } from './relogin-notify.js';
 import { isAllowedNavigation } from './navigation-guard.js';
@@ -335,12 +336,12 @@ ipcMain.handle('config:has-client', (_event, params: { name: string }) => {
 });
 
 // Seed one BYO OAuth client into the Keychain for one or more connectors (the
-// Google wizard writes the same client to gmail+calendar+drive). Hard gates:
-// well-formed names and a non-empty client_id. Format checks are ADVISORY only
-// (warnings never block the write): a wrong-looking value may still be what the
-// user's console issued. An empty client_secret after trim counts as absent, so
-// the stored JSON omits the key (public-PKCE shape). ok:true iff every name
-// reads back seeded. No branch logs or echoes the client_secret.
+// Google wizard writes the same client to gmail+calendar+drive; Slack seeds
+// just itself). Hard gates: well-formed names and a non-empty client_id.
+// Format checks are ADVISORY only and PER CONNECTOR (seed-client-warnings.ts);
+// warnings never block the write. An empty client_secret after trim counts as
+// absent, so the stored JSON omits the key (public-PKCE shape). ok:true iff
+// every name reads back seeded. No branch logs or echoes the client_secret.
 ipcMain.handle(
   'config:seed-client',
   async (
@@ -355,13 +356,7 @@ ipcMain.handle(
       if (!isSafeRemoteName(name)) return { ok: false, error: `invalid connector name: "${name}"` };
     }
     if (clientId === '') return { ok: false, error: 'client_id is empty' };
-    const warnings: string[] = [];
-    if (!clientId.endsWith('.apps.googleusercontent.com')) {
-      warnings.push('The Client ID does not end in ".apps.googleusercontent.com" — saved anyway, double-check it.');
-    }
-    if (clientSecret !== undefined && !clientSecret.startsWith('GOCSPX-')) {
-      warnings.push('The Client secret does not start with "GOCSPX-" — saved anyway, double-check it.');
-    }
+    const warnings = seedClientWarnings(params.names, clientId, clientSecret);
     try {
       const seeded: string[] = [];
       for (const name of params.names) {
