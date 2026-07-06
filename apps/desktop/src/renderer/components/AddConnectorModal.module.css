@@ -159,22 +159,25 @@
   cursor: not-allowed;
 }
 
-/* Secondary CTA for Google (BYO) before the client is seeded: same box as
- * btnConnect, outline treatment so it reads as "needs a step", not "go". */
+/* Secondary CTA for BYO connectors before the client is seeded: same box as
+ * btnConnect (full width, same padding), outline treatment so it reads as
+ * "needs a step", not "go" — but with enough border and wash to match the
+ * visual weight of its solid siblings. */
 .btnSetup {
+  width: 100%;
   padding: 8px 0;
   font-family: var(--kraft-font-mono);
   font-size: 11.5px;
   font-weight: 600;
   color: var(--kraft-accent);
-  background: transparent;
-  border: 1px solid var(--kraft-accent);
+  background: color-mix(in srgb, var(--kraft-accent) 6%, transparent);
+  border: 1.5px solid var(--kraft-accent);
   border-radius: var(--kraft-radius-sm);
   cursor: pointer;
 }
 
 .btnSetup:hover {
-  background: color-mix(in srgb, var(--kraft-accent) 8%, transparent);
+  background: color-mix(in srgb, var(--kraft-accent) 14%, transparent);
 }
 
 .btnConnecting {
