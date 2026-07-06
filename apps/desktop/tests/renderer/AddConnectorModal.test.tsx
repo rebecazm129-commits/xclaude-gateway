@@ -260,3 +260,70 @@ describe('ConnectorSetupWizard (via AddConnectorModal)', () => {
     expect(screen.getByRole('button', { name: 'Save and finish' })).toBeDefined();
   });
 });
+
+// "Set up…" on the unseeded Slack card (routing via entry.setupCatalog).
+async function openSlackWizard(): Promise<void> {
+  const slack = screen.getByTestId('connector-card-slack');
+  fireEvent.click(await within(slack).findByRole('button', { name: 'Set up…' }));
+}
+
+describe('ConnectorSetupWizard — Slack catalog', () => {
+  it('Slack group note renders and unseeded Slack routes to the Slack intro', async () => {
+    stubXcg(); // configHasClient defaults to false → not seeded
+    renderOpen();
+    expect(screen.getByText(/Slack needs a one-time app setup/)).toBeDefined();
+    await openSlackWizard();
+    expect(screen.getByText('Set up Slack')).toBeDefined();
+    // Step count and route map derived from the slack catalog (1 step + credentials).
+    expect(screen.getByText(/2 steps: Slack app → paste your Client ID/)).toBeDefined();
+  });
+
+  it('Slack with a seeded client shows "Connect" (seeding check follows setupCatalog)', async () => {
+    stubXcg({ configHasClient: vi.fn(async (name: string) => name === 'slack') });
+    renderOpen();
+    const slack = screen.getByTestId('connector-card-slack');
+    expect(await within(slack).findByRole('button', { name: 'Connect' })).toBeDefined();
+  });
+
+  it('step 1 deep-links the manifest-preloaded app creation URL', async () => {
+    const api = stubXcg();
+    renderOpen();
+    await openSlackWizard();
+    fireEvent.click(screen.getByRole('button', { name: 'Start setup' }));
+    expect(screen.getByText('Step 1/2')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: /Create the Slack app/ }));
+    const url = api.openExternalUrl.mock.calls[0]?.[0] as string;
+    expect(url.startsWith('https://api.slack.com/apps?new_app=1&manifest_json=')).toBe(true);
+    // The encoded manifest carries the product redirect URI and the PKCE flag.
+    const manifest = JSON.parse(
+      decodeURIComponent(url.split('manifest_json=')[1] ?? ''),
+    ) as { oauth_config: { redirect_urls: string[]; pkce_enabled: boolean } };
+    expect(manifest.oauth_config.redirect_urls).toEqual(['http://127.0.0.1:51703/xcg-callback']);
+    expect(manifest.oauth_config.pkce_enabled).toBe(true);
+  });
+
+  it('credentials: single Client ID field with hint, no secret field, seeds ["slack"]', async () => {
+    const api = stubXcg({
+      configSeedClient: vi.fn(async () => ({ ok: true, seeded: ['slack'], warnings: [] })),
+    });
+    renderOpen();
+    await openSlackWizard();
+    fireEvent.click(screen.getByRole('button', { name: 'Start setup' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Done — next' }));
+    expect(screen.getByText('Step 2/2')).toBeDefined();
+    // secretRequired: false → the secret field is not rendered at all.
+    expect(screen.queryByLabelText('Client secret')).toBeNull();
+    expect(screen.getByText(/Basic Information → App Credentials → Client ID/)).toBeDefined();
+    // The hint is part of the label's accessible name → match by prefix.
+    fireEvent.change(screen.getByLabelText(/^Client ID/), { target: { value: '1111.2222' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save and finish' }));
+    expect(
+      await screen.findByText('Saved to Keychain — Slack is ready to connect.'),
+    ).toBeDefined();
+    expect(api.configSeedClient).toHaveBeenCalledWith(['slack'], '1111.2222', undefined);
+    // Back in the gallery, Slack now offers Connect.
+    fireEvent.click(screen.getByRole('button', { name: 'Back to connectors' }));
+    const slack = screen.getByTestId('connector-card-slack');
+    expect(within(slack).getByRole('button', { name: 'Connect' })).toBeDefined();
+  });
+});

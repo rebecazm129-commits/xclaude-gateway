@@ -9,7 +9,7 @@ import { Modal } from './Modal.js';
 
 import styles from './AddConnectorModal.module.css';
 
-type Group = 'oneclick' | 'google' | 'comingsoon';
+type Group = 'oneclick' | 'slack' | 'google' | 'comingsoon';
 
 interface CatalogEntry {
   readonly label: string;
@@ -22,6 +22,9 @@ interface CatalogEntry {
   readonly url?: string;
   /** Space-separated OAuth scopes (Google needs explicit; DCR connectors omit). */
   readonly scope?: string;
+  /** BYO-client connector: which setup wizard seeds its OAuth client. Absent
+   *  for DCR connectors (no setup step). */
+  readonly setupCatalog?: keyof typeof SETUP_CATALOGS;
 }
 
 const CATALOG: readonly CatalogEntry[] = [
@@ -56,18 +59,19 @@ const CATALOG: readonly CatalogEntry[] = [
     description: 'Prospecting, contacts and enrichment — every call recorded and classified.',
   },
   {
-    label: 'Slack', name: 'slack', logo: 'slack', group: 'oneclick',
+    label: 'Slack', name: 'slack', logo: 'slack', group: 'slack', setupCatalog: 'slack',
     url: 'https://mcp.slack.com/mcp',
     description: 'Search, messages and canvases — every call recorded and classified.',
   },
   {
-    label: 'Gmail', name: 'gmail', logo: 'gmail', group: 'google',
+    label: 'Gmail', name: 'gmail', logo: 'gmail', group: 'google', setupCatalog: 'google',
     url: 'https://gmailmcp.googleapis.com/mcp/v1',
     scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose',
     description: "Read and draft — Google's MCP has no send tool by design.",
   },
   {
     label: 'Google Calendar', name: 'calendar', logo: 'googlecalendar', group: 'google',
+    setupCatalog: 'google',
     url: 'https://calendarmcp.googleapis.com/mcp/v1',
     scope:
       'https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.events.readonly',
@@ -75,6 +79,7 @@ const CATALOG: readonly CatalogEntry[] = [
   },
   {
     label: 'Google Drive', name: 'drive', logo: 'googledrive', group: 'google',
+    setupCatalog: 'google',
     url: 'https://drivemcp.googleapis.com/mcp/v1',
     scope: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file',
     description: 'Read and per-file access — every call recorded and classified.',
@@ -91,6 +96,16 @@ const CATALOG: readonly CatalogEntry[] = [
 
 const GROUPS: readonly { id: Group; label: string; note?: ReactNode }[] = [
   { id: 'oneclick', label: 'One-click connect' },
+  {
+    id: 'slack',
+    label: 'Slack',
+    note: (
+      <>
+        <b>One-time setup:</b> Slack needs a one-time app setup — the Set up button walks you
+        through it.
+      </>
+    ),
+  },
   {
     id: 'google',
     label: 'Google services',
@@ -166,18 +181,18 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
     };
   }, []);
 
-  // Which Google (BYO) connectors already have their OAuth client seeded in the
-  // Keychain. Re-checked each time the modal opens (seeding can also happen out
-  // of band, e.g. a terminal `security` write, so it can change between opens);
-  // the wizard's onSeeded updates the set optimistically in-session.
-  // Absence/error = not seeded.
+  // Which BYO connectors (entries with a setup catalog) already have their
+  // OAuth client seeded in the Keychain. Re-checked each time the modal opens
+  // (seeding can also happen out of band, e.g. a terminal `security` write, so
+  // it can change between opens); the wizard's onSeeded updates the set
+  // optimistically in-session. Absence/error = not seeded.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     async function check(): Promise<void> {
       const found = new Set<string>();
       for (const entry of CATALOG) {
-        if (entry.group !== 'google') continue;
+        if (entry.setupCatalog === undefined) continue;
         try {
           if (await window.xcg.configHasClient(entry.name)) found.add(entry.name);
         } catch {
@@ -236,9 +251,9 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
         </button>
       );
     }
-    // Google (BYO): no seeded client yet → route to the setup wizard instead
-    // of attempting OAuth (which would fail without a client).
-    if (entry.group === 'google' && !clientSeeded.has(entry.name)) {
+    // BYO connector with no seeded client yet → route to its setup wizard
+    // instead of attempting OAuth (which would fail without a client).
+    if (entry.setupCatalog !== undefined && !clientSeeded.has(entry.name)) {
       return (
         <button type="button" className={styles['btnSetup']} onClick={() => setSetupEntry(entry)}>
           Set up…
@@ -259,9 +274,9 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
 
   return (
     <Modal title="Add connector" onClose={onClose} footer={FOOT_NOTE}>
-      {setupEntry !== null ? (
+      {setupEntry !== null && setupEntry.setupCatalog !== undefined ? (
         <ConnectorSetupWizard
-          catalog={SETUP_CATALOGS.google}
+          catalog={SETUP_CATALOGS[setupEntry.setupCatalog]}
           logoSvg={LOGO_SVGS[setupEntry.logo] ?? ''}
           onBack={() => setSetupEntry(null)}
           onSeeded={(names) => setClientSeeded((prev) => new Set([...prev, ...names]))}

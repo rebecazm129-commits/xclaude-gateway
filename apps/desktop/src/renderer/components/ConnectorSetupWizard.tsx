@@ -35,9 +35,13 @@ export interface SetupWizardCredentials {
   readonly targets: readonly string[];
   /** Whether the provider's token endpoint needs a client secret (Google: yes;
    *  public-PKCE clients like Slack: no). Required + empty after trim is a UI
-   *  validation error — config:seed-client is never called without it. */
+   *  validation error — config:seed-client is never called without it. When
+   *  false the secret field is not rendered at all. */
   readonly secretRequired: boolean;
-  readonly secretRequiredError: string;
+  /** Shown when secretRequired and the field is empty; unused otherwise. */
+  readonly secretRequiredError?: string;
+  /** Muted helper under the Client ID field (e.g. where to find it). */
+  readonly idHint?: string;
   readonly successMessage: string;
 }
 
@@ -168,7 +172,88 @@ const GOOGLE_CATALOG: SetupCatalog = {
   },
 };
 
-export const SETUP_CATALOGS = { google: GOOGLE_CATALOG } as const;
+// The user's own Slack app, created in one click from a preloaded manifest.
+// Mirror of Rebeca's production app config. Keep redirect_urls in sync with
+// KeychainOAuthProvider.REDIRECT_URI (packages/proxy/src/oauth-provider.ts).
+const SLACK_APP_MANIFEST = {
+  display_information: {
+    name: 'xCLAUDE Slack Connector',
+    description: 'Connects Slack to xCLAUDE Gateway — every call recorded and classified.',
+  },
+  features: {
+    bot_user: { display_name: 'xCLAUDE Slack Connector', always_online: false },
+  },
+  oauth_config: {
+    redirect_urls: ['http://127.0.0.1:51703/xcg-callback'],
+    scopes: {
+      user: [
+        'search:read.public', 'search:read.private', 'search:read.mpim', 'search:read.im',
+        'search:read.files', 'search:read.users', 'channels:history', 'groups:history',
+        'mpim:history', 'im:history', 'channels:read', 'groups:read', 'mpim:read',
+        'files:read', 'emoji:read', 'reactions:read', 'canvases:read', 'users:read',
+        'users:read.email', 'chat:write', 'canvases:write', 'reactions:write',
+        'channels:write', 'groups:write', 'im:write', 'mpim:write',
+      ],
+      bot: ['users:read'],
+    },
+    // Slack DROPS this flag when the app is created via the manifest URL, and
+    // it is no longer needed: PKCE went GA (March 2026) without a per-app
+    // opt-in — the full OAuth flow worked without it in the 2026-07-06 dogfood.
+    // Kept for fidelity to the original app manifest; harmless if ignored.
+    pkce_enabled: true,
+  },
+  settings: {
+    org_deploy_enabled: false,
+    socket_mode_enabled: false,
+    token_rotation_enabled: false,
+    is_mcp_enabled: true,
+  },
+};
+
+// Slack's app-creation flow accepts a URL-encoded manifest in either format
+// (docs.slack.dev/app-manifests: manifest_yaml and manifest_json); we hold
+// JSON, so encode it as manifest_json.
+const CREATE_SLACK_APP_URL =
+  'https://api.slack.com/apps?new_app=1&manifest_json=' +
+  encodeURIComponent(JSON.stringify(SLACK_APP_MANIFEST));
+
+const SLACK_CATALOG: SetupCatalog = {
+  title: 'Set up Slack',
+  introParagraphs: [
+    "You'll create your own Slack app — it stays in your workspace, and its client ID " +
+      'stays in your macOS Keychain.',
+    'One time, about 2 minutes — most of it is one click.',
+  ],
+  warning: 'Your workspace admin may need to approve the app before you can connect.',
+  startLabel: 'Start setup',
+  steps: [
+    {
+      shortName: 'Slack app',
+      title: 'Create the Slack app',
+      advanceLabel: 'Done — next',
+      body: (
+        <div className={styles['block']}>
+          <span className={styles['blockTitle']}>Slack app</span>
+          <p className={styles['text']}>
+            One click opens Slack with the app pre-configured — scopes, PKCE and MCP
+            included. Pick your workspace and hit Create.
+          </p>
+          <LinkBtn url={CREATE_SLACK_APP_URL}>Create the Slack app</LinkBtn>
+        </div>
+      ),
+    },
+  ],
+  credentials: {
+    shortName: 'paste your Client ID',
+    title: 'Paste your Client ID',
+    targets: ['slack'],
+    secretRequired: false,
+    successMessage: 'Saved to Keychain — Slack is ready to connect.',
+    idHint: 'Basic Information → App Credentials → Client ID (looks like 1234567890.1234567890)',
+  },
+};
+
+export const SETUP_CATALOGS = { google: GOOGLE_CATALOG, slack: SLACK_CATALOG } as const;
 
 export interface ConnectorSetupWizardProps {
   readonly catalog: SetupCatalog;
@@ -220,9 +305,9 @@ export function ConnectorSetupWizard({
     const secret = clientSecret.trim();
     if (catalog.credentials.secretRequired && secret === '') {
       // Hard UI gate for secret-requiring catalogs (Google): config:seed-client
-      // is never called without a secret. Catalogs that declare the secret
-      // optional (future Slack) seed with the key omitted instead.
-      setFieldError(catalog.credentials.secretRequiredError);
+      // is never called without a secret. Secret-less catalogs (Slack) never
+      // reach here — their field isn't rendered — and seed with the key omitted.
+      setFieldError(catalog.credentials.secretRequiredError ?? 'A client secret is required.');
       return;
     }
     setFieldError(null);
@@ -317,17 +402,22 @@ export function ConnectorSetupWizard({
                 onChange={(e) => setClientId(e.target.value)}
                 disabled={saving || saved}
               />
+              {catalog.credentials.idHint !== undefined ? (
+                <span className={styles['fieldHint']}>{catalog.credentials.idHint}</span>
+              ) : null}
             </label>
-            <label className={styles['field']}>
-              <span className={styles['fieldLabel']}>Client secret</span>
-              <input
-                type="password"
-                className={styles['input']}
-                value={clientSecret}
-                onChange={(e) => setClientSecret(e.target.value)}
-                disabled={saving || saved}
-              />
-            </label>
+            {catalog.credentials.secretRequired ? (
+              <label className={styles['field']}>
+                <span className={styles['fieldLabel']}>Client secret</span>
+                <input
+                  type="password"
+                  className={styles['input']}
+                  value={clientSecret}
+                  onChange={(e) => setClientSecret(e.target.value)}
+                  disabled={saving || saved}
+                />
+              </label>
+            ) : null}
           </div>
           {fieldError !== null ? (
             <p className={styles['fieldError']} role="alert">
