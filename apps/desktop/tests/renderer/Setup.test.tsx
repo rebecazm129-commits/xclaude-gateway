@@ -84,8 +84,10 @@ describe('Setup — empty state', () => {
     stubXcg([]);
     renderSetup(emptyStatus(true));
     expect(screen.getByText('Start auditing your connectors')).toBeDefined();
-    expect(screen.getByText(/Three steps:/)).toBeDefined();
-    expect(screen.getByText(/wraps your Claude Desktop config/)).toBeDefined();
+    expect(screen.getByText(/Route that traffic through xCLAUDE in three steps:/)).toBeDefined();
+    expect(screen.getByText(/wraps the local MCP servers already in your Claude Desktop/)).toBeDefined();
+    expect(screen.getByText('Add your connectors here')).toBeDefined();
+    expect(screen.getByText(/the Set up button walks you through it/)).toBeDefined();
     expect(screen.getByText('Disconnect the native versions')).toBeDefined();
     expect(
       screen.getByText('Local MCP servers from your Claude config appear here after Install.'),
@@ -99,7 +101,7 @@ describe('Setup — empty state', () => {
     expect(screen.getByText('See what Claude does.')).toBeDefined();
     expect(screen.getByText(/Claude Desktop has no MCP config yet/)).toBeDefined();
     expect(screen.queryByText('Start auditing your connectors')).toBeNull();
-    expect(screen.queryByText(/Three steps:/)).toBeNull();
+    expect(screen.queryByText(/in three steps:/)).toBeNull();
     expect(screen.queryByText(/bypass the audit/)).toBeNull();
   });
 });

@@ -229,20 +229,22 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
             <>
               <h2 className={styles['emptyHeading']}>Start auditing your connectors</h2>
               <p className={styles['emptyDetail']}>
-                Connectors aren’t audited until they run through xCLAUDE. Three steps:
+                Right now Claude talks to your tools directly. Route that traffic through
+                xCLAUDE in three steps:
               </p>
               <ol className={styles['emptySteps']}>
                 <li>
-                  <b>Install</b> — wraps your Claude Desktop config so traffic flows through
-                  xCLAUDE.
+                  <b>Install</b> — wraps the local MCP servers already in your Claude Desktop
+                  config.
                 </li>
                 <li>
-                  <b>Add connector</b> — connect the services you use, each call recorded and
-                  classified.
+                  <b>Add your connectors here</b> — reconnect the remote services you use
+                  through xCLAUDE instead of natively. Google services need a one-time setup —
+                  the Set up button walks you through it.
                 </li>
                 <li>
-                  <b>Disconnect the native versions</b> — in Claude Desktop, then restart it.
-                  Otherwise calls bypass the audit.
+                  <b>Disconnect the native versions</b> in Claude Desktop and restart it —
+                  otherwise those calls bypass the audit.
                 </li>
               </ol>
               <p className={styles['emptyHint']}>
