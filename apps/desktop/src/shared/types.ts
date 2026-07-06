@@ -27,6 +27,13 @@ export interface ToolCount {
   ts: string;
 }
 
+// Result of config:seed-client (BYO OAuth client → Keychain). ok:true iff every
+// requested connector reads back seeded; `warnings` are advisory format checks
+// that never blocked the write. Neither branch ever carries the client_secret.
+export type SeedClientResult =
+  | { ok: true; seeded: string[]; warnings: string[] }
+  | { ok: false; error: string };
+
 // Variante 1: mcp.request con detection inline (detector síncrono regex que
 // enriqueció el frame en el path crítico). Es lo que el reader ya leía.
 export interface DetectionEvent {

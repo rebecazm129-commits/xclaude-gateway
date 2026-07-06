@@ -9,6 +9,7 @@ import { ensureSymlink, type SelfTestReport } from '@xcg/shared';
 import {
   CLAUDE_DESKTOP_CONFIG_PATH,
   STABLE_XCG_PROXY_PATH,
+  isSafeRemoteName,
 } from '@xcg/shared/config';
 
 import {
@@ -34,6 +35,7 @@ import type {
   RetentionSetModeResult,
   RetentionSizeSnapshot,
   RetentionStatus,
+  SeedClientResult,
 } from '../shared/types.js';
 import { exportAudit, type AuditExportFormat } from './audit-export.js';
 import {
@@ -52,7 +54,7 @@ import { spawnWrapper, readDetectionsFromAudit, resolveNpxPath } from './selftes
 import { runSelfTest } from './selftest-handler.js';
 import { runConfigConnect } from './connect-handler.js';
 import { runLoginProcess } from './login-runner.js';
-import { hasStoredCredentials, hasStoredClient } from '@xcg/proxy/credentials';
+import { hasStoredCredentials, hasStoredClient, seedStoredClient } from '@xcg/proxy/credentials';
 import { createTray, computeTrayCounts, updateTrayCounts } from './tray.js';
 import { computeReloginTransitions } from './relogin-notify.js';
 import { isAllowedNavigation } from './navigation-guard.js';
@@ -331,6 +333,51 @@ ipcMain.handle('config:has-credentials', (_event, params: { name: string }) => {
 ipcMain.handle('config:has-client', (_event, params: { name: string }) => {
   return hasStoredClient(params.name);
 });
+
+// Seed one BYO OAuth client into the Keychain for one or more connectors (the
+// Google wizard writes the same client to gmail+calendar+drive). Hard gates:
+// well-formed names and a non-empty client_id. Format checks are ADVISORY only
+// (warnings never block the write): a wrong-looking value may still be what the
+// user's console issued. An empty client_secret after trim counts as absent, so
+// the stored JSON omits the key (public-PKCE shape). ok:true iff every name
+// reads back seeded. No branch logs or echoes the client_secret.
+ipcMain.handle(
+  'config:seed-client',
+  async (
+    _event,
+    params: { names: string[]; clientId: string; clientSecret?: string },
+  ): Promise<SeedClientResult> => {
+    const clientId = params.clientId.trim();
+    const trimmedSecret = params.clientSecret?.trim();
+    const clientSecret = trimmedSecret === '' ? undefined : trimmedSecret;
+    if (params.names.length === 0) return { ok: false, error: 'no connectors given' };
+    for (const name of params.names) {
+      if (!isSafeRemoteName(name)) return { ok: false, error: `invalid connector name: "${name}"` };
+    }
+    if (clientId === '') return { ok: false, error: 'client_id is empty' };
+    const warnings: string[] = [];
+    if (!clientId.endsWith('.apps.googleusercontent.com')) {
+      warnings.push('The Client ID does not end in ".apps.googleusercontent.com" — saved anyway, double-check it.');
+    }
+    if (clientSecret !== undefined && !clientSecret.startsWith('GOCSPX-')) {
+      warnings.push('The Client secret does not start with "GOCSPX-" — saved anyway, double-check it.');
+    }
+    try {
+      const seeded: string[] = [];
+      for (const name of params.names) {
+        if (await seedStoredClient(name, clientId, clientSecret)) seeded.push(name);
+      }
+      const missing = params.names.filter((n) => !seeded.includes(n));
+      if (missing.length > 0) {
+        return { ok: false, error: `written but not readable back: ${missing.join(', ')}` };
+      }
+      return { ok: true, seeded, warnings };
+    } catch (err) {
+      // seedStoredClient rethrows sanitized (never the security argv / secret).
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+);
 
 // Latest tool inventory size for a connector, derived read-only from the audit
 // JSONL (the proxy already records tools/list responses). null if unknown.

@@ -22,6 +22,7 @@ import type {
   PurgeMode,
   RetentionSetModeResult,
   RetentionStatus,
+  SeedClientResult,
 } from '../shared/types.js';
 
 contextBridge.exposeInMainWorld('xcg', {
@@ -57,6 +58,8 @@ contextBridge.exposeInMainWorld('xcg', {
     ipcRenderer.invoke('config:has-credentials', { name }),
   configHasClient: (name: string): Promise<boolean> =>
     ipcRenderer.invoke('config:has-client', { name }),
+  configSeedClient: (names: string[], clientId: string, clientSecret?: string): Promise<SeedClientResult> =>
+    ipcRenderer.invoke('config:seed-client', { names, clientId, clientSecret }),
   configToolCount: (name: string): Promise<ToolCount | null> =>
     ipcRenderer.invoke('config:tool-count', { name }),
   validateHealth: (): Promise<HealthResult> => ipcRenderer.invoke('system:health'),

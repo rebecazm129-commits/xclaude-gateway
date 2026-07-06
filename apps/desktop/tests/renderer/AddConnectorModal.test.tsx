@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 // DOM tests for the Add connector modal: visibility (open), search filtering
-// (incl. hiding groups with no matches), the four button states, and the
-// external "Request a connector" link. window.xcg is stubbed per test.
+// (incl. hiding groups with no matches), the four button states, the external
+// "Request a connector" link, and the Google BYO setup wizard (steps, deep
+// links, credentials validation and seeding). window.xcg is stubbed per test.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -13,6 +14,7 @@ interface XcgStub {
   configConnect?: ReturnType<typeof vi.fn>;
   openExternalUrl?: ReturnType<typeof vi.fn>;
   configHasClient?: ReturnType<typeof vi.fn>;
+  configSeedClient?: ReturnType<typeof vi.fn>;
 }
 
 function stubXcg(overrides: XcgStub = {}): Required<XcgStub> {
@@ -21,6 +23,7 @@ function stubXcg(overrides: XcgStub = {}): Required<XcgStub> {
     configConnect: vi.fn(async () => ({ ok: true, reconnected: false, name: 'x' })),
     openExternalUrl: vi.fn(async () => undefined),
     configHasClient: vi.fn(async () => false),
+    configSeedClient: vi.fn(async () => ({ ok: true, seeded: [], warnings: [] })),
     ...overrides,
   };
   vi.stubGlobal('xcg', api);
@@ -116,20 +119,144 @@ describe('AddConnectorModal', () => {
     expect(api.openExternalUrl).toHaveBeenCalledWith('https://xclaude.ai/contact');
   });
 
-  it('Google without a seeded client shows "Set up…" and opens the explainer', async () => {
-    stubXcg(); // configHasClient defaults to false → not seeded
-    renderOpen();
-    const gmail = screen.getByTestId('connector-card-gmail');
-    fireEvent.click(await within(gmail).findByRole('button', { name: 'Set up…' }));
-    // Gallery is replaced by the one-time setup explainer.
-    expect(screen.getByText(/Workspace or domain Google account/)).toBeDefined();
-    expect(screen.getByRole('button', { name: 'Open setup guide' })).toBeDefined();
-  });
-
   it('Google with a seeded client shows "Connect"', async () => {
     stubXcg({ configHasClient: vi.fn(async (name: string) => name === 'gmail') });
     renderOpen();
     const gmail = screen.getByTestId('connector-card-gmail');
     expect(await within(gmail).findByRole('button', { name: 'Connect' })).toBeDefined();
+  });
+});
+
+// "Set up…" on an unseeded Google card opens the wizard in place of the gallery.
+async function openWizard(): Promise<void> {
+  const gmail = screen.getByTestId('connector-card-gmail');
+  fireEvent.click(await within(gmail).findByRole('button', { name: 'Set up…' }));
+}
+
+// Intro → Step 4/4 (credentials). Advance labels are part of the contract:
+// steps 1-2 confirm work done in the console ("Done — next"); step 3's
+// enrollment completes out of band, so it's a plain "Next".
+function walkToCredentials(): void {
+  fireEvent.click(screen.getByRole('button', { name: 'Start setup' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Done — next' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Done — next' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+}
+
+describe('ConnectorSetupWizard (via AddConnectorModal)', () => {
+  it('opens on the intro: title, domain warning and the derived steps line', async () => {
+    stubXcg(); // configHasClient defaults to false → not seeded
+    renderOpen();
+    await openWizard();
+    expect(screen.getByText('Set up Google connectors')).toBeDefined();
+    expect(screen.getByText(/email on a custom domain/)).toBeDefined();
+    expect(
+      screen.getByText(/4 steps: Cloud project → OAuth client → Preview enrollment → paste your credentials/),
+    ).toBeDefined();
+    // The gallery is replaced while the wizard is open.
+    expect(screen.queryByTestId('connector-card-notion')).toBeNull();
+  });
+
+  it('walks the four steps with the right counters and advance labels', async () => {
+    stubXcg();
+    renderOpen();
+    await openWizard();
+    fireEvent.click(screen.getByRole('button', { name: 'Start setup' }));
+    expect(screen.getByText('Step 1/4')).toBeDefined();
+    expect(screen.getByRole('button', { name: /Enable all required APIs/ })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Done — next' }));
+    expect(screen.getByText('Step 2/4')).toBeDefined();
+    expect(screen.getByText(/Desktop app/)).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Done — next' }));
+    expect(screen.getByText('Step 3/4')).toBeDefined();
+    // Enrollment is async → plain "Next", never "Done — next".
+    expect(screen.queryByRole('button', { name: 'Done — next' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('Step 4/4')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Save and finish' })).toBeDefined();
+  });
+
+  it('deep links: bulk enable carries all six API ids; step 3 links the program page', async () => {
+    const api = stubXcg();
+    renderOpen();
+    await openWizard();
+    fireEvent.click(screen.getByRole('button', { name: 'Start setup' }));
+    fireEvent.click(screen.getByRole('button', { name: /Enable all required APIs/ }));
+    expect(api.openExternalUrl).toHaveBeenCalledWith(
+      'https://console.cloud.google.com/flows/enableapi?apiid=' +
+        'gmail.googleapis.com,drive.googleapis.com,calendar-json.googleapis.com,' +
+        'gmailmcp.googleapis.com,drivemcp.googleapis.com,calendarmcp.googleapis.com',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Done — next' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Done — next' }));
+    fireEvent.click(screen.getByRole('button', { name: /Open the enrollment page/ }));
+    expect(api.openExternalUrl).toHaveBeenCalledWith('https://developers.google.com/workspace/preview');
+  });
+
+  it('empty client secret blocks the save with a UI error — seed is never called', async () => {
+    const api = stubXcg();
+    renderOpen();
+    await openWizard();
+    walkToCredentials();
+    fireEvent.change(screen.getByLabelText('Client ID'), {
+      target: { value: 'cid.apps.googleusercontent.com' },
+    });
+    fireEvent.change(screen.getByLabelText('Client secret'), { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save and finish' }));
+    expect(screen.getByText('Google requires a client secret.')).toBeDefined();
+    expect(api.configSeedClient).not.toHaveBeenCalled();
+  });
+
+  it('successful save seeds the three targets, shows the banner, and unlocks Connect', async () => {
+    const api = stubXcg({
+      configSeedClient: vi.fn(async () => ({
+        ok: true,
+        seeded: ['gmail', 'calendar', 'drive'],
+        warnings: [],
+      })),
+    });
+    renderOpen();
+    await openWizard();
+    walkToCredentials();
+    fireEvent.change(screen.getByLabelText('Client ID'), {
+      target: { value: 'cid.apps.googleusercontent.com' },
+    });
+    fireEvent.change(screen.getByLabelText('Client secret'), { target: { value: 'GOCSPX-x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save and finish' }));
+    expect(
+      await screen.findByText('Saved to Keychain — Gmail, Calendar and Drive are ready to connect.'),
+    ).toBeDefined();
+    expect(api.configSeedClient).toHaveBeenCalledWith(
+      ['gmail', 'calendar', 'drive'],
+      'cid.apps.googleusercontent.com',
+      'GOCSPX-x',
+    );
+    // Back in the gallery, the seeded Google cards now offer Connect.
+    fireEvent.click(screen.getByRole('button', { name: 'Back to connectors' }));
+    const gmail = screen.getByTestId('connector-card-gmail');
+    expect(within(gmail).getByRole('button', { name: 'Connect' })).toBeDefined();
+  });
+
+  it('failed save shows a red banner and keeps the pasted values for retry', async () => {
+    stubXcg({
+      configSeedClient: vi.fn(async () => ({
+        ok: false,
+        error: 'keychain write failed for "gmail:client" (code 51)',
+      })),
+    });
+    renderOpen();
+    await openWizard();
+    walkToCredentials();
+    fireEvent.change(screen.getByLabelText('Client ID'), {
+      target: { value: 'cid.apps.googleusercontent.com' },
+    });
+    fireEvent.change(screen.getByLabelText('Client secret'), { target: { value: 'GOCSPX-x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save and finish' }));
+    expect(await screen.findByText(/keychain write failed/)).toBeDefined();
+    expect((screen.getByLabelText('Client ID') as HTMLInputElement).value).toBe(
+      'cid.apps.googleusercontent.com',
+    );
+    expect((screen.getByLabelText('Client secret') as HTMLInputElement).value).toBe('GOCSPX-x');
+    expect(screen.getByRole('button', { name: 'Save and finish' })).toBeDefined();
   });
 });

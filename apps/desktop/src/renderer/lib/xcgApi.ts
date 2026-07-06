@@ -20,6 +20,7 @@ import type {
   PurgeMode,
   RetentionSetModeResult,
   RetentionStatus,
+  SeedClientResult,
 } from '../../shared/types.js';
 
 export interface XcgApi {
@@ -43,6 +44,9 @@ export interface XcgApi {
   configIsConnected(name: string): Promise<IsConnectedResult>;
   configHasCredentials(name: string): Promise<boolean>;
   configHasClient(name: string): Promise<boolean>;
+  /** Seed one BYO OAuth client for several connectors; the secret is optional
+   *  (omitted from the stored JSON for public-PKCE clients). */
+  configSeedClient(names: string[], clientId: string, clientSecret?: string): Promise<SeedClientResult>;
   configToolCount(name: string): Promise<ToolCount | null>;
   validateHealth(): Promise<HealthResult>;
   repairWraps(): Promise<RepairResult>;

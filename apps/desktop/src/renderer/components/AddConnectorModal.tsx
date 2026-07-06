@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactElement, type ReactNode } from '
 import type { ConnectResult, IsConnectedResult } from '@xcg/shared/config';
 
 import { connectMessage } from './config-messages.js';
+import { ConnectorSetupWizard, SETUP_CATALOGS } from './ConnectorSetupWizard.js';
 import { LOGO_SVGS } from './connectorLogos.js';
 import { Modal } from './Modal.js';
 
@@ -96,7 +97,7 @@ const GROUPS: readonly { id: Group; label: string; note?: ReactNode }[] = [
     note: (
       <>
         <b>One-time setup:</b> Google requires your own (free) OAuth client. One client serves
-        Gmail, Calendar and Drive — see the README for the steps.
+        Gmail, Calendar and Drive — the Set up button walks you through it.
       </>
     ),
   },
@@ -106,11 +107,6 @@ const GROUPS: readonly { id: Group; label: string; note?: ReactNode }[] = [
 // Final destination: the website's contact page. Not published yet — must
 // resolve before the .dmg ships.
 const REQUEST_URL = 'https://xclaude.ai/contact';
-
-// Final destination for the one-time Google setup guide. The /docs site isn't
-// published yet; until it is, the content lives in the README. Opened via the
-// existing external-link pattern (openExternalUrl → shell.openExternal).
-const SETUP_GUIDE_URL = 'https://xclaude.ai/docs';
 
 const FOOT_NOTE =
   "Your authorization token is stored in the macOS Keychain. xCLAUDE observes the traffic on its way through — it doesn't reroute or withhold it.";
@@ -171,8 +167,10 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
   }, []);
 
   // Which Google (BYO) connectors already have their OAuth client seeded in the
-  // Keychain. Re-checked each time the modal opens (seeding is an out-of-band
-  // terminal step, so it can change between opens). Absence/error = not seeded.
+  // Keychain. Re-checked each time the modal opens (seeding can also happen out
+  // of band, e.g. a terminal `security` write, so it can change between opens);
+  // the wizard's onSeeded updates the set optimistically in-session.
+  // Absence/error = not seeded.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -238,8 +236,8 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
         </button>
       );
     }
-    // Google (BYO): no seeded client yet → route to the one-time setup explainer
-    // instead of attempting OAuth (which would fail without a client).
+    // Google (BYO): no seeded client yet → route to the setup wizard instead
+    // of attempting OAuth (which would fail without a client).
     if (entry.group === 'google' && !clientSeeded.has(entry.name)) {
       return (
         <button type="button" className={styles['btnSetup']} onClick={() => setSetupEntry(entry)}>
@@ -262,45 +260,12 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
   return (
     <Modal title="Add connector" onClose={onClose} footer={FOOT_NOTE}>
       {setupEntry !== null ? (
-        <div className={styles['setup']}>
-          <button type="button" className={styles['setupBack']} onClick={() => setSetupEntry(null)}>
-            ← Back
-          </button>
-          <div className={styles['setupHead']}>
-            <span
-              className={styles['setupLogo']}
-              aria-hidden="true"
-              // Trusted, static, build-time-vendored SVG (no user input).
-              dangerouslySetInnerHTML={{ __html: LOGO_SVGS[setupEntry.logo] ?? '' }}
-            />
-            <h3 className={styles['setupTitle']}>Set up {setupEntry.label} — one-time</h3>
-          </div>
-          <p className={styles['setupIntro']}>
-            Google connectors need your own free Google OAuth client. One client serves Gmail,
-            Calendar and Drive.
-          </p>
-          <ol className={styles['setupSteps']}>
-            <li>A Google Cloud OAuth client (type “Desktop app”) with the Gmail APIs enabled.</li>
-            <li className={styles['setupStepWall']}>
-              <strong>A Workspace or domain Google account.</strong> The Developer Preview
-              enrollment rejects plain Gmail addresses.
-            </li>
-            <li>Enroll your project in the Google Workspace Developer Preview Program.</li>
-            <li>Seed your client into xCLAUDE with a one-time terminal command.</li>
-          </ol>
-          <p className={styles['setupWarn']}>
-            While your client is unverified, Google shows an “app not verified” screen and you’ll
-            re-authorize about once a week.
-          </p>
-          <button
-            type="button"
-            className={styles['btnConnect']}
-            onClick={() => void window.xcg.openExternalUrl(SETUP_GUIDE_URL)}
-          >
-            Open setup guide
-          </button>
-          <p className={styles['setupMuted']}>Once seeded, {setupEntry.label} shows Connect here.</p>
-        </div>
+        <ConnectorSetupWizard
+          catalog={SETUP_CATALOGS.google}
+          logoSvg={LOGO_SVGS[setupEntry.logo] ?? ''}
+          onBack={() => setSetupEntry(null)}
+          onSeeded={(names) => setClientSeeded((prev) => new Set([...prev, ...names]))}
+        />
       ) : (
         <>
       <p className={styles['sub']}>
