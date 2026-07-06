@@ -3,7 +3,7 @@
 // `${name}:${kind}` for kind in tokens|client|verifier (mirror of
 // oauth-provider's acct()). Removing a connector should clear all three.
 
-import { keychainDelete, keychainGet } from './keychain.js';
+import { keychainDelete, keychainGet, keychainSet } from './keychain.js';
 
 // Keep in sync with KeychainOAuthProvider.acct() in oauth-provider.ts.
 const CREDENTIAL_KINDS = ['tokens', 'client', 'verifier'] as const;
@@ -51,4 +51,32 @@ export async function hasStoredCredentials(name: string): Promise<boolean> {
 // hasStoredCredentials, we don't parse it: seeding is the gate, not validity.
 export async function hasStoredClient(name: string): Promise<boolean> {
   return (await keychainGet(`${name}:client`)) !== null;
+}
+
+// Seed a BYO OAuth client for a connector: write the `${name}:client` item in
+// the exact shape clientInformation() reads back. The client_secret key is
+// OMITTED entirely when absent (not set empty) — public-PKCE clients like
+// Slack carry only client_id. Returns the RE-READ result (hasStoredClient),
+// not the write's: seeding only counts once the item reads back. A write
+// failure rethrows SANITIZED — execFile's error message embeds the full
+// `security` argv, including the (base64) secret, and that must never reach
+// a log or the renderer.
+export async function seedStoredClient(
+  name: string,
+  clientId: string,
+  clientSecret?: string,
+): Promise<boolean> {
+  const info =
+    clientSecret === undefined
+      ? { client_id: clientId }
+      : { client_id: clientId, client_secret: clientSecret };
+  try {
+    await keychainSet(`${name}:client`, JSON.stringify(info));
+  } catch (err) {
+    const code = (err as { code?: number | string }).code;
+    throw new Error(
+      `keychain write failed for "${name}:client"${code !== undefined ? ` (code ${String(code)})` : ''}`,
+    );
+  }
+  return hasStoredClient(name);
 }
