@@ -46,7 +46,8 @@ export interface SetupWizardCredentials {
  *  client_id only, no secret) is a second catalog — not a second wizard. */
 export interface SetupCatalog {
   readonly title: string;
-  readonly benefits: readonly string[];
+  /** Intro copy, one <p> per entry (mockup: paragraphs, not bullets). */
+  readonly introParagraphs: readonly string[];
   readonly warning: string;
   readonly startLabel: string;
   readonly steps: readonly SetupWizardStep[];
@@ -69,11 +70,10 @@ const ENROLLMENT_URL = 'https://developers.google.com/workspace/preview';
 
 const GOOGLE_CATALOG: SetupCatalog = {
   title: 'Set up Google connectors',
-  benefits: [
-    'One client serves Gmail, Calendar and Drive.',
-    'Your client stays in your macOS Keychain.',
-    'No Google Cloud experience needed.',
-    'One time, about 10 minutes.',
+  introParagraphs: [
+    "You'll create your own free Google OAuth client — one client serves Gmail, Calendar " +
+      'and Drive, and it stays in your macOS Keychain.',
+    'No Google Cloud experience needed. One time, about 10 minutes.',
   ],
   warning:
     "You'll need an email on a custom domain for one step. Google's Preview enrollment " +
@@ -87,15 +87,21 @@ const GOOGLE_CATALOG: SetupCatalog = {
       advanceLabel: 'Done — next',
       body: (
         <>
-          <p className={styles['text']}>
-            Create a Google Cloud project — or pick one you already have.
-          </p>
-          <LinkBtn url={CREATE_PROJECT_URL}>Create a Cloud project</LinkBtn>
-          <p className={styles['text']}>
-            Then enable the required APIs — one click enables all six (each of Gmail,
-            Calendar and Drive needs its base API and its MCP API).
-          </p>
-          <LinkBtn url={ENABLE_APIS_URL}>Enable all required APIs</LinkBtn>
+          <div className={styles['block']}>
+            <span className={styles['blockTitle']}>Cloud project</span>
+            <p className={styles['text']}>
+              Create a Google Cloud project — or pick one you already have.
+            </p>
+            <LinkBtn url={CREATE_PROJECT_URL}>Create a Cloud project</LinkBtn>
+          </div>
+          <div className={styles['block']}>
+            <span className={styles['blockTitle']}>Required APIs</span>
+            <p className={styles['text']}>
+              Enable the required APIs — one click enables all six (each of Gmail, Calendar
+              and Drive needs its base API and its MCP API).
+            </p>
+            <LinkBtn url={ENABLE_APIS_URL}>Enable all required APIs</LinkBtn>
+          </div>
         </>
       ),
     },
@@ -131,16 +137,19 @@ const GOOGLE_CATALOG: SetupCatalog = {
       advanceLabel: 'Next',
       body: (
         <>
-          <p className={styles['text']}>
-            Enroll your Cloud project in the Google Workspace Developer Preview Program.
-            Approval arrives by email, usually within a couple of days.
-          </p>
-          <p className={styles['warn']}>
-            The enrollment form requires an email on a custom domain — plain Gmail
-            addresses are rejected.
-          </p>
-          <p className={styles['text']}>Have your project number ready — the form asks for it.</p>
-          <LinkBtn url={ENROLLMENT_URL}>Open the enrollment page</LinkBtn>
+          <div className={styles['block']}>
+            <span className={styles['blockTitle']}>Enrollment</span>
+            <p className={styles['text']}>
+              Enroll your Cloud project in the Google Workspace Developer Preview Program.
+              Approval arrives by email, usually within a couple of days.
+            </p>
+            <p className={styles['warn']}>
+              The enrollment form requires an email on a custom domain — plain Gmail
+              addresses are rejected.
+            </p>
+            <p className={styles['text']}>Have your project number ready — the form asks for it.</p>
+            <LinkBtn url={ENROLLMENT_URL}>Open the enrollment page</LinkBtn>
+          </div>
           <p className={styles['muted']}>
             You can continue to the last step now and connect once the approval email
             arrives.
@@ -259,11 +268,11 @@ export function ConnectorSetupWizard({
             />
             <h3 className={styles['title']}>{catalog.title}</h3>
           </div>
-          <ul className={styles['benefits']}>
-            {catalog.benefits.map((b) => (
-              <li key={b}>{b}</li>
-            ))}
-          </ul>
+          {catalog.introParagraphs.map((p) => (
+            <p key={p} className={styles['text']}>
+              {p}
+            </p>
+          ))}
           <p className={styles['warn']}>{catalog.warning}</p>
           <p className={styles['stepsLine']}>
             {total} steps:{' '}
@@ -298,26 +307,28 @@ export function ConnectorSetupWizard({
             Step {total}/{total}
           </div>
           <h3 className={styles['title']}>{catalog.credentials.title}</h3>
-          <label className={styles['field']}>
-            <span className={styles['fieldLabel']}>Client ID</span>
-            <input
-              type="text"
-              className={styles['input']}
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              disabled={saving || saved}
-            />
-          </label>
-          <label className={styles['field']}>
-            <span className={styles['fieldLabel']}>Client secret</span>
-            <input
-              type="password"
-              className={styles['input']}
-              value={clientSecret}
-              onChange={(e) => setClientSecret(e.target.value)}
-              disabled={saving || saved}
-            />
-          </label>
+          <div className={`${styles['block']} ${styles['blockFields']}`}>
+            <label className={styles['field']}>
+              <span className={styles['fieldLabel']}>Client ID</span>
+              <input
+                type="text"
+                className={styles['input']}
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                disabled={saving || saved}
+              />
+            </label>
+            <label className={styles['field']}>
+              <span className={styles['fieldLabel']}>Client secret</span>
+              <input
+                type="password"
+                className={styles['input']}
+                value={clientSecret}
+                onChange={(e) => setClientSecret(e.target.value)}
+                disabled={saving || saved}
+              />
+            </label>
+          </div>
           {fieldError !== null ? (
             <p className={styles['fieldError']} role="alert">
               {fieldError}

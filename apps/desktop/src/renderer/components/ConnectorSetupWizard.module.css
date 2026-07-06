@@ -2,10 +2,17 @@
  * Add-connector modal in place of the gallery. Self-contained styles — no
  * cross-module composes — but the same kraft tokens as the modal. */
 
+/* Modal .body carries no padding of its own (the gallery's children each bring
+ * their 28px gutter), so the wizard owns the same gutter: every child aligns
+ * to the modal's 28px edge. Scrolls like the gallery when a step runs tall. */
 .wizard {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 28px 24px;
 }
 
 .back {
@@ -42,7 +49,8 @@
 
 .title {
   margin: 0;
-  font-size: 15px;
+  font-size: 16px;
+  font-weight: 600;
   color: var(--kraft-ink);
 }
 
@@ -53,17 +61,9 @@
   color: var(--kraft-ink-soft);
 }
 
-.benefits {
-  margin: 0;
-  padding-left: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  color: var(--kraft-ink-body);
-}
-
 .text {
   margin: 0;
+  font-size: 13px;
   line-height: 1.5;
   color: var(--kraft-ink-body);
 }
@@ -81,29 +81,43 @@
   background: var(--kraft-warning-bg);
   border: 1px solid var(--kraft-warning-border);
   color: var(--kraft-warning-text);
+  font-size: 12.5px;
+  line-height: 1.5;
 }
 
+/* Muted route map under the intro; the extra bottom margin separates it from
+ * the CTA row (the wizard's uniform gap alone reads too tight there). */
 .stepsLine {
-  margin: 0;
+  margin: 0 0 8px;
   font-size: 12px;
+  line-height: 1.5;
   color: var(--kraft-ink-soft);
 }
 
-/* Sub-blocks within a step (e.g. consent screen / OAuth client). */
+/* Instruction card: every actionable chunk of a step lives in one of these
+ * (mockup: soft border, inner padding), never as loose paragraphs. */
 .block {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
-  padding: 12px;
+  padding: 14px 16px;
   background: var(--kraft-surface);
   border: var(--kraft-hairline) solid var(--kraft-border);
   border-radius: var(--kraft-radius-md);
 }
 
 .blockTitle {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--kraft-ink);
+}
+
+/* Credentials card: unlike instruction cards (content hugs left), the two
+ * fields stretch the full card width. */
+.blockFields {
+  align-items: stretch;
+  gap: 12px;
 }
 
 /* External deep link: outline treatment ("go do this over there"), the
@@ -129,7 +143,7 @@
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  padding-top: 4px;
+  padding-top: 8px;
 }
 
 .primaryBtn {
