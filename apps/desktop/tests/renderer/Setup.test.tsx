@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
-// Component test for the re-login row glyph in the connectors list (Slice B).
-// window.xcg is stubbed: listDetections drives the auth alerts; configIsConnected
-// is queried by the (closed) AddConnectorModal mounted inside Setup. The glyph
+// Component tests for Setup: the re-login row glyph in the connectors list
+// (Slice B) and the two empty-state variants (config present → three-step
+// onboarding checklist; no config → value proposition + pointer). window.xcg
+// is stubbed: listDetections drives the auth alerts; configIsConnected is
+// queried by the (closed) AddConnectorModal mounted inside Setup. The glyph
 // appears after the first poll resolves, so assertions use findBy*.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -44,10 +46,10 @@ afterEach(() => {
 });
 
 const noop = vi.fn();
-function renderSetup(): void {
+function renderSetup(status: StatusResult = STATUS): void {
   render(
     <Setup
-      status={STATUS}
+      status={status}
       onRefresh={noop}
       onOpenInDetections={noop}
       onAudit={noop}
@@ -70,5 +72,34 @@ describe('Setup — re-login row glyph', () => {
     // Row is rendered (sync, from status); the glyph would only appear via alerts.
     expect(await screen.findByText('notion')).toBeDefined();
     expect(screen.queryByLabelText('needs re-login')).toBeNull();
+  });
+});
+
+function emptyStatus(configPresent: boolean): StatusResult {
+  return { ok: true, configPresent, entries: [] } as unknown as StatusResult;
+}
+
+describe('Setup — empty state', () => {
+  it('config present: three-step checklist and the after-Install footnote', () => {
+    stubXcg([]);
+    renderSetup(emptyStatus(true));
+    expect(screen.getByText('Start auditing your connectors')).toBeDefined();
+    expect(screen.getByText(/Three steps:/)).toBeDefined();
+    expect(screen.getByText(/wraps your Claude Desktop config/)).toBeDefined();
+    expect(screen.getByText('Disconnect the native versions')).toBeDefined();
+    expect(
+      screen.getByText('Local MCP servers from your Claude config appear here after Install.'),
+    ).toBeDefined();
+    expect(screen.queryByText('See what Claude does.')).toBeNull();
+  });
+
+  it('no config: keeps the original hint and shows no checklist', () => {
+    stubXcg([]);
+    renderSetup(emptyStatus(false));
+    expect(screen.getByText('See what Claude does.')).toBeDefined();
+    expect(screen.getByText(/Claude Desktop has no MCP config yet/)).toBeDefined();
+    expect(screen.queryByText('Start auditing your connectors')).toBeNull();
+    expect(screen.queryByText(/Three steps:/)).toBeNull();
+    expect(screen.queryByText(/bypass the audit/)).toBeNull();
   });
 });

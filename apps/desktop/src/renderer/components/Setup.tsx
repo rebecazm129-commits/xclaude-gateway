@@ -223,16 +223,47 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
               <path d="m9 12 2 2 4-4" />
             </svg>
           </span>
-          <h2 className={styles['emptyHeading']}>See what Claude does.</h2>
-          <p className={styles['emptyDetail']}>
-            Every tool call Claude makes, classified by risk — 7 risk categories, 4 severity levels.
-          </p>
-          <p className={styles['emptyDetail']}>Audited locally. No account. No telemetry.</p>
-          <p className={styles['emptyHint']}>
-            {!configPresent
-              ? 'Claude Desktop has no MCP config yet. Open Claude Desktop, add at least one MCP server, then come back here to install xCLAUDE Gateway.'
-              : 'Local MCP servers already in your Claude config will appear here automatically.'}
-          </p>
+          {configPresent ? (
+            // Config present, nothing audited yet: the three-step onboarding
+            // checklist (Install → Add connector → disconnect natives).
+            <>
+              <h2 className={styles['emptyHeading']}>Start auditing your connectors</h2>
+              <p className={styles['emptyDetail']}>
+                Connectors aren’t audited until they run through xCLAUDE. Three steps:
+              </p>
+              <ol className={styles['emptySteps']}>
+                <li>
+                  <b>Install</b> — wraps your Claude Desktop config so traffic flows through
+                  xCLAUDE.
+                </li>
+                <li>
+                  <b>Add connector</b> — connect the services you use, each call recorded and
+                  classified.
+                </li>
+                <li>
+                  <b>Disconnect the native versions</b> — in Claude Desktop, then restart it.
+                  Otherwise calls bypass the audit.
+                </li>
+              </ol>
+              <p className={styles['emptyHint']}>
+                Local MCP servers from your Claude config appear here after Install.
+              </p>
+            </>
+          ) : (
+            // No Claude Desktop config at all: there is nothing to install into
+            // yet, so keep the value proposition + pointer instead of the checklist.
+            <>
+              <h2 className={styles['emptyHeading']}>See what Claude does.</h2>
+              <p className={styles['emptyDetail']}>
+                Every tool call Claude makes, classified by risk — 7 risk categories, 4 severity levels.
+              </p>
+              <p className={styles['emptyDetail']}>Audited locally. No account. No telemetry.</p>
+              <p className={styles['emptyHint']}>
+                Claude Desktop has no MCP config yet. Open Claude Desktop, add at least one MCP
+                server, then come back here to install xCLAUDE Gateway.
+              </p>
+            </>
+          )}
           <button
             type="button"
             className={styles['addButton']}

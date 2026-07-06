@@ -345,3 +345,25 @@
   line-height: 1.5;
   color: var(--kraft-ink-disabled);
 }
+
+/* Empty-state onboarding checklist (config present, nothing audited yet):
+ * numbered and left-aligned inside the centered panel. Plain block flow — a
+ * flex ol would blockify the li boxes and drop their ::marker numbers. */
+.emptySteps {
+  margin: 10px 0 0;
+  padding-left: 22px;
+  max-width: 52ch;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--kraft-ink-soft);
+}
+
+.emptySteps li + li {
+  margin-top: 8px;
+}
+
+.emptySteps b {
+  font-weight: 600;
+  color: var(--kraft-ink);
+}
