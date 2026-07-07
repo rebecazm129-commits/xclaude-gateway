@@ -17,6 +17,14 @@ export type RpcId = string | number | null;
 
 export type Severity = 'low' | 'medium' | 'high' | 'critical';
 
+// CANONICAL COUNT (product copy depends on it): 8 categories = 7 RISK
+// categories (credential_detected, prompt_injection, email_send_warning,
+// data_export_warning, pii_detected, pii_structured, tool_manifest_changed)
+// + tool_call_allowed, the non-risk BASELINE emitted when nothing matches.
+// Everywhere the product states a count, the formulation is "7 risk
+// categories, 4 severity levels" — tool_call_allowed is not a risk category.
+// If you add or remove a member here, update every copy that states a count
+// (Settings drawer About, README, release notes).
 export type Category =
   | 'credential_detected'
   | 'prompt_injection'

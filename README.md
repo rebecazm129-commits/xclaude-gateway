@@ -64,6 +64,7 @@ The audit runs entirely on your Mac: no telemetry, no account, no analytics. xCL
 | `email_send_warning` | HIGH / MEDIUM | Imperative requests to send email in tool text, and send-semantics tool calls (see below). |
 | `data_export_warning` | MEDIUM | Imperative requests to export data. |
 | `pii_structured` | MEDIUM | Well-formed, checksum-validated PII shapes (see below). |
+| `pii_detected` | LOW | Named-entity PII — people, organizations, locations — found by the on-device NER model. Async enrichment; runs on requests only. |
 | `tool_call_allowed` | LOW | Baseline emitted for every tool call that matches none of the above — the "everything is normal" line, not an absence of analysis. |
 
 **`email_send_warning` branches.** An AI-executed send (`send`/`reply`/`forward` tools) flags at HIGH — an action that deserves human attention regardless of intent; an AI-composed draft (`draft`/`compose` tools) flags at MEDIUM, since a draft is content one click away from sent.
@@ -143,35 +144,16 @@ Connects via standard OAuth. xCLAUDE requests a narrow scope set — `repo`, `re
 <details>
 <summary>Google services setup (BYO OAuth client)</summary>
 
-Google's official Workspace MCP servers (Gmail, Calendar, Drive) don't use the one-click flow the other connectors do, so connecting them takes extra setup on your side — roughly 20–30 minutes in the Google Cloud console. Two things make them different: Google has no dynamic client registration, so you bring your own (free) OAuth client; and the servers are currently behind Google's Workspace Developer Preview Program, which you enroll your project in. One OAuth client serves all three connectors.
+Google's official Workspace MCP servers (Gmail, Calendar, Drive) don't use the one-click flow the other connectors do: Google has no dynamic client registration, so you bring your own (free) OAuth client, and the servers are currently behind Google's Workspace Developer Preview Program. One OAuth client serves all three connectors — and the app walks you through the whole thing. Click **Set up…** on any Google card in **Add connector**: a guided 4-step wizard with deep links into the Google Cloud console at every step. Plan for about 10 minutes of clicking, plus an asynchronous wait for Google's approval email.
 
-**Before you start — the one hard requirement.** Enrolling in the Developer Preview Program requires a Google **Workspace (domain) account**; the enrollment form rejects plain `@gmail.com` addresses. If a personal Gmail account is all you have, you can't complete this setup today. This gate is Google's, and should disappear when these servers leave preview.
+What the wizard walks you through:
 
-1. **Create a Google Cloud project.** Any new project works. Note its **project number** — you'll need it to enroll in the preview program.
-2. **Enable the required APIs** in that project. Each Google MCP server needs two: the service's base API and its MCP API. Enable the pair for every connector you plan to use:
-   - **Gmail** — `gmail.googleapis.com` and `gmailmcp.googleapis.com`
-   - **Google Calendar** — the Google Calendar API and `calendarmcp.googleapis.com`
-   - **Google Drive** — the Google Drive API and `drivemcp.googleapis.com`
+1. **Cloud project + APIs.** Create a Google Cloud project (or pick one you have) and enable the required APIs — one click in the wizard enables all six at once (each service needs its base API and its MCP API; without the `*mcp.googleapis.com` one, that connector's MCP server returns `403` on every tool call). Note the project's **project number** — you'll need it in step 3.
+2. **OAuth client.** Configure the consent screen (Internal if available, otherwise External — add your own email under Test users) and create a client with application type **Desktop app**. Google issues a **client ID** and a **client secret**; copy both. (Google's token endpoint requires the client secret even though the flow uses PKCE.)
+3. **Preview enrollment.** Enroll your project in the Developer Preview Program with your project number. Approval arrives by email, usually within a couple of days — you can finish step 4 now and connect once it lands. **The one hard requirement:** the enrollment *form* requires an email on a custom domain and rejects plain `@gmail.com` addresses. That is the only place a domain email is needed — the Google account you later connect and audit can be a regular Gmail, and once the project is approved, any Google account can authorize through it. This gate is Google's, and should disappear when these servers leave preview.
+4. **Paste your credentials.** The wizard stores your client ID and secret in the macOS Keychain — nothing goes into plain-text config, and no Terminal is involved.
 
-   The `*mcp.googleapis.com` API is the one that's easy to miss: without it, that connector's MCP server returns `403` on every tool call.
-3. **Configure the OAuth consent screen.** User type **External**, in **Testing** mode, and add your own Google account as a test user. Add the scopes listed under "Scopes" below.
-4. **Create the OAuth client.** Application type **Desktop app**. Google issues a **client ID** and **client secret**; keep both for the seeding step. (Google's token endpoint requires the client secret even though the flow uses PKCE.)
-5. **Enroll your project in the Developer Preview Program** at `developers.google.com/workspace/preview`, using your project number and your Workspace account. Approval usually takes a few hours to a couple of days. Once the project is approved, any Google account can authorize through it.
-6. **Seed your client into xCLAUDE.** There's no in-app UI for this yet, so seeding is a one-time terminal step that stores your client in the macOS Keychain — it never goes into plain-text config. Run the command below once per Google connector you plan to use; the same client serves all three, so just change `CONNECTOR`.
-
-```bash
-# Nothing is echoed to the terminal or saved to your shell history.
-printf 'client_id: ';     read -r  CLIENT_ID
-printf 'client_secret: '; read -rs CLIENT_SECRET; echo
-CONNECTOR=gmail   # repeat with: calendar, drive
-security add-generic-password -U \
-  -s com.xclaude.gateway \
-  -a "$CONNECTOR:client" \
-  -w "$(printf '{"client_id":"%s","client_secret":"%s"}' "$CLIENT_ID" "$CLIENT_SECRET" | openssl base64 -A)"
-unset CLIENT_ID CLIENT_SECRET
-```
-
-**Finally, connect and restart.** In xCLAUDE open **Add connector**, pick the Google service and click **Connect** (once seeded it shows **Connect** instead of **Set up…**). A browser window opens to authorize; approve it (you'll pass Google's "unverified app" screen — see below), then restart Claude Desktop. Google traffic is now audited like any other connector.
+**Finally, connect and restart.** Once seeded, the Google cards show **Connect** instead of **Set up…**. Click it, approve in the browser window that opens (you'll pass Google's "unverified app" screen — see below), then restart Claude Desktop. Google traffic is now audited like any other connector.
 
 **What to expect while your client is unverified.** Two rough edges come from running your own client in Testing mode, not from xCLAUDE:
 
