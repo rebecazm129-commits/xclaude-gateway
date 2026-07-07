@@ -203,6 +203,30 @@
   line-height: 1.6;
 }
 
+/* Version line + updates link at the top of About. */
+.aboutVersion {
+  margin: 0 0 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--kraft-ink-soft);
+}
+
+.aboutLink {
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--kraft-accent);
+  cursor: pointer;
+}
+
+.aboutLink:hover {
+  text-decoration: underline;
+}
+
 /* Space stacked About paragraphs (descriptive + disclaimer share .about). */
 .about + .about {
   margin-top: 8px;

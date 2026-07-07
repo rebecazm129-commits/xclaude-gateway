@@ -80,6 +80,15 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
   const [pendingEstimate, setPendingEstimate] = useState<number | null>(null);
   const [applying, setApplying] = useState(false);
   const [retentionNotice, setRetentionNotice] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+
+  // Version for the About section; a failed query just leaves the line out.
+  useEffect(() => {
+    void window.xcg
+      .appVersion()
+      .then(setAppVersion)
+      .catch(() => setAppVersion(null));
+  }, []);
   // Guards the async estimate against stale responses when the user taps fast.
   const estimateModeRef = useRef<PurgeMode | null>(null);
 
@@ -387,6 +396,20 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
         )}
 
         <div className={`${styles['sectionLabel']} ${styles['sectionDivider']}`}>About</div>
+        <p className={styles['aboutVersion']}>
+          {appVersion !== null ? `Version ${appVersion}` : 'Version unknown'}
+          <button
+            type="button"
+            className={styles['aboutLink']}
+            onClick={() =>
+              void window.xcg.openExternalUrl(
+                'https://github.com/rebecazm129-commits/xclaude-gateway/releases',
+              )
+            }
+          >
+            Check for updates →
+          </button>
+        </p>
         <p className={styles['about']}>
           xCLAUDE Gateway audits every tool call Claude makes through your MCP
           connectors, classified by risk across 7 risk categories and 4 severity

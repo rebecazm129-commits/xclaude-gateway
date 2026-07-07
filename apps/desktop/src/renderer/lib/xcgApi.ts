@@ -52,6 +52,8 @@ export interface XcgApi {
   repairWraps(): Promise<RepairResult>;
   runSelfTest(): Promise<SelfTestReport>;
   openAuditFolder(): Promise<void>;
+  /** App version (package.json), for the Settings About section. */
+  appVersion(): Promise<string>;
   /** Open an http(s) URL in the system browser (never navigates the renderer). */
   openExternalUrl(url: string): Promise<void>;
 }

@@ -66,5 +66,6 @@ contextBridge.exposeInMainWorld('xcg', {
   repairWraps: (): Promise<RepairResult> => ipcRenderer.invoke('system:repair-wraps'),
   runSelfTest: (): Promise<SelfTestReport> => ipcRenderer.invoke('system:self-test:run'),
   openAuditFolder: (): Promise<void> => ipcRenderer.invoke('system:open-audit-folder'),
+  appVersion: (): Promise<string> => ipcRenderer.invoke('system:version'),
   openExternalUrl: (url: string): Promise<void> => ipcRenderer.invoke('system:open-external', url),
 });

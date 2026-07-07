@@ -567,6 +567,11 @@ ipcMain.handle('system:open-audit-folder', async (): Promise<void> => {
   }
 });
 
+// App version for the Settings About section (package.json via Electron).
+ipcMain.handle('system:version', (): string => {
+  return app.getVersion();
+});
+
 ipcMain.handle('system:open-external', async (_event, url: string): Promise<void> => {
   // Only ever hand http(s) URLs to the system browser — never file:, etc.
   let parsed: URL;
