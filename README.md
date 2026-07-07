@@ -11,7 +11,7 @@
 [![Platform](https://img.shields.io/badge/macOS-arm64%20(Apple%20Silicon)-000000?logo=apple&logoColor=white)](#requirements)
 [![License](https://img.shields.io/badge/license-MIT-informational)](#license)
 
-xCLAUDE Gateway is in beta.
+xCLAUDE Gateway is in beta — https://xclaude.ai
 
 </div>
 
@@ -94,7 +94,6 @@ If you're looking for a tool that prevents Claude from making sensitive tool cal
 - **No blocking or altering of tool calls.** The detectors record and classify with severity; xCLAUDE never stops, reroutes or withholds an operation — that is the design, not a limitation.
 - **Named-entity PII detection runs as an async enrichment** (transformers.js NER): persons, organizations and locations found in tool-call payloads are recorded in the audit log alongside the main detector chain. It is early stage — it complements the checksum-based `pii_structured` detector, and is not yet part of the synchronous detector chain.
 - **No auditing of native Connectors.** Services you connect with one click in Claude Desktop's settings are brokered through Anthropic's servers; their traffic never reaches your Mac, so xCLAUDE can't see it. To audit such a service, connect it through xCLAUDE instead (see "Remote connectors" below).
-- **No in-app UI yet for bringing your own OAuth client** (needed by the Google connectors — see "Google services" below). Seeding the client currently requires a one-time terminal step.
 
 These come in upcoming milestones. See the project roadmap for details.
 
