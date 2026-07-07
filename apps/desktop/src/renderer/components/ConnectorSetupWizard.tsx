@@ -223,6 +223,8 @@ const SLACK_CATALOG: SetupCatalog = {
     "You'll create your own Slack app — it stays in your workspace, and its client ID " +
       'stays in your macOS Keychain.',
     'One time, about 2 minutes — most of it is one click.',
+    "Slack asks you to re-authorize about once a month — that's how Slack designed it, " +
+      'not an error.',
   ],
   warning: 'Your workspace admin may need to approve the app before you can connect.',
   startLabel: 'Start setup',
@@ -425,8 +427,12 @@ export function ConnectorSetupWizard({
             </p>
           ) : null}
           {saveResult !== null && !saveResult.ok ? (
+            // Friendly first line with the action; the raw handler error stays
+            // as a technical second line (it is already secret-free).
             <div className={styles['bannerError']} role="alert">
-              {saveResult.error}
+              Couldn’t save to your Keychain — your pasted values are kept, so you can try
+              again.
+              <span className={styles['bannerErrorDetail']}>{saveResult.error}</span>
             </div>
           ) : null}
           {saveResult !== null && saveResult.ok ? (

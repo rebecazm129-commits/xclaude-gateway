@@ -232,6 +232,16 @@
   color: var(--kraft-critical-text);
 }
 
+/* Raw technical error under the friendly first line of the error banner. */
+.bannerErrorDetail {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--kraft-font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.85;
+}
+
 /* Advisory format warnings from config:seed-client (saved anyway). */
 .warnNote {
   margin: 0;

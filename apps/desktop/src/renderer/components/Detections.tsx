@@ -316,7 +316,7 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
           </div>
         ) : (
           <div className={styles['empty']}>
-            No detections yet. Wrap an MCP server with xcg-proxy to start auditing.
+            No detections yet. Route a connector through xCLAUDE to start auditing.
           </div>
         )
       ) : (
@@ -325,7 +325,7 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
             <span className={styles['columnHeaderCell']}>Time</span>
             <span className={styles['columnHeaderCell']}>Severity</span>
             <span className={styles['columnHeaderCell']}>Category</span>
-            <span className={styles['columnHeaderCell']}>Mcp</span>
+            <span className={styles['columnHeaderCell']}>MCP</span>
             <span className={styles['columnHeaderCell']}>Tool</span>
           </div>
           <FixedSizeList

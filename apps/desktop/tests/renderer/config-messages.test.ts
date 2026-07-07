@@ -36,13 +36,21 @@ describe('connectMessage', () => {
     expect(msg.text).toBe('Added. "notion" is configured. Restart Claude Desktop to use it.');
   });
 
-  it('error (login-failed) → error tone with retry copy', () => {
+  it('error (login-failed) → error tone with retry copy and the login detail', () => {
     const result: ConnectResult = {
       ok: false,
       error: { kind: 'login-failed', detail: 'boom' },
     };
     const msg = connectMessage(result);
     expect(msg.tone).toBe('error');
-    expect(msg.text).toBe('Authorization failed or timed out. Please try again.');
+    expect(msg.text).toBe('Authorization failed or timed out. Please try again. (boom)');
+  });
+
+  it('error (login-failed, empty detail) → retry copy without a dangling parenthesis', () => {
+    const result: ConnectResult = {
+      ok: false,
+      error: { kind: 'login-failed', detail: '  ' },
+    };
+    expect(connectMessage(result).text).toBe('Authorization failed or timed out. Please try again.');
   });
 });

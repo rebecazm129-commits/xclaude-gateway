@@ -35,8 +35,18 @@ export function connectMessage(result: ConnectResult): { tone: 'success' | 'erro
     return { tone: 'success', text: `Added. "${result.name}" is configured. Restart Claude Desktop to use it.` };
   }
   switch (result.error.kind) {
-    case 'login-failed':
-      return { tone: 'error', text: 'Authorization failed or timed out. Please try again.' };
+    case 'login-failed': {
+      // Surface the login detail (stderr tail) so a real cause — revoked app,
+      // closed browser, provider outage — is visible, not just "try again".
+      const detail = result.error.detail.trim();
+      return {
+        tone: 'error',
+        text:
+          detail !== ''
+            ? `Authorization failed or timed out. Please try again. (${detail})`
+            : 'Authorization failed or timed out. Please try again.',
+      };
+    }
     case 'login-invalid-args':
       return { tone: 'error', text: 'Internal error launching the login. Please report this.' };
     case 'name-exists':
@@ -55,6 +65,6 @@ export function connectMessage(result: ConnectResult): { tone: 'success' | 'erro
     case 'unexpected-shape':
       return { tone: 'error', text: `Could not read the config. ${result.error.detail ?? ''}`.trim() };
     default:
-      return { tone: 'error', text: 'An unexpected error occurred.' };
+      return { tone: 'error', text: 'An unexpected error occurred. Please try again.' };
   }
 }
