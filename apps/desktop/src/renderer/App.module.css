@@ -128,3 +128,17 @@
   margin: 0;
   line-height: 1.2;
 }
+
+/* Discreet beta pill next to the app title (first public release is a beta). */
+.betaPill {
+  padding: 2px 8px;
+  font-family: var(--kraft-font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--kraft-ink-soft);
+  background: var(--kraft-filter-bg);
+  border: var(--kraft-hairline) solid var(--kraft-border);
+  border-radius: var(--kraft-radius-pill);
+}

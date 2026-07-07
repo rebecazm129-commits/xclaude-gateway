@@ -223,49 +223,40 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
               <path d="m9 12 2 2 4-4" />
             </svg>
           </span>
-          {configPresent ? (
-            // Config present, nothing audited yet: the three-step onboarding
-            // checklist (Install → Add connector → disconnect natives).
-            <>
-              <h2 className={styles['emptyHeading']}>Start auditing your connectors</h2>
-              <p className={styles['emptyDetail']}>
-                Right now Claude talks to your tools directly. Route that traffic through
-                xCLAUDE in three steps:
-              </p>
-              <ol className={styles['emptySteps']}>
-                <li>
+          {/* One empty state for both cases; only step 1 adapts to whether a
+              Claude Desktop config exists yet. */}
+          <h2 className={styles['emptyHeading']}>Start auditing your connectors</h2>
+          <p className={styles['emptyDetail']}>
+            Right now Claude talks to your tools directly. Route that traffic through
+            xCLAUDE in three steps:
+          </p>
+          <ol className={styles['emptySteps']}>
+            <li>
+              {configPresent ? (
+                <>
                   <b>Install</b> — wraps the local MCP servers already in your Claude Desktop
                   config.
-                </li>
-                <li>
-                  <b>Add your connectors here</b> — reconnect the remote services you use
-                  through xCLAUDE instead of natively. Google services need a one-time setup —
-                  the Set up button walks you through it.
-                </li>
-                <li>
-                  <b>Disconnect the native versions</b> in Claude Desktop and restart it —
-                  otherwise those calls bypass the audit.
-                </li>
-              </ol>
-              <p className={styles['emptyHint']}>
-                Local MCP servers from your Claude config appear here after Install.
-              </p>
-            </>
-          ) : (
-            // No Claude Desktop config at all: there is nothing to install into
-            // yet, so keep the value proposition + pointer instead of the checklist.
-            <>
-              <h2 className={styles['emptyHeading']}>See what Claude does.</h2>
-              <p className={styles['emptyDetail']}>
-                Every tool call Claude makes, classified by risk — 7 risk categories, 4 severity levels.
-              </p>
-              <p className={styles['emptyDetail']}>Audited locally. No account. No telemetry.</p>
-              <p className={styles['emptyHint']}>
-                Claude Desktop has no MCP config yet. Open Claude Desktop, add at least one MCP
-                server, then come back here to install xCLAUDE Gateway.
-              </p>
-            </>
-          )}
+                </>
+              ) : (
+                <>
+                  <b>Install</b> — open Claude Desktop and add at least one MCP server first,
+                  then Install wraps your config so traffic flows through xCLAUDE.
+                </>
+              )}
+            </li>
+            <li>
+              <b>Add your connectors here</b> — reconnect the remote services you use
+              through xCLAUDE instead of natively. Google services need a one-time setup —
+              the Set up button walks you through it.
+            </li>
+            <li>
+              <b>Disconnect the native versions</b> in Claude Desktop and restart it —
+              otherwise those calls bypass the audit.
+            </li>
+          </ol>
+          <p className={styles['emptyHint']}>
+            Local MCP servers from your Claude config appear here after Install.
+          </p>
           <button
             type="button"
             className={styles['addButton']}

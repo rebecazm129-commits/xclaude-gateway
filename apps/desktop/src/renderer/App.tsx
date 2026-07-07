@@ -172,6 +172,7 @@ export function App(): JSX.Element {
               aria-label={`System health: ${health?.status ?? 'unknown'}`}
             />
             <h1 className={styles['title']}>xCLAUDE Gateway</h1>
+            <span className={styles['betaPill']}>beta</span>
           </span>
           <span className={styles['trust']}>Audited locally · No account · No telemetry</span>
         </span>
