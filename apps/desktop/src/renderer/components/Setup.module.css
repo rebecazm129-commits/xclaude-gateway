@@ -367,3 +367,19 @@
   font-weight: 600;
   color: var(--kraft-ink);
 }
+
+/* Step lead-ins that double as the step's action (Install → Settings drawer,
+ * Add connectors → modal): bold accent text-buttons, no chrome. */
+.emptyStepLink {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--kraft-accent);
+  cursor: pointer;
+}
+
+.emptyStepLink:hover {
+  text-decoration: underline;
+}

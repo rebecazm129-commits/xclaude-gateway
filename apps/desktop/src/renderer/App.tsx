@@ -207,6 +207,7 @@ export function App(): JSX.Element {
           onAudit={handleAudit}
           onReconnect={handleReconnect}
           onRemove={handleRemove}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
       ) : (
         <Detections

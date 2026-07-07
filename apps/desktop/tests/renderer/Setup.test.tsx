@@ -7,7 +7,7 @@
 // appears after the first poll resolves, so assertions use findBy*.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 import { Setup } from '../../src/renderer/components/Setup.js';
 import type { StatusResult } from '@xcg/shared/config';
@@ -46,7 +46,7 @@ afterEach(() => {
 });
 
 const noop = vi.fn();
-function renderSetup(status: StatusResult = STATUS): void {
+function renderSetup(status: StatusResult = STATUS, onOpenSettings: () => void = noop): void {
   render(
     <Setup
       status={status}
@@ -55,6 +55,7 @@ function renderSetup(status: StatusResult = STATUS): void {
       onAudit={noop}
       onReconnect={vi.fn(async () => ({ ok: true, reconnected: true, name: 'notion' }))}
       onRemove={vi.fn(async () => ({ ok: true }))}
+      onOpenSettings={onOpenSettings}
     />,
   );
 }
@@ -111,5 +112,22 @@ describe('Setup — empty state (one checklist, step 1 adapts to configPresent)'
     // The pre-1.0 no-config variant is gone entirely.
     expect(screen.queryByText('See what Claude does.')).toBeNull();
     expect(screen.queryByText(/Claude Desktop has no MCP config yet/)).toBeNull();
+  });
+
+  it('step 1 opens the Settings drawer; step 2 opens the Add connector modal', () => {
+    stubXcg([]);
+    const onOpenSettings = vi.fn();
+    renderSetup(emptyStatus(true), onOpenSettings);
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }));
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add your connectors here' }));
+    expect(screen.getByRole('dialog')).toBeDefined();
+  });
+
+  it('no standalone "+ Add connector" button in the empty state (step 2 is the CTA)', () => {
+    stubXcg([]);
+    renderSetup(emptyStatus(true));
+    expect(screen.queryByRole('button', { name: '+ Add connector' })).toBeNull();
   });
 });

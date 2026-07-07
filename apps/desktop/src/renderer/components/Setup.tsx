@@ -18,6 +18,8 @@ export interface SetupProps {
   readonly onAudit: (name: string) => void;
   readonly onReconnect: (name: string, url: string) => Promise<ConnectResult>;
   readonly onRemove: (name: string) => Promise<RemoveRemoteResult>;
+  /** Open the Settings drawer (the empty-state "Install" step links to it). */
+  readonly onOpenSettings: () => void;
 }
 
 const CONNECTOR_GROUPS: readonly {
@@ -29,7 +31,7 @@ const CONNECTOR_GROUPS: readonly {
   { status: 'unsupported', title: 'Unsupported' },
 ];
 
-export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconnect, onRemove }: SetupProps): ReactElement {
+export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconnect, onRemove, onOpenSettings }: SetupProps): ReactElement {
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -230,24 +232,36 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
             Right now Claude talks to your tools directly. Route that traffic through
             xCLAUDE in three steps:
           </p>
+          {/* Step lead-ins double as the step's action (no separate CTA below:
+              a standalone "+ Add connector" here would duplicate step 2). */}
           <ol className={styles['emptySteps']}>
             <li>
+              <button type="button" className={styles['emptyStepLink']} onClick={onOpenSettings}>
+                Install
+              </button>
               {configPresent ? (
                 <>
-                  <b>Install</b> — wraps the local MCP servers already in your Claude Desktop
-                  config.
+                  {' '}— wraps the local MCP servers already in your Claude Desktop config.
                 </>
               ) : (
                 <>
-                  <b>Install</b> — open Claude Desktop and add at least one MCP server first,
-                  then Install wraps your config so traffic flows through xCLAUDE.
+                  {' '}— open Claude Desktop and add at least one MCP server first, then
+                  Install wraps your config so traffic flows through xCLAUDE.
                 </>
               )}
             </li>
             <li>
-              <b>Add your connectors here</b> — reconnect the remote services you use
-              through xCLAUDE instead of natively. Google services need a one-time setup —
-              the Set up button walks you through it.
+              <button
+                type="button"
+                className={styles['emptyStepLink']}
+                onClick={() => setAddOpen(true)}
+                aria-haspopup="dialog"
+              >
+                Add your connectors here
+              </button>
+              {' '}— reconnect the remote services you use through xCLAUDE instead of
+              natively. Google services need a one-time setup — the Set up button walks you
+              through it.
             </li>
             <li>
               <b>Disconnect the native versions</b> in Claude Desktop and restart it —
@@ -257,14 +271,6 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
           <p className={styles['emptyHint']}>
             Local MCP servers from your Claude config appear here after Install.
           </p>
-          <button
-            type="button"
-            className={styles['addButton']}
-            onClick={() => setAddOpen(true)}
-            aria-haspopup="dialog"
-          >
-            + Add connector
-          </button>
         </div>
       )}
 
