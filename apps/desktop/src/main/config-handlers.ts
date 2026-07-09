@@ -16,6 +16,7 @@ import {
   addRemoteToConfig,
   applyWrap,
   isAlreadyWrapped,
+  isSafeRemoteName,
   parseConfig,
   removeRemoteFromConfig,
   replaceRemoteInConfig,
@@ -35,7 +36,7 @@ import {
   type WrapPlanEntry,
   type WriteAtomicError,
 } from '@xcg/shared/config';
-import { deleteStoredCredentials } from '@xcg/proxy/credentials';
+import { deleteStoredCredentials, hasStoredClient, hasStoredCredentials } from '@xcg/proxy/credentials';
 
 // --- xcgPath resolution from the main process (D-C2-3) ---
 //
@@ -132,7 +133,7 @@ function createRemoteErrorToIpc(
     case 'invalid-name':
       return { ok: false, error: { kind: 'invalid-name', detail: 'Name must be 1-64 chars: letters, digits, dot, underscore, hyphen.' } };
     case 'invalid-url':
-      return { ok: false, error: { kind: 'invalid-url', detail: 'The server URL is not a valid URL.' } };
+      return { ok: false, error: { kind: 'invalid-url', detail: 'The server URL must be a valid http(s) URL.' } };
     case 'name-exists':
       return { ok: false, error: { kind: 'name-exists', detail: 'A connector with that name already exists.' } };
     case 'bad-config':
@@ -311,6 +312,27 @@ export function runConfigReplaceRemote(
   const wr = writeAtomic(opts.configPath, res.config);
   if (!wr.ok) return writeAtomicErrorToIpc(wr.error);
   return { ok: true, op: 'add-remote', configPath: opts.configPath, name: params.name, outcome: 'wrote' };
+}
+
+// Keychain read guards (F4-03): an invalid name can never be connected or
+// seeded — short-circuit to false so the raw renderer string never reaches
+// the security CLI argv (getopt would mis-parse a leading-dash name).
+// Symmetric with config:seed-client's isSafeRemoteName gate. `has` is a deps
+// seam (same pattern as RemoveRemoteDeps) so tests never touch the Keychain.
+export async function runConfigHasCredentials(
+  name: string,
+  has: (name: string) => Promise<boolean> = hasStoredCredentials,
+): Promise<boolean> {
+  if (!isSafeRemoteName(name)) return false;
+  return has(name);
+}
+
+export async function runConfigHasClient(
+  name: string,
+  has: (name: string) => Promise<boolean> = hasStoredClient,
+): Promise<boolean> {
+  if (!isSafeRemoteName(name)) return false;
+  return has(name);
 }
 
 // deps seam: deleteCredentials is injectable so handler tests never touch the

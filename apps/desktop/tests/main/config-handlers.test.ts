@@ -12,6 +12,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   runConfigAddRemote,
+  runConfigHasClient,
+  runConfigHasCredentials,
   runConfigInstall,
   runConfigIsConnected,
   runConfigRemoveRemote,
@@ -585,5 +587,29 @@ describe('config IPC handlers (Milestone 4 Phase 5.1 sub-step C2)', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.error.kind).toBe('invalid-json');
     });
+  });
+});
+
+// F4-03: the Keychain read guards. An invalid name can never be connected or
+// seeded, so both short-circuit to false WITHOUT invoking the security CLI
+// (getopt would mis-parse a leading-dash name as an option).
+describe('runConfigHasCredentials / runConfigHasClient — name gate (F4-03)', () => {
+  it('invalid names → false; the Keychain query is never invoked', async () => {
+    const has = vi.fn(async () => true);
+    await expect(runConfigHasCredentials('-s', has)).resolves.toBe(false);
+    await expect(runConfigHasCredentials('a b', has)).resolves.toBe(false);
+    await expect(runConfigHasClient('-D', has)).resolves.toBe(false);
+    await expect(runConfigHasClient('x'.repeat(65), has)).resolves.toBe(false);
+    expect(has).not.toHaveBeenCalled();
+  });
+
+  it('valid name → delegates to the Keychain query with the name', async () => {
+    const hasCreds = vi.fn(async () => true);
+    await expect(runConfigHasCredentials('gmail', hasCreds)).resolves.toBe(true);
+    expect(hasCreds).toHaveBeenCalledWith('gmail');
+
+    const hasClient = vi.fn(async () => false);
+    await expect(runConfigHasClient('gmail', hasClient)).resolves.toBe(false);
+    expect(hasClient).toHaveBeenCalledWith('gmail');
   });
 });

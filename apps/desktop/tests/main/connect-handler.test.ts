@@ -97,6 +97,26 @@ describe('runConfigConnect (Hito 6 Fase 5, Pieza A)', () => {
     expect(login).not.toHaveBeenCalled();
   });
 
+  it('invalid name short-circuits BEFORE the login (F4-01): no browser, no Keychain', async () => {
+    writeConfig({ mcpServers: {} });
+    const login = vi.fn((): Promise<LoginOutcome> => Promise.resolve({ kind: 'success' }));
+
+    const result = await runConfigConnect({ login }, cfg('bad name'));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('invalid-name');
+    expect(login).not.toHaveBeenCalled();
+  });
+
+  it('non-http(s) url short-circuits BEFORE the login (F4-01)', async () => {
+    writeConfig({ mcpServers: {} });
+    const login = vi.fn((): Promise<LoginOutcome> => Promise.resolve({ kind: 'success' }));
+
+    const result = await runConfigConnect({ login }, { ...cfg('notion'), url: 'file:///etc/hosts' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('invalid-url');
+    expect(login).not.toHaveBeenCalled();
+  });
+
   it('config not-found: error not-found, login not called', async () => {
     const login = vi.fn((): Promise<LoginOutcome> => Promise.resolve({ kind: 'success' }));
 

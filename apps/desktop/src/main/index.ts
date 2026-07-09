@@ -16,6 +16,8 @@ import {
   resolveXcgPathFromMain,
   resolveXcgTargetPathFromMain,
   runConfigAddRemote,
+  runConfigHasClient,
+  runConfigHasCredentials,
   runConfigInstall,
   runConfigIsConnected,
   runConfigRemoveRemote,
@@ -54,7 +56,7 @@ import { spawnWrapper, readDetectionsFromAudit, resolveNpxPath } from './selftes
 import { runSelfTest } from './selftest-handler.js';
 import { runConfigConnect } from './connect-handler.js';
 import { runLoginProcess } from './login-runner.js';
-import { hasStoredCredentials, hasStoredClient, seedStoredClient } from '@xcg/proxy/credentials';
+import { seedStoredClient } from '@xcg/proxy/credentials';
 import { seedClientWarnings } from './seed-client-warnings.js';
 import { createTray, computeTrayCounts, updateTrayCounts } from './tray.js';
 import { computeReloginTransitions } from './relogin-notify.js';
@@ -327,13 +329,14 @@ ipcMain.handle('config:is-connected', (_event, params: { name: string }) => {
 
 // Keychain-only query (no config read): does this connector have a stored OAuth
 // token? Returns a plain boolean; a real Keychain error rejects (the renderer
-// degrades the Auth row to "—"). Mirrors the config:is-connected shape.
+// degrades the Auth row to "—"). Mirrors the config:is-connected shape. Both
+// queries gate the name (F4-03): invalid → false without touching the Keychain.
 ipcMain.handle('config:has-credentials', (_event, params: { name: string }) => {
-  return hasStoredCredentials(params.name);
+  return runConfigHasCredentials(params.name);
 });
 
 ipcMain.handle('config:has-client', (_event, params: { name: string }) => {
-  return hasStoredClient(params.name);
+  return runConfigHasClient(params.name);
 });
 
 // Seed one BYO OAuth client into the Keychain for one or more connectors (the

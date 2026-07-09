@@ -6,6 +6,7 @@ import {
   applyWrap,
   createRemoteEntry,
   removeRemoteFromConfig,
+  replaceRemoteInConfig,
   unwrap,
 } from '../../src/config/transform.js';
 import type { WrapPlan } from '../../src/config/types.js';
@@ -327,6 +328,13 @@ describe('createRemoteEntry / addRemoteToConfig — remote bridge (Hito 6 Phase 
     });
   });
 
+  it('rejects a parseable non-http(s) url (F4-02 scheme gate)', () => {
+    expect(addRemoteToConfig({}, 'notion', 'file:///etc/hosts', '/x/xcg-proxy')).toEqual({
+      ok: false,
+      error: 'invalid-url',
+    });
+  });
+
   it('rejects a name that already exists', () => {
     const raw = { mcpServers: { notion: { command: 'x' } } };
     expect(addRemoteToConfig(raw, 'notion', URL_OK, '/x/xcg-proxy')).toEqual({
@@ -343,6 +351,28 @@ describe('createRemoteEntry / addRemoteToConfig — remote bridge (Hito 6 Phase 
     expect(addRemoteToConfig([], 'notion', URL_OK, '/x/xcg-proxy')).toEqual({
       ok: false,
       error: 'bad-config',
+    });
+  });
+});
+
+describe('replaceRemoteInConfig — scheme gate (F4-02)', () => {
+  const URL_OK = 'https://mcp.notion.com/mcp';
+
+  it('rejects a parseable non-http(s) url', () => {
+    expect(replaceRemoteInConfig({}, 'notion', 'file:///x', '/x/xcg-proxy')).toEqual({
+      ok: false,
+      error: 'invalid-url',
+    });
+  });
+
+  it('https stays accepted (overwrites in place)', () => {
+    const raw = { mcpServers: { notion: { command: 'old' } } };
+    const res = replaceRemoteInConfig(raw, 'notion', URL_OK, '/x/xcg-proxy');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect((res.config as { mcpServers: Record<string, unknown> }).mcpServers['notion']).toEqual({
+      command: '/x/xcg-proxy',
+      args: ['http', '--url', URL_OK, '--name', 'notion'],
     });
   });
 });

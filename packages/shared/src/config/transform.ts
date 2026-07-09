@@ -133,12 +133,25 @@ export function createRemoteEntry(name: string, url: string, xcgPath: string): R
   return { command: xcgPath, args: ['http', '--url', url, '--name', name] };
 }
 
+// Scheme gate for remote URLs (F4-02): the bridge only speaks http(s), so a
+// file:/data:/… URL must never be written into the config. Same precedent as
+// system:open-external's allowlist. Parse failure and non-http scheme both fail.
+export function isHttpUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+}
+
 // Inserts a new remote bridge entry under mcpServers[name], preserving everything
 // else (other entries, unknown top-level keys) via spread. Does NOT overwrite an
 // existing key (returns 'name-exists'). Returns the full config object for writeAtomic.
 export function addRemoteToConfig(raw: unknown, name: string, url: string, xcgPath: string): AddRemoteToConfigResult {
   if (!isSafeRemoteName(name)) return { ok: false, error: 'invalid-name' };
-  try { new URL(url); } catch { return { ok: false, error: 'invalid-url' }; }
+  if (!isHttpUrl(url)) return { ok: false, error: 'invalid-url' };
   if (!isPlainObject(raw)) return { ok: false, error: 'bad-config' };
   const mcp = isPlainObject(raw.mcpServers) ? raw.mcpServers : {};
   if (name in mcp) return { ok: false, error: 'name-exists' };
@@ -153,7 +166,7 @@ export function addRemoteToConfig(raw: unknown, name: string, url: string, xcgPa
 // name/url and the config shape. Returns the full config object for writeAtomic.
 export function replaceRemoteInConfig(raw: unknown, name: string, url: string, xcgPath: string): AddRemoteToConfigResult {
   if (!isSafeRemoteName(name)) return { ok: false, error: 'invalid-name' };
-  try { new URL(url); } catch { return { ok: false, error: 'invalid-url' }; }
+  if (!isHttpUrl(url)) return { ok: false, error: 'invalid-url' };
   if (!isPlainObject(raw)) return { ok: false, error: 'bad-config' };
   const mcp = isPlainObject(raw.mcpServers) ? raw.mcpServers : {};
   const newMcp = { ...mcp, [name]: createRemoteEntry(name, url, xcgPath) };

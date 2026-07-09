@@ -9,7 +9,7 @@
 // successful login, so the config never holds a remote entry without a token.
 // Unit-tested with a mocked login (tests/main/connect-handler.test.ts).
 
-import { parseConfig, toConnectors } from '@xcg/shared/config';
+import { isHttpUrl, isSafeRemoteName, parseConfig, toConnectors } from '@xcg/shared/config';
 import type { ConnectResult } from '@xcg/shared/config';
 
 import {
@@ -43,6 +43,27 @@ export async function runConfigConnect(
   deps: ConnectHandlerDeps,
   config: ConnectConfig,
 ): Promise<ConnectResult> {
+  // (0) Validate name and URL BEFORE the login (F4-01). Step (3) re-validates
+  //     on write, but by then the login has completed a full OAuth dance and
+  //     stored Keychain items under the RAW name — if the write then rejects,
+  //     those credentials are orphaned under an account no Remove can reach
+  //     (there is no config entry). Fulfils parser.ts's promise that names are
+  //     validated before they reach the Keychain CLI or the args array; same
+  //     typed errors the write step produces, so the existing banner mapping
+  //     applies unchanged.
+  if (!isSafeRemoteName(config.name)) {
+    return {
+      ok: false,
+      error: { kind: 'invalid-name', detail: 'Name must be 1-64 chars: letters, digits, dot, underscore, hyphen.' },
+    };
+  }
+  if (!isHttpUrl(config.url)) {
+    return {
+      ok: false,
+      error: { kind: 'invalid-url', detail: 'The server URL must be a valid http(s) URL.' },
+    };
+  }
+
   // (1) Classify any existing entry of this name using the SAME mapping the
   //     Connectors UI uses (parser plan → entryToIpc → toConnectors), so
   //     "ours with this URL" is not a parallel criterion. All BEFORE the login:

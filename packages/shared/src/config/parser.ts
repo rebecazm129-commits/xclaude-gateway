@@ -30,10 +30,13 @@ function isStringArray(v: unknown): v is string[] {
  * Unlike stdio names (which come from the user's existing config and are trusted
  * by construction), remote names are chosen by xCLAUDE, so they must be validated
  * before they reach the Keychain CLI or the args array.
- * Conservative allowlist: ASCII letters, digits, dot, underscore, hyphen; 1–64 chars.
+ * Conservative allowlist: ASCII letters, digits, dot, underscore, hyphen; 1–64
+ * chars — and the FIRST char may not be a hyphen (F4-03): a leading-dash name
+ * would be mis-parsed as an option by `security`'s getopt (and by any argv
+ * consumer downstream), e.g. `-s`.
  */
 export function isSafeRemoteName(name: string): boolean {
-  return /^[A-Za-z0-9._-]{1,64}$/.test(name);
+  return /^[A-Za-z0-9._][A-Za-z0-9._-]{0,63}$/.test(name);
 }
 
 // --- Idempotency: is this entry already wrapped by xcg-proxy? ---

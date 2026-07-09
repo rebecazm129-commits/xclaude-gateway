@@ -297,6 +297,13 @@ describe('isSafeRemoteName — validates xCLAUDE-chosen remote names (Hito 6 Pha
     }
   });
 
+  it('rejects a leading hyphen (getopt option confusion, F4-03) but allows inner hyphens', () => {
+    for (const n of ['-s', '-D', '-my-server']) {
+      expect(isSafeRemoteName(n)).toBe(false);
+    }
+    expect(isSafeRemoteName('my-server')).toBe(true);
+  });
+
   it('rejects a 65-char name (over the limit)', () => {
     expect(isSafeRemoteName('a'.repeat(65))).toBe(false);
   });
