@@ -131,9 +131,14 @@ async function defaultStartCallback(provider: LoginOAuthProvider): Promise<Callb
 
   await new Promise<void>((resolve, reject) => {
     server.once('error', (err: NodeJS.ErrnoException) => {
+      // EADDRINUSE: the most likely holder of the fixed port is another login
+      // of ours still in progress (F3-01) — say so instead of pointing the
+      // user at a generic "conflicting process".
       reject(
         err.code === 'EADDRINUSE'
-          ? new Error(`port ${port} is in use; close the conflicting process and retry`)
+          ? new Error(
+              `port ${port} is in use — another sign-in may still be in progress; wait for it to finish and retry`,
+            )
           : err,
       );
     });
