@@ -157,7 +157,16 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
             for (const detect of CONTENT_DETECTORS) {
               const out = detect(input);
               if (!out) continue;
-              const detection = { ...out, findings: out.findings.map((f) => ({ ...f, location: 'result' })) };
+              // data_export_warning is downgraded to 'low' INBOUND only: export
+              // language inside a result is a possible tool-poisoning signal but
+              // far less actionable than an outbound export command, and it
+              // false-positives on ordinary document text (Drive contentSnippets
+              // with "Save the file as: …", 07/07). Kept rather than dropped
+              // because prompt_injection's patterns do NOT cover direct export
+              // instructions injected in results (verified 06-07/07). The
+              // request path keeps the detector's own severity ('medium').
+              const severity = out.category === 'data_export_warning' ? 'low' : out.severity;
+              const detection = { ...out, severity, findings: out.findings.map((f) => ({ ...f, location: 'result' })) };
               events.push({ type: 'mcp.detection_enrichment', rpcId: frame.id, direction, detection, overheadUs });
             }
           }
