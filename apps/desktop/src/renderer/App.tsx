@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { ConnectResult, RemoveRemoteResult, StatusResult } from '@xcg/shared/config';
 
@@ -12,6 +12,7 @@ import {
 } from './components/ResidualCredentialsWarning.js';
 import { Tabs, type TabOption } from './components/Tabs.js';
 import { usePolledHealth } from './hooks/usePolledHealth.js';
+import { usePolledConfigStatus } from './hooks/usePolledConfigStatus.js';
 
 import styles from './App.module.css';
 
@@ -58,9 +59,7 @@ function defaultTabFromStatus(status: StatusResult | null): TabId {
 }
 
 export function App(): JSX.Element {
-  const [configStatus, setConfigStatus] = useState<StatusResult | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>(() => readLastTab() ?? 'setup');
-  const [statusLoaded, setStatusLoaded] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [detectionsMcpFilter, setDetectionsMcpFilter] = useState<string | null>(null);
   // Connectors whose remove left Keychain credentials behind (F1-02). Memory-
@@ -68,6 +67,11 @@ export function App(): JSX.Element {
   // the removed entry; cleared by the notice's explicit Dismiss.
   const [residualCreds, setResidualCreds] = useState<readonly string[]>([]);
   const { health, refresh: refreshHealth } = usePolledHealth();
+  // Polled config status (10s + manual refresh), replacing the old one-shot
+  // read: out-of-band config changes (Claude Desktop rewriting mcpServers, a
+  // manual edit) now reach the UI within one tick (F2-04). null until the
+  // first tick resolves — Setup shows its loading state on null.
+  const { status: configStatus, refresh: refreshStatus } = usePolledConfigStatus();
 
   const pulseVariantClass =
     health === null
@@ -91,35 +95,25 @@ export function App(): JSX.Element {
   async function handleRefresh(): Promise<void> {
     await refreshHealth();
     // Also refresh configStatus per C4-D-12: repair touches the config, both views need sync.
-    try {
-      const status = await window.xcg.configStatus();
-      setConfigStatus(status);
-    } catch (err) {
-      console.error('configStatus refresh failed:', err);
-    }
+    await refreshStatus();
   }
 
   function handleRepaired(_result: import('@xcg/shared').RepairResult): void {
     void handleRefresh();
   }
 
-  // One-shot configStatus on mount (D-D4). Sets the initial status and, if
-  // localStorage was empty, picks the default tab based on the result.
+  // Default-tab pick (D-D4): once, when the FIRST polled status arrives and
+  // localStorage had no preference. The hook owns the fetch now; this effect
+  // only reacts to the first non-null result.
+  const tabInitialized = useRef(false);
   useEffect(() => {
-    let cancelled = false;
-    void window.xcg.configStatus().then((result) => {
-      if (cancelled) return;
-      setConfigStatus(result);
-      // Only override the tab if localStorage had no preference.
-      if (readLastTab() === null) {
-        setActiveTab(defaultTabFromStatus(result));
-      }
-      setStatusLoaded(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (configStatus === null || tabInitialized.current) return;
+    tabInitialized.current = true;
+    // Only override the tab if localStorage had no preference.
+    if (readLastTab() === null) {
+      setActiveTab(defaultTabFromStatus(configStatus));
+    }
+  }, [configStatus]);
 
   const handleTabChange = useCallback((tab: TabId) => {
     setActiveTab(tab);
@@ -132,16 +126,11 @@ export function App(): JSX.Element {
     writeLastTab('detections');
   }, []);
 
-  const refreshStatus = useCallback(() => {
-    void window.xcg.configStatus().then((result) => {
-      setConfigStatus(result);
-    });
-  }, []);
-
   const handleAudit = useCallback((name: string) => {
-    void window.xcg.configInstall('yes', name).then(() => {
-      refreshStatus();
-    });
+    void window.xcg
+      .configInstall('yes', name)
+      .then(() => refreshStatus())
+      .catch((err) => console.error('configInstall failed:', err));
   }, [refreshStatus]);
 
   const handleReconnect = useCallback(
@@ -150,7 +139,7 @@ export function App(): JSX.Element {
         // A successful reconnect rewrote the config entry; re-read so the
         // inspector/list reflect it. The result is returned so the caller
         // (ConnectorInspector) can render the success/error banner.
-        if (result.ok) refreshStatus();
+        if (result.ok) void refreshStatus();
         return result;
       }),
     [refreshStatus],
@@ -162,7 +151,7 @@ export function App(): JSX.Element {
         // ok covers both wrote (entry gone) and noop (not ours); refresh either
         // way so the list reflects reality. The result is returned so the
         // inspector can show the noop/error banner.
-        if (result.ok) refreshStatus();
+        if (result.ok) void refreshStatus();
         // wrote + tokensCleared:false → the best-effort Keychain clear failed;
         // queue the residual-credentials notice (no-op for any other result).
         setResidualCreds((prev) => accumulateResidualCredentials(prev, name, result));
@@ -216,7 +205,7 @@ export function App(): JSX.Element {
       />
       {activeTab === 'setup' ? (
         <Setup
-          status={statusLoaded ? configStatus : null}
+          status={configStatus}
           onRefresh={refreshStatus}
           onOpenInDetections={handleOpenInDetections}
           onAudit={handleAudit}
@@ -232,7 +221,7 @@ export function App(): JSX.Element {
       )}
       {settingsOpen && (
         <SettingsDrawer
-          status={statusLoaded ? configStatus : null}
+          status={configStatus}
           onRefresh={refreshStatus}
           onClose={() => setSettingsOpen(false)}
         />
