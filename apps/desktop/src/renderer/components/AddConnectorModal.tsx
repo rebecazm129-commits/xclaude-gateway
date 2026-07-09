@@ -183,8 +183,10 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
         try {
           const res: IsConnectedResult = await window.xcg.configIsConnected(entry.name);
           if (res.ok && res.connected) found.add(entry.name);
-        } catch {
-          // ignore: a failed query should not break the catalog
+        } catch (err) {
+          // Deliberate degradation (a failed query must not break the catalog:
+          // the card falls back to "Connect"), but logged — F2-01.
+          console.error(`configIsConnected failed for "${entry.name}":`, err);
         }
       }
       if (!cancelled) setConnectedNames(found);
@@ -209,8 +211,10 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
         if (entry.setupCatalog === undefined) continue;
         try {
           if (await window.xcg.configHasClient(entry.name)) found.add(entry.name);
-        } catch {
-          // ignore: treat as not seeded
+        } catch (err) {
+          // Deliberate degradation (treated as not seeded: the card falls back
+          // to "Set up…"), but logged — F2-01.
+          console.error(`configHasClient failed for "${entry.name}":`, err);
         }
       }
       if (!cancelled) setClientSeeded(found);
