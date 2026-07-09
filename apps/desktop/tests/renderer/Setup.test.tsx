@@ -6,6 +6,7 @@
 // queried by the (closed) AddConnectorModal mounted inside Setup. The glyph
 // appears after the first poll resolves, so assertions use findBy*.
 
+import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
@@ -46,18 +47,34 @@ afterEach(() => {
 });
 
 const noop = vi.fn();
-function renderSetup(status: StatusResult = STATUS, onOpenSettings: () => void = noop): void {
-  render(
+
+// addOpen is a controlled prop since F2-04 step 2 (App owns it); the harness
+// holds the state so clicking the in-Setup openers still shows the dialog.
+function SetupHarness({
+  status,
+  onOpenSettings,
+}: {
+  status: StatusResult;
+  onOpenSettings: () => void;
+}): JSX.Element {
+  const [addOpen, setAddOpen] = useState(false);
+  return (
     <Setup
       status={status}
+      addOpen={addOpen}
+      onAddOpenChange={setAddOpen}
       onRefresh={noop}
       onOpenInDetections={noop}
       onAudit={noop}
       onReconnect={vi.fn(async () => ({ ok: true, reconnected: true, name: 'notion' }))}
       onRemove={vi.fn(async () => ({ ok: true }))}
       onOpenSettings={onOpenSettings}
-    />,
+    />
   );
+}
+
+function renderSetup(status: StatusResult = STATUS, onOpenSettings: () => void = noop): void {
+  render(<SetupHarness status={status} onOpenSettings={onOpenSettings} />);
 }
 
 describe('Setup — re-login row glyph', () => {

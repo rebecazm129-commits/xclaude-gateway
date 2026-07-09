@@ -10,6 +10,12 @@ import {
   ResidualCredentialsWarning,
   accumulateResidualCredentials,
 } from './components/ResidualCredentialsWarning.js';
+import {
+  VanishedConnectorsWarning,
+  appendUniqueNames,
+  diffVanishedConnectors,
+  pruneAgedRemoves,
+} from './components/VanishedConnectorsWarning.js';
 import { Tabs, type TabOption } from './components/Tabs.js';
 import { usePolledHealth } from './hooks/usePolledHealth.js';
 import { usePolledConfigStatus } from './hooks/usePolledConfigStatus.js';
@@ -71,7 +77,23 @@ export function App(): JSX.Element {
   // read: out-of-band config changes (Claude Desktop rewriting mcpServers, a
   // manual edit) now reach the UI within one tick (F2-04). null until the
   // first tick resolves — Setup shows its loading state on null.
-  const { status: configStatus, refresh: refreshStatus } = usePolledConfigStatus();
+  const { status: configStatus, previous: previousStatus, refresh: refreshStatus } =
+    usePolledConfigStatus();
+  // Add connector modal visibility. Lives here (not in Setup, where it used
+  // to) so the vanished-connectors notice can open it — and switch to the
+  // Connectors tab first — from any tab. Setup consumes it as a controlled prop.
+  const [addOpen, setAddOpen] = useState(false);
+  // F2-04 step 2: managed connectors that disappeared from the config without
+  // an in-app Remove. Memory-only, accumulated across poll diffs, cleared by
+  // the notice's explicit Dismiss.
+  const [vanished, setVanished] = useState<readonly string[]>([]);
+  // Names removed via the in-app Remove, excluded from the vanished diff. A
+  // name is added BEFORE the remove IPC call: a poll tick can land between
+  // main's config write and the remove promise resolving, and the diff effect
+  // must already know that disappearance is in-app (adding in .then would
+  // lose that race). Rolled back when the remove did not write; aged out by
+  // pruneAgedRemoves once the name leaves the `previous` snapshot.
+  const inAppRemoves = useRef(new Set<string>());
 
   const pulseVariantClass =
     health === null
@@ -115,10 +137,31 @@ export function App(): JSX.Element {
     }
   }, [configStatus]);
 
+  // Vanished-connectors diff (F2-04 step 2): runs once per DISTINCT snapshot
+  // pair (the hook's dedupe keeps references stable otherwise). Prune runs
+  // AFTER the diff; the two never collide (pruning drops names absent from
+  // `previous`, the diff only reports names present in it).
+  useEffect(() => {
+    if (previousStatus === null || configStatus === null) return;
+    const gone = diffVanishedConnectors(previousStatus, configStatus, inAppRemoves.current);
+    if (gone.length > 0) {
+      setVanished((prev) => appendUniqueNames(prev, gone));
+    }
+    pruneAgedRemoves(inAppRemoves.current, previousStatus);
+  }, [configStatus, previousStatus]);
+
   const handleTabChange = useCallback((tab: TabId) => {
     setActiveTab(tab);
     writeLastTab(tab);
   }, []);
+
+  // "Re-add connectors": jump to the Connectors tab (the modal lives inside
+  // Setup) and open the Add connector modal. Deliberately does NOT dismiss
+  // the notice — the user decides when the situation is handled.
+  const handleReAdd = useCallback(() => {
+    handleTabChange('setup');
+    setAddOpen(true);
+  }, [handleTabChange]);
 
   const handleOpenInDetections = useCallback((name: string) => {
     setDetectionsMcpFilter(name);
@@ -146,17 +189,30 @@ export function App(): JSX.Element {
   );
 
   const handleRemove = useCallback(
-    (name: string): Promise<RemoveRemoteResult> =>
-      window.xcg.configRemoveRemote(name).then((result) => {
-        // ok covers both wrote (entry gone) and noop (not ours); refresh either
-        // way so the list reflects reality. The result is returned so the
-        // inspector can show the noop/error banner.
-        if (result.ok) void refreshStatus();
-        // wrote + tokensCleared:false → the best-effort Keychain clear failed;
-        // queue the residual-credentials notice (no-op for any other result).
-        setResidualCreds((prev) => accumulateResidualCredentials(prev, name, result));
-        return result;
-      }),
+    (name: string): Promise<RemoveRemoteResult> => {
+      // Record the in-app remove BEFORE the IPC call (see inAppRemoves above:
+      // a poll tick racing the remove must find the name already excluded).
+      inAppRemoves.current.add(name);
+      return window.xcg
+        .configRemoveRemote(name)
+        .then((result) => {
+          // Nothing written (noop/error) → the entry is still there; undo the
+          // exclusion so a later real disappearance still notifies.
+          if (!(result.ok && result.outcome === 'wrote')) inAppRemoves.current.delete(name);
+          // ok covers both wrote (entry gone) and noop (not ours); refresh either
+          // way so the list reflects reality. The result is returned so the
+          // inspector can show the noop/error banner.
+          if (result.ok) void refreshStatus();
+          // wrote + tokensCleared:false → the best-effort Keychain clear failed;
+          // queue the residual-credentials notice (no-op for any other result).
+          setResidualCreds((prev) => accumulateResidualCredentials(prev, name, result));
+          return result;
+        })
+        .catch((err: unknown) => {
+          inAppRemoves.current.delete(name);
+          throw err;
+        });
+    },
     [refreshStatus],
   );
 
@@ -203,9 +259,16 @@ export function App(): JSX.Element {
         names={residualCreds}
         onDismiss={() => setResidualCreds([])}
       />
+      <VanishedConnectorsWarning
+        names={vanished}
+        onReAdd={handleReAdd}
+        onDismiss={() => setVanished([])}
+      />
       {activeTab === 'setup' ? (
         <Setup
           status={configStatus}
+          addOpen={addOpen}
+          onAddOpenChange={setAddOpen}
           onRefresh={refreshStatus}
           onOpenInDetections={handleOpenInDetections}
           onAudit={handleAudit}

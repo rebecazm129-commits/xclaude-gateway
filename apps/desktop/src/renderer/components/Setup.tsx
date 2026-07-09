@@ -13,6 +13,10 @@ import styles from './Setup.module.css';
 
 export interface SetupProps {
   readonly status: StatusResult | null;
+  /** Add connector modal visibility — controlled by App so the modal can be
+   *  opened from outside Setup (the vanished-connectors notice's Re-add). */
+  readonly addOpen: boolean;
+  readonly onAddOpenChange: (open: boolean) => void;
   readonly onRefresh: () => void;
   readonly onOpenInDetections: (name: string) => void;
   readonly onAudit: (name: string) => void;
@@ -31,9 +35,8 @@ const CONNECTOR_GROUPS: readonly {
   { status: 'unsupported', title: 'Unsupported' },
 ];
 
-export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconnect, onRemove, onOpenSettings }: SetupProps): ReactElement {
+export function Setup({ status, addOpen, onAddOpenChange, onRefresh, onOpenInDetections, onAudit, onReconnect, onRemove, onOpenSettings }: SetupProps): ReactElement {
   const [selectedName, setSelectedName] = useState<string | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
   const [query, setQuery] = useState('');
   const { events: detections, authAlerts } = usePolledAudit();
   const alertedMcps = useMemo(() => new Set(authAlerts.map((a) => a.mcp)), [authAlerts]);
@@ -117,7 +120,7 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
               <button
                 type="button"
                 className={styles['addButton']}
-                onClick={() => setAddOpen(true)}
+                onClick={() => onAddOpenChange(true)}
                 aria-haspopup="dialog"
               >
                 + Add connector
@@ -256,7 +259,7 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
               <button
                 type="button"
                 className={styles['emptyStepLink']}
-                onClick={() => setAddOpen(true)}
+                onClick={() => onAddOpenChange(true)}
                 aria-haspopup="dialog"
               >
                 Add your connectors here
@@ -276,7 +279,7 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
           <button
             type="button"
             className={styles['addButton']}
-            onClick={() => setAddOpen(true)}
+            onClick={() => onAddOpenChange(true)}
             aria-haspopup="dialog"
           >
             + Add connector
@@ -288,7 +291,7 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
 
       <AddConnectorModal
         open={addOpen}
-        onClose={() => setAddOpen(false)}
+        onClose={() => onAddOpenChange(false)}
         onRefresh={onRefresh}
       />
     </div>
