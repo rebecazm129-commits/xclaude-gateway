@@ -125,9 +125,13 @@ describe('Setup — empty state (one checklist, step 1 adapts to configPresent)'
     expect(screen.getByRole('dialog')).toBeDefined();
   });
 
-  it('no standalone "+ Add connector" button in the empty state (step 2 is the CTA)', () => {
+  it('standalone "+ Add connector" CTA coexists with the step-2 link and opens the modal', () => {
     stubXcg([]);
     renderSetup(emptyStatus(true));
-    expect(screen.queryByRole('button', { name: '+ Add connector' })).toBeNull();
+    // Both entry points render: the checklist's in-context link and the
+    // screen's primary CTA below it.
+    expect(screen.getByRole('button', { name: 'Add your connectors here' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: '+ Add connector' }));
+    expect(screen.getByRole('dialog')).toBeDefined();
   });
 });

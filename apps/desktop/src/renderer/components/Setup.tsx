@@ -232,8 +232,10 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
             Right now Claude talks to your tools directly. Route that traffic through
             xCLAUDE in three steps:
           </p>
-          {/* Step lead-ins double as the step's action (no separate CTA below:
-              a standalone "+ Add connector" here would duplicate step 2). */}
+          {/* Step lead-ins double as the step's action, AND a standalone
+              "+ Add connector" follows the checklist — deliberate coexistence:
+              the step-2 link is the action in the checklist's context, the
+              button is the screen's primary, always-visible CTA. */}
           <ol className={styles['emptySteps']}>
             <li>
               <button type="button" className={styles['emptyStepLink']} onClick={onOpenSettings}>
@@ -271,6 +273,14 @@ export function Setup({ status, onRefresh, onOpenInDetections, onAudit, onReconn
           <p className={styles['emptyHint']}>
             Local MCP servers from your Claude config appear here after Install.
           </p>
+          <button
+            type="button"
+            className={styles['addButton']}
+            onClick={() => setAddOpen(true)}
+            aria-haspopup="dialog"
+          >
+            + Add connector
+          </button>
         </div>
       )}
 
