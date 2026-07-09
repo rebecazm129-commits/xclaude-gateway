@@ -182,6 +182,11 @@
   word-break: break-all;
 }
 
+.findingCount {
+  color: var(--kraft-ink-soft);
+  flex-shrink: 0;
+}
+
 .footer {
   padding: 12px 20px;
   border-top: var(--kraft-hairline) solid var(--kraft-border);

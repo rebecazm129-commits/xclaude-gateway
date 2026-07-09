@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import type { Category, DetectionDetail, DetectionRowSlim } from '../../shared/types.js';
+import type { Category, DetectionDetail, DetectionFinding, DetectionRowSlim } from '../../shared/types.js';
 import { Badge } from './Badge.js';
 
 import styles from './DetailDrawer.module.css';
@@ -35,6 +35,35 @@ function formatTimestamp(iso: string): string {
 interface DetailDrawerProps {
   row: DetectionRowSlim;
   onClose: () => void;
+}
+
+// Findings with the same (type, location) are byte-identical — the shape
+// carries no raw datum — so repeats only encode multiplicity. Collapse them
+// for DISPLAY with a counter; the audit log keeps every entry (the JSONL is
+// the product). Grouping never crosses types: the deliberate nl_bsn/pt_nif
+// multi-label stays two rows.
+interface GroupedFinding {
+  type: string;
+  location?: string;
+  count: number;
+}
+
+export function groupFindings(findings: readonly DetectionFinding[]): GroupedFinding[] {
+  const groups = new Map<string, GroupedFinding>();
+  for (const f of findings) {
+    const key = `${f.type}|${f.location ?? ''}`;
+    const existing = groups.get(key);
+    if (existing === undefined) {
+      groups.set(key, {
+        type: f.type,
+        ...(f.location !== undefined ? { location: f.location } : {}),
+        count: 1,
+      });
+    } else {
+      existing.count++;
+    }
+  }
+  return [...groups.values()];
 }
 
 // The heavy view is fetched lazily by id when the drawer opens. The header
@@ -191,11 +220,14 @@ export function DetailDrawer({ row, onClose }: DetailDrawerProps): JSX.Element {
                 <div className={styles['emptyFindings']}>No findings</div>
               ) : (
                 <div className={styles['findings']}>
-                  {detail.findings.map((finding, idx) => (
-                    <div key={idx} className={styles['finding']}>
+                  {groupFindings(detail.findings).map((finding) => (
+                    <div key={`${finding.type}|${finding.location ?? ''}`} className={styles['finding']}>
                       <span className={styles['findingType']}>{finding.type}</span>
                       {finding.location !== undefined && (
                         <span className={styles['findingMatch']}>{finding.location}</span>
+                      )}
+                      {finding.count > 1 && (
+                        <span className={styles['findingCount']}>×{finding.count}</span>
                       )}
                     </div>
                   ))}
