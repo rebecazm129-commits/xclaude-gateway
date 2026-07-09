@@ -6,6 +6,10 @@ import { Detections } from './components/Detections.js';
 import { Setup } from './components/Setup.js';
 import { SettingsDrawer } from './components/SettingsDrawer.js';
 import { HealthWarning } from './components/HealthWarning.js';
+import {
+  ResidualCredentialsWarning,
+  accumulateResidualCredentials,
+} from './components/ResidualCredentialsWarning.js';
 import { Tabs, type TabOption } from './components/Tabs.js';
 import { usePolledHealth } from './hooks/usePolledHealth.js';
 
@@ -59,6 +63,10 @@ export function App(): JSX.Element {
   const [statusLoaded, setStatusLoaded] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [detectionsMcpFilter, setDetectionsMcpFilter] = useState<string | null>(null);
+  // Connectors whose remove left Keychain credentials behind (F1-02). Memory-
+  // only, lives here because the inspector that ran the remove unmounts with
+  // the removed entry; cleared by the notice's explicit Dismiss.
+  const [residualCreds, setResidualCreds] = useState<readonly string[]>([]);
   const { health, refresh: refreshHealth } = usePolledHealth();
 
   const pulseVariantClass =
@@ -155,6 +163,9 @@ export function App(): JSX.Element {
         // way so the list reflects reality. The result is returned so the
         // inspector can show the noop/error banner.
         if (result.ok) refreshStatus();
+        // wrote + tokensCleared:false → the best-effort Keychain clear failed;
+        // queue the residual-credentials notice (no-op for any other result).
+        setResidualCreds((prev) => accumulateResidualCredentials(prev, name, result));
         return result;
       }),
     [refreshStatus],
@@ -199,6 +210,10 @@ export function App(): JSX.Element {
       </header>
       <Tabs options={TAB_OPTIONS} active={activeTab} onChange={handleTabChange} />
       <HealthWarning health={health} onRepaired={handleRepaired} />
+      <ResidualCredentialsWarning
+        names={residualCreds}
+        onDismiss={() => setResidualCreds([])}
+      />
       {activeTab === 'setup' ? (
         <Setup
           status={statusLoaded ? configStatus : null}
