@@ -158,6 +158,17 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
     };
   }, []);
 
+  // Stale-banner reset (F1-03): a result/error from a previous open must not
+  // reappear on reopen. In-flight connects are unaffected (busyName is kept;
+  // their result lands AFTER this reset), but a connect that finished while
+  // the modal was closed loses its banner — the card's Added state already
+  // tells that story.
+  useEffect(() => {
+    if (!open) return;
+    setLastResult(null);
+    setError(null);
+  }, [open]);
+
   // Which catalog connectors are already configured. Re-checked each time the
   // modal opens (the config can change out of band while it's closed — Remove
   // in the inspector, a manual config edit, a repair); the set is also updated
@@ -255,10 +266,17 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
       );
     }
     // BYO connector with no seeded client yet → route to its setup wizard
-    // instead of attempting OAuth (which would fail without a client).
+    // instead of attempting OAuth (which would fail without a client). Same
+    // in-flight guard as Connect (F1-04): opening the wizard mid-connect would
+    // replace the gallery and hide the Connecting…/result feedback.
     if (entry.setupCatalog !== undefined && !clientSeeded.has(entry.name)) {
       return (
-        <button type="button" className={styles['btnSetup']} onClick={() => setSetupEntry(entry)}>
+        <button
+          type="button"
+          className={styles['btnSetup']}
+          onClick={() => setSetupEntry(entry)}
+          disabled={busyName !== null}
+        >
           Set up…
         </button>
       );

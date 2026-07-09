@@ -134,6 +134,34 @@ describe('AddConnectorModal', () => {
     expect(await screen.findByText('Connecting… authorize in your browser')).toBeDefined();
   });
 
+  it('a stale connect error does not reappear on reopen (F1-03)', async () => {
+    stubXcg({
+      configConnect: vi.fn(async () => {
+        throw new Error('boom');
+      }),
+    });
+    const { rerender } = render(<AddConnectorModal open onClose={vi.fn()} />);
+    const github = screen.getByTestId('connector-card-github');
+    fireEvent.click(within(github).getByRole('button', { name: 'Connect' }));
+    expect(await screen.findByText('Connection failed: boom')).toBeTruthy();
+
+    rerender(<AddConnectorModal open={false} onClose={vi.fn()} />);
+    rerender(<AddConnectorModal open onClose={vi.fn()} />);
+    expect(screen.queryByText(/Connection failed/)).toBeNull();
+  });
+
+  it('"Set up…" is disabled while a connect is in flight (F1-04)', async () => {
+    // configConnect never resolves → busyName stays set.
+    stubXcg({ configConnect: vi.fn(() => new Promise(() => {})) });
+    renderOpen();
+    const github = screen.getByTestId('connector-card-github');
+    fireEvent.click(within(github).getByRole('button', { name: 'Connect' }));
+    await screen.findByText('Connecting… authorize in your browser');
+    const gmail = screen.getByTestId('connector-card-gmail');
+    const setup = within(gmail).getByRole('button', { name: 'Set up…' }) as HTMLButtonElement;
+    expect(setup.disabled).toBe(true);
+  });
+
   it('opens the request link in the system browser (never navigates)', () => {
     const api = stubXcg();
     renderOpen();
