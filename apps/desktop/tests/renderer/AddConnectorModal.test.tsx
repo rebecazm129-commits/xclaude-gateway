@@ -95,6 +95,28 @@ describe('AddConnectorModal', () => {
     expect((added as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('re-checks connected state on reopen: an out-of-band remove returns the card to Connect / Set up…', async () => {
+    const api = stubXcg({
+      configIsConnected: vi.fn(async (name: string) => ({
+        ok: true,
+        connected: name === 'notion' || name === 'gmail',
+      })),
+    });
+    const { rerender } = render(<AddConnectorModal open onClose={vi.fn()} />);
+    await within(screen.getByTestId('connector-card-notion')).findByRole('button', { name: 'Added' });
+    await within(screen.getByTestId('connector-card-gmail')).findByRole('button', { name: 'Added' });
+
+    // Close the modal (it stays mounted) and remove both connectors out of band
+    // — e.g. Remove in the inspector, which also clears gmail's seeded client.
+    rerender(<AddConnectorModal open={false} onClose={vi.fn()} />);
+    api.configIsConnected.mockImplementation(async () => ({ ok: true, connected: false }));
+
+    rerender(<AddConnectorModal open onClose={vi.fn()} />);
+    await within(screen.getByTestId('connector-card-notion')).findByRole('button', { name: 'Connect' });
+    // gmail is BYO and its client is gone too (configHasClient stays false) → back to setup.
+    await within(screen.getByTestId('connector-card-gmail')).findByRole('button', { name: 'Set up…' });
+  });
+
   it('shows a disabled "Coming soon" for the asana entry', () => {
     stubXcg();
     renderOpen();

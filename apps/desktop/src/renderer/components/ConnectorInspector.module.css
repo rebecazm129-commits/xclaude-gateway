@@ -352,6 +352,9 @@
   line-height: 1.5;
   border-radius: var(--kraft-radius-sm);
   padding: 10px 14px;
+  /* Error text can embed long unbroken tokens (OAuth URLs, paths); break them
+     rather than overflow the panel. */
+  overflow-wrap: anywhere;
 }
 
 .banner_success {

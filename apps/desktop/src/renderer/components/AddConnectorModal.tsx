@@ -158,9 +158,12 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
     };
   }, []);
 
-  // Which catalog connectors are already configured. Runs once on mount; the set
-  // is also updated optimistically after a successful connect.
+  // Which catalog connectors are already configured. Re-checked each time the
+  // modal opens (the config can change out of band while it's closed — Remove
+  // in the inspector, a manual config edit, a repair); the set is also updated
+  // optimistically after a successful connect.
   useEffect(() => {
+    if (!open) return;
     let cancelled = false;
     async function check(): Promise<void> {
       const found = new Set<string>();
@@ -179,7 +182,7 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [open]);
 
   // Which BYO connectors (entries with a setup catalog) already have their
   // OAuth client seeded in the Keychain. Re-checked each time the modal opens

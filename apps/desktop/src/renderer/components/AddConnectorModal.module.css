@@ -244,6 +244,9 @@
   font-weight: 500;
   line-height: 1.5;
   border-radius: var(--kraft-radius-sm);
+  /* Error text can embed long unbroken tokens (OAuth URLs, paths); break them
+     rather than overflow the modal. */
+  overflow-wrap: anywhere;
 }
 
 .banner_success {
