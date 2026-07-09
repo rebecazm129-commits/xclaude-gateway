@@ -53,6 +53,19 @@ export function writeConnectorRecovered(
   }
 }
 
+// Post-connect hook (the config:connect IPC handler calls this): emit the
+// marker for EVERY successful connect, fresh or reconnect. `write` is a deps
+// seam (same pattern as RemoveRemoteDeps.deleteCredentials) so tests never
+// touch the real wrappers dir.
+export function writeRecoveryMarkerAfterConnect(
+  result: { ok: boolean },
+  name: string,
+  write: (mcp: string) => void = writeConnectorRecovered,
+): void {
+  if (!result.ok) return;
+  write(name);
+}
+
 // Event type the retention reader (readLastPurgeMarker) consumes to surface the
 // last automatic purge in Settings. Inert for the detection pipeline: it matches
 // none of readAudit's guards (not proxy.error, not mcp.*, not the recovery

@@ -1,10 +1,11 @@
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import {
   writeConnectorRecovered,
+  writeRecoveryMarkerAfterConnect,
   APP_EVENTS_FILENAME,
   CONNECTOR_RECOVERED_TYPE,
 } from '../../src/main/recovery-writer.js';
@@ -43,5 +44,23 @@ describe('writeConnectorRecovered', () => {
     writeConnectorRecovered('x', dir);
     const content = await readFile(join(dir, APP_EVENTS_FILENAME), 'utf8');
     expect(content.trim().split('\n')).toHaveLength(1);
+  });
+});
+
+// F1-01: the marker fires on EVERY successful connect — fresh connects included,
+// because Remove deletes the config entry and Keychain items but not the audit
+// JSONL, so a re-add under the same name inherits the historical alert.
+describe('writeRecoveryMarkerAfterConnect', () => {
+  it('successful fresh connect → marker written for the connector name', () => {
+    const write = vi.fn();
+    writeRecoveryMarkerAfterConnect({ ok: true }, 'gmail', write);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write).toHaveBeenCalledWith('gmail');
+  });
+
+  it('failed connect → no marker', () => {
+    const write = vi.fn();
+    writeRecoveryMarkerAfterConnect({ ok: false }, 'gmail', write);
+    expect(write).not.toHaveBeenCalled();
   });
 });

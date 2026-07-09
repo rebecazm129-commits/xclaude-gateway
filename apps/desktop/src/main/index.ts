@@ -59,7 +59,7 @@ import { seedClientWarnings } from './seed-client-warnings.js';
 import { createTray, computeTrayCounts, updateTrayCounts } from './tray.js';
 import { computeReloginTransitions } from './relogin-notify.js';
 import { isAllowedNavigation } from './navigation-guard.js';
-import { writeConnectorRecovered } from './recovery-writer.js';
+import { writeRecoveryMarkerAfterConnect } from './recovery-writer.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -303,14 +303,15 @@ ipcMain.handle('config:connect', async (_event, params: { name: string; url: str
       timeoutMs: 360_000,
     },
   );
-  // A successful reconnect re-authorized a connector that may still carry a
+  // A successful connect re-authorized a connector that may still carry a
   // stale re-login alert (derived from a past oauth_failed with no later
   // signal). Emit a recovery marker so readAudit clears it on the next 2s
   // poll, instead of only after a Claude Desktop restart. Fresh connects
-  // (reconnected === false) can't have a prior alert, so they're skipped.
-  if (result.ok && result.reconnected) {
-    writeConnectorRecovered(params.name);
-  }
+  // need it too: Remove deletes the config entry and the Keychain items but
+  // NOT the audit JSONL, so a re-add under the same name inherits the
+  // historical alert. With no prior failure the marker is inert — readAudit
+  // only uses it to supersede strictly earlier oauth_failed for the same mcp.
+  writeRecoveryMarkerAfterConnect(result, params.name);
   return result;
 });
 
