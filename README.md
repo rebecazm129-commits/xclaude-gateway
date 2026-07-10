@@ -6,7 +6,7 @@
 
 **A local audit layer for Claude Desktop's MCP traffic — records, classifies and warns; never blocks.**
 
-[![Release](https://img.shields.io/badge/release-v1.0.0--beta.1-D86A4D)](https://github.com/rebecazm129-commits/xclaude-gateway/releases)
+[![Release](https://img.shields.io/badge/release-v1.0.0--beta.2-D86A4D)](https://github.com/rebecazm129-commits/xclaude-gateway/releases)
 [![Status](https://img.shields.io/badge/status-beta-E8A33D)](https://github.com/rebecazm129-commits/xclaude-gateway/releases)
 [![Platform](https://img.shields.io/badge/macOS-arm64%20(Apple%20Silicon)-000000?logo=apple&logoColor=white)](#requirements)
 [![License](https://img.shields.io/badge/license-MIT-informational)](#license)
@@ -27,7 +27,7 @@ xCLAUDE Gateway sits between Claude Desktop and the services it talks to — rem
 
 ## Installation
 
-1. Download the latest `.dmg` from the GitHub Releases page.
+1. Download the latest `.dmg` from the [latest GitHub release](https://github.com/rebecazm129-commits/xclaude-gateway/releases/latest).
 2. Open the `.dmg` and drag `xCLAUDE Gateway.app` into `/Applications/`, then eject the disk image and launch the app **from Applications** (not from the disk image window).
 3. The app is signed with a Developer ID and notarized by Apple; it opens cleanly on first launch.
 
@@ -134,7 +134,7 @@ To audit a service this way:
 3. A browser window opens to authorize the service (standard OAuth). Approve it; the tab will say the login is complete.
 4. Restart Claude Desktop. Claude now reaches the service through xCLAUDE, and every call is recorded and classified like any other MCP traffic.
 
-Your authorization token is stored in the macOS Keychain, not in plain text. xCLAUDE never sees your password. The traffic still reaches the provider — xCLAUDE observes it on its way through, it does not withhold or reroute it. If a connector's authorization expires or is revoked, xCLAUDE flags a re-login alert on that connector (and a macOS notification); reconnect it and restart Claude Desktop to resume auditing.
+Your authorization token is stored in the macOS Keychain, not in plain text. xCLAUDE never sees your password. The traffic still reaches the provider — xCLAUDE observes it on its way through, it does not withhold or reroute it. If a connector's authorization expires or is revoked, xCLAUDE flags a re-login alert on that connector (and a macOS notification); reconnect it and restart Claude Desktop to resume auditing. If a connector disappears from your Claude Desktop config outside the app — another program rewrote the file — xCLAUDE flags it within seconds and offers to re-add it.
 
 ### GitHub
 
