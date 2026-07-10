@@ -29,3 +29,9 @@ mac:
   category: public.app-category.developer-tools  # revisar a 'productivity'
                                                   # cuando Hito 5 (onboarding
                                                   # consumer) cambie el target
+dmg:
+  # Sign the DMG container with the same Developer ID identity as the .app
+  # (default is false, which left the container unsigned and failing
+  # `spctl -t open`). Order stays sign -> notarize -> staple: our pipeline
+  # notarizes manually after the build.
+  sign: true
