@@ -372,10 +372,12 @@ async function runHttp(opts: HttpArgs): Promise<void> {
     observe(msg, 'client_to_server');
     void httpClient.send(msg).catch((err: unknown) => {
       if (isAuthError(err)) {
+        const last = authProvider.lastTokenEvent();
         sink.emit({
           type: 'proxy.error',
           kind: 'oauth_failed',
           message: err instanceof Error ? err.message : String(err),
+          ...(last === null ? {} : { lastTokenEvent: last.event, lastTokenEventAgoMs: last.agoMs }),
         });
         // fail-fast: error de auth en runtime = re-login necesario (runtime no
         // puede hacerlo). Cerrar la sesión (proxy.shutdown reason=auth_failed)
@@ -486,7 +488,13 @@ async function runHttp(opts: HttpArgs): Promise<void> {
   } catch (err) {
     const e = err as Error;
     const kind = isAuthError(e) ? 'oauth_failed' : classifyHttpClientError(e);
-    sink.emit({ type: 'proxy.error', kind, message: e.message });
+    const last = kind === 'oauth_failed' ? authProvider.lastTokenEvent() : null;
+    sink.emit({
+      type: 'proxy.error',
+      kind,
+      message: e.message,
+      ...(last === null ? {} : { lastTokenEvent: last.event, lastTokenEventAgoMs: last.agoMs }),
+    });
     if (shuttingDown === null) shuttingDown = tearDownTail(EXIT_GENERIC_ERROR);
     await shuttingDown;
     return;

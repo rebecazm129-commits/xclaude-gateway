@@ -33,11 +33,28 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
   // no por-request, así que el spawn ocasional es aceptable.
   private tokensCache: { v: OAuthTokens | undefined } | null = null;
   private lastTokensSaveAt = 0;
+  // Último TokenEvent emitido y cuándo. El error real del token endpoint muere
+  // dentro del SDK (auth() lo convierte en invalidateCredentials o lo traga y
+  // cae al flujo interactivo → ReauthRequiredError genérico), así que el evento
+  // inmediatamente anterior es la única señal que queda para distinguir en el
+  // JSONL "invalid_grant en el refresh" (invalidated) de "401 con token recién
+  // refrescado" (refreshed). main.ts lo adjunta al proxy.error oauth_failed.
+  private lastEmitted: { event: TokenEvent['event']; atMs: number } | null = null;
 
   constructor(
     private readonly mcp: string,
     private readonly onEvent?: (e: TokenEvent) => void,
   ) {}
+
+  private emitEvent(e: TokenEvent): void {
+    this.lastEmitted = { event: e.event, atMs: Date.now() };
+    this.onEvent?.(e);
+  }
+
+  lastTokenEvent(): { event: TokenEvent['event']; agoMs: number } | null {
+    if (this.lastEmitted === null) return null;
+    return { event: this.lastEmitted.event, agoMs: Date.now() - this.lastEmitted.atMs };
+  }
 
   private acct(kind: 'tokens' | 'client' | 'verifier'): string {
     return `${this.mcp}:${kind}`;
@@ -79,7 +96,7 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
     await keychainSet(this.acct('tokens'), JSON.stringify(tokens));
     this.tokensCache = { v: tokens };
     this.lastTokensSaveAt = Date.now();
-    this.onEvent?.({ event: 'refreshed', rotated: prev !== undefined && prev !== tokens.refresh_token });
+    this.emitEvent({ event: 'refreshed', rotated: prev !== undefined && prev !== tokens.refresh_token });
   }
 
   async saveCodeVerifier(verifier: string): Promise<void> {
@@ -103,7 +120,7 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
       // Si hubo saveTokens reciente, NO borramos el token compartido; reseteamos la
       // caché para que el reintento del SDK relee el token fresco y se autorice.
       this.tokensCache = null;
-      this.onEvent?.({ event: 'race_recovered' });
+      this.emitEvent({ event: 'race_recovered' });
       return;
     }
     if (scope === 'tokens') {
@@ -131,7 +148,7 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
         }
         if (storedRt !== undefined && storedRt !== failedRt) {
           this.tokensCache = null;
-          this.onEvent?.({ event: 'race_recovered', crossProcess: true });
+          this.emitEvent({ event: 'race_recovered', crossProcess: true });
           return;
         }
       }
@@ -139,7 +156,7 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
     if (scope === 'all' || scope === 'tokens') {
       await keychainDelete(this.acct('tokens'));
       this.tokensCache = { v: undefined };
-      this.onEvent?.({ event: 'invalidated', scope });
+      this.emitEvent({ event: 'invalidated', scope });
     }
     if (scope === 'all' || scope === 'client') await keychainDelete(this.acct('client'));
     if (scope === 'all' || scope === 'verifier') await keychainDelete(this.acct('verifier'));

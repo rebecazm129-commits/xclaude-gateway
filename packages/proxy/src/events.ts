@@ -50,6 +50,13 @@ export type EventBody =
       message: string;
       reason?: ParseErrorReason;
       frameSnippet?: string;
+      // Solo kind=oauth_failed: último proxy.token del provider y hace cuántos ms,
+      // para distinguir el modo de fallo sin reconstruirlo a mano desde el JSONL:
+      // 'invalidated' ≈ invalid_grant en el refresh (grant muerto/rotado);
+      // 'refreshed' ≈ el server devolvió 401 con un token recién refrescado.
+      // Ausentes si el provider no emitió ningún evento en la sesión.
+      lastTokenEvent?: 'refreshed' | 'race_recovered' | 'invalidated';
+      lastTokenEventAgoMs?: number;
     }
   | {
       type: 'proxy.child_exited';

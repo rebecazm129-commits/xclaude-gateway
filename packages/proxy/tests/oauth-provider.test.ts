@@ -381,6 +381,61 @@ describe('KeychainOAuthProvider', () => {
     });
   });
 
+  describe('lastTokenEvent() (context attached to oauth_failed in the JSONL)', () => {
+    const tok = (rt: string): OAuthTokens => ({
+      access_token: `at-for-${rt}`,
+      token_type: 'Bearer',
+      expires_in: 3600,
+      refresh_token: rt,
+    });
+
+    it('null before any token activity', () => {
+      const p = new KeychainOAuthProvider('notion');
+      expect(p.lastTokenEvent()).toBeNull();
+    });
+
+    it("mode B signature: saveTokens just before the failure → { event: 'refreshed', agoMs }", async () => {
+      vi.useFakeTimers();
+      try {
+        const p = new KeychainOAuthProvider('notion');
+        await p.saveTokens(tok('rt-1'));
+        vi.advanceTimersByTime(150);
+        expect(p.lastTokenEvent()).toEqual({ event: 'refreshed', agoMs: 150 });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("mode A signature: destructive invalidate just before the failure → { event: 'invalidated', agoMs }", async () => {
+      vi.useFakeTimers();
+      try {
+        mocks.store.set('notion:tokens', JSON.stringify(tok('rt-dead')));
+        const p = new KeychainOAuthProvider('notion');
+        await p.tokens(); // caché con rt-dead, lastTokensSaveAt=0 → invalidación destructiva
+        await p.invalidateCredentials('tokens');
+        vi.advanceTimersByTime(80);
+        expect(p.lastTokenEvent()).toEqual({ event: 'invalidated', agoMs: 80 });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("cross-process guard leaves { event: 'race_recovered' }", async () => {
+      mocks.store.set('notion:tokens', JSON.stringify(tok('rt-old')));
+      const p = new KeychainOAuthProvider('notion');
+      await p.tokens();
+      mocks.store.set('notion:tokens', JSON.stringify(tok('rt-new'))); // otro proceso rotó
+      await p.invalidateCredentials('tokens');
+      expect(p.lastTokenEvent()?.event).toBe('race_recovered');
+    });
+
+    it('records even without an onEvent callback', async () => {
+      const p = new KeychainOAuthProvider('notion'); // sin onEvent
+      await p.saveTokens(tok('rt-1'));
+      expect(p.lastTokenEvent()?.event).toBe('refreshed');
+    });
+  });
+
   describe('LoginOAuthProvider', () => {
     it('redirectToAuthorization invokes spawn with /usr/bin/open and the URL string, does NOT throw', () => {
       const p = new LoginOAuthProvider('notion');
