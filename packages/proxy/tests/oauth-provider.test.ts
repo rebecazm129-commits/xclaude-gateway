@@ -436,6 +436,44 @@ describe('KeychainOAuthProvider', () => {
     });
   });
 
+  describe('corrupt Keychain blob = absent credential (F2-02)', () => {
+    it('corrupt tokens blob: undefined + corrupt_blob event + a single read (cached, no retry loop)', async () => {
+      mocks.store.set('notion:tokens', 'not-json'); // p. ej. truncado por el antiguo security -i
+      const events: TokenEvent[] = [];
+      const p = new KeychainOAuthProvider('notion', (e) => events.push(e));
+
+      const before = mocks.getCalls;
+      const t1 = await p.tokens();
+      const t2 = await p.tokens();
+      const after = mocks.getCalls;
+
+      expect(t1).toBeUndefined();
+      expect(t2).toBeUndefined();
+      expect(after - before).toBe(1); // corrupto cacheado como {v: undefined}: ni relee ni relanza
+      expect(events).toEqual([{ event: 'corrupt_blob', scope: 'tokens' }]);
+    });
+
+    it('corrupt client blob: undefined + corrupt_blob event, does not throw', async () => {
+      mocks.store.set('notion:client', '{truncated');
+      const events: TokenEvent[] = [];
+      const p = new KeychainOAuthProvider('notion', (e) => events.push(e));
+
+      await expect(p.clientInformation()).resolves.toBeUndefined();
+      expect(events).toEqual([{ event: 'corrupt_blob', scope: 'client' }]);
+    });
+
+    it('valid blobs untouched: parse works and no corrupt_blob event is emitted', async () => {
+      mocks.store.set('notion:tokens', JSON.stringify({ access_token: 'ok', token_type: 'Bearer' }));
+      mocks.store.set('notion:client', JSON.stringify({ client_id: 'cid', redirect_uris: ['http://x'] }));
+      const events: TokenEvent[] = [];
+      const p = new KeychainOAuthProvider('notion', (e) => events.push(e));
+
+      expect(await p.tokens()).toEqual({ access_token: 'ok', token_type: 'Bearer' });
+      expect(await p.clientInformation()).toEqual({ client_id: 'cid', redirect_uris: ['http://x'] });
+      expect(events).toEqual([]);
+    });
+  });
+
   describe('LoginOAuthProvider', () => {
     it('redirectToAuthorization invokes spawn with /usr/bin/open and the URL string, does NOT throw', () => {
       const p = new LoginOAuthProvider('notion');

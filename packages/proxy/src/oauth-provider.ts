@@ -13,7 +13,8 @@ export const RECENT_REFRESH_MS = 10_000;
 export type TokenEvent =
   | { event: 'refreshed'; rotated: boolean }
   | { event: 'race_recovered'; crossProcess?: boolean }
-  | { event: 'invalidated'; scope: 'tokens' | 'all' };
+  | { event: 'invalidated'; scope: 'tokens' | 'all' }
+  | { event: 'corrupt_blob'; scope: 'tokens' | 'client' };
 
 export class ReauthRequiredError extends Error {
   constructor(public readonly mcp: string) {
@@ -76,7 +77,17 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
 
   async clientInformation(): Promise<OAuthClientInformationFull | undefined> {
     const raw = await keychainGet(this.acct('client'));
-    return raw == null ? undefined : (JSON.parse(raw) as OAuthClientInformationFull);
+    if (raw == null) return undefined;
+    try {
+      return JSON.parse(raw) as OAuthClientInformationFull;
+    } catch {
+      // Blob ilegible (p. ej. truncado, como pasó con Atlassian vía `security -i`)
+      // = credencial ausente: el SDK re-registra el cliente / cae a reauth limpio
+      // en vez de reventar dentro de auth(). El evento deja la corrupción en el
+      // audit log en lugar de silenciarla.
+      this.emitEvent({ event: 'corrupt_blob', scope: 'client' });
+      return undefined;
+    }
   }
 
   async saveClientInformation(info: OAuthClientInformationFull): Promise<void> {
@@ -86,7 +97,18 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
   async tokens(): Promise<OAuthTokens | undefined> {
     if (this.tokensCache === null) {
       const raw = await keychainGet(this.acct('tokens'));
-      this.tokensCache = { v: raw == null ? undefined : (JSON.parse(raw) as OAuthTokens) };
+      let v: OAuthTokens | undefined;
+      if (raw != null) {
+        try {
+          v = JSON.parse(raw) as OAuthTokens;
+        } catch {
+          // Blob ilegible = credencial ausente, y se cachea como tal: sin la caché
+          // el parse relanzaría desde _commonHeaders en CADA request (bucle de
+          // lectura + excepción) en vez de caer una sola vez a reauth limpio.
+          this.emitEvent({ event: 'corrupt_blob', scope: 'tokens' });
+        }
+      }
+      this.tokensCache = { v };
     }
     return this.tokensCache.v;
   }

@@ -53,9 +53,10 @@ export type EventBody =
       // Solo kind=oauth_failed: último proxy.token del provider y hace cuántos ms,
       // para distinguir el modo de fallo sin reconstruirlo a mano desde el JSONL:
       // 'invalidated' ≈ invalid_grant en el refresh (grant muerto/rotado);
-      // 'refreshed' ≈ el server devolvió 401 con un token recién refrescado.
+      // 'refreshed' ≈ el server devolvió 401 con un token recién refrescado;
+      // 'corrupt_blob' ≈ el fallo vino de un blob de Keychain ilegible.
       // Ausentes si el provider no emitió ningún evento en la sesión.
-      lastTokenEvent?: 'refreshed' | 'race_recovered' | 'invalidated';
+      lastTokenEvent?: 'refreshed' | 'race_recovered' | 'invalidated' | 'corrupt_blob';
       lastTokenEventAgoMs?: number;
     }
   | {
@@ -105,10 +106,12 @@ export type EventBody =
       // (otro proceso rotó el RT), ausente cuando fue un saveTokens propio reciente.
       // 'invalidated': borrado real del token (grant muerto); scope
       // distingue invalid_grant ('tokens') de invalid_client ('all').
+      // 'corrupt_blob': el blob del Keychain no parsea (scope 'tokens'|'client');
+      // se trata como credencial ausente y el flujo cae a reauth limpio.
       type: 'proxy.token';
-      event: 'refreshed' | 'race_recovered' | 'invalidated';
+      event: 'refreshed' | 'race_recovered' | 'invalidated' | 'corrupt_blob';
       rotated?: boolean;
-      scope?: 'tokens' | 'all';
+      scope?: 'tokens' | 'all' | 'client';
       crossProcess?: boolean;
     }
   | {
