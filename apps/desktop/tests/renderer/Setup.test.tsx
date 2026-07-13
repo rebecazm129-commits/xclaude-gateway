@@ -33,6 +33,9 @@ function stubXcg(authAlerts: ConnectorAuthAlertFixture[]): void {
   vi.stubGlobal('xcg', {
     listDetections: vi.fn(async () => ({ events: [], authAlerts })),
     configIsConnected: vi.fn(async () => ({ ok: true, connected: false })),
+    // Queried by the modal's second check() loop when a test opens it; without
+    // the stub every BYO entry logs a during-test TypeError (F2-01 logging).
+    configHasClient: vi.fn(async () => false),
   });
 }
 interface ConnectorAuthAlertFixture {
@@ -41,8 +44,13 @@ interface ConnectorAuthAlertFixture {
   message: string;
 }
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // Two tests open the Add connector modal, whose async check() loops keep
+  // awaiting window.xcg after the unmount — drain them while the stub is still
+  // in place so the loop tail doesn't hit the removed global (see the same
+  // cleanup in AddConnectorModal.test.tsx).
+  await new Promise((resolve) => setTimeout(resolve, 0));
   vi.unstubAllGlobals();
 });
 

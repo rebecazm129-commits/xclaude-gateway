@@ -30,8 +30,14 @@ function stubXcg(overrides: XcgStub = {}): Required<XcgStub> {
   return api;
 }
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // The modal's async check() loops keep awaiting window.xcg calls after the
+  // unmount (their `cancelled` flag only suppresses the final setState, not the
+  // loop). Drain them while the stub is still in place: otherwise the tail of
+  // the loop hits the removed global and the F2-01 logging spams TypeErrors
+  // across the suite. One macrotask flushes the whole microtask chain.
+  await new Promise((resolve) => setTimeout(resolve, 0));
   vi.unstubAllGlobals();
 });
 
