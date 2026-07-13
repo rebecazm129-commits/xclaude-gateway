@@ -94,12 +94,15 @@ export type EventBody =
       // Ciclo de vida del token OAuth (solo runtime http). 'refreshed': el SDK
       // refrescó y persistió (rotated = el refresh_token cambió). 'race_recovered':
       // la recency-guard evitó borrar el token compartido ante un invalid_grant de
-      // carrera. 'invalidated': borrado real del token (grant muerto); scope
+      // carrera; crossProcess=true cuando la carrera se detectó contra el Keychain
+      // (otro proceso rotó el RT), ausente cuando fue un saveTokens propio reciente.
+      // 'invalidated': borrado real del token (grant muerto); scope
       // distingue invalid_grant ('tokens') de invalid_client ('all').
       type: 'proxy.token';
       event: 'refreshed' | 'race_recovered' | 'invalidated';
       rotated?: boolean;
       scope?: 'tokens' | 'all';
+      crossProcess?: boolean;
     }
   | {
       type: 'mcp.request';

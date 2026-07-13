@@ -12,7 +12,7 @@ export const RECENT_REFRESH_MS = 10_000;
 
 export type TokenEvent =
   | { event: 'refreshed'; rotated: boolean }
-  | { event: 'race_recovered' }
+  | { event: 'race_recovered'; crossProcess?: boolean }
   | { event: 'invalidated'; scope: 'tokens' | 'all' };
 
 export class ReauthRequiredError extends Error {
@@ -105,6 +105,36 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
       this.tokensCache = null;
       this.onEvent?.({ event: 'race_recovered' });
       return;
+    }
+    if (scope === 'tokens') {
+      // Guarda cross-proceso: Claude Desktop mantiene varios xcg-proxy del mismo
+      // conector vivos a la vez (restarts solapados), cada uno con su tokensCache.
+      // Notion rota el refresh token en cada refresh, así que un proceso longevo
+      // refresca con un RT ya rotado por otro proceso → invalid_grant → el SDK
+      // ordena invalidar; borrar aquí destruiría el token FRESCO que el otro
+      // proceso acaba de escribir y fuerza re-login interactivo. tokensCache.v
+      // contiene fiablemente el RT que falló: el SDK llama a tokens() justo antes
+      // de refrescar, y el único modo de que la caché haya sido pisada después es
+      // un saveTokens propio reciente — el fast-path de RECENT_REFRESH_MS de
+      // arriba ya cubre ese caso. Si el RT del Keychain difiere del fallido, otro
+      // proceso rotó: soltamos la caché (el reintento del SDK relee el token
+      // fresco) y conservamos el Keychain. Sin tokens en Keychain, RT idéntico,
+      // caché vacía o blob ilegible → sin evidencia de carrera: borrado normal.
+      const failedRt = this.tokensCache?.v?.refresh_token;
+      if (failedRt !== undefined) {
+        let storedRt: string | undefined;
+        try {
+          const raw = await keychainGet(this.acct('tokens'));
+          storedRt = raw == null ? undefined : (JSON.parse(raw) as OAuthTokens).refresh_token;
+        } catch {
+          storedRt = undefined;
+        }
+        if (storedRt !== undefined && storedRt !== failedRt) {
+          this.tokensCache = null;
+          this.onEvent?.({ event: 'race_recovered', crossProcess: true });
+          return;
+        }
+      }
     }
     if (scope === 'all' || scope === 'tokens') {
       await keychainDelete(this.acct('tokens'));

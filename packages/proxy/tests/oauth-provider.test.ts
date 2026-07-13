@@ -35,6 +35,7 @@ vi.mock('node:child_process', () => ({
 
 // Import AFTER the mock (vitest hoists vi.mock regardless, but order is clearer).
 import { KeychainOAuthProvider, LoginOAuthProvider, ReauthRequiredError, RECENT_REFRESH_MS } from '../src/oauth-provider.js';
+import type { TokenEvent } from '../src/oauth-provider.js';
 import type { OAuthClientInformationFull, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 
 describe('KeychainOAuthProvider', () => {
@@ -297,6 +298,86 @@ describe('KeychainOAuthProvider', () => {
       await p.invalidateCredentials('all');
       const t = await p.tokens();
       expect(t).toBeUndefined();
+    });
+  });
+
+  describe('cross-process refresh-rotation race (non-destructive invalidation)', () => {
+    // Escenario real: Claude Desktop mantiene varios xcg-proxy del mismo conector
+    // vivos a la vez. El Map compartido del mock hace de Keychain común entre dos
+    // instancias de provider con el mismo mcp = dos procesos.
+    const tok = (rt: string): OAuthTokens => ({
+      access_token: `at-for-${rt}`,
+      token_type: 'Bearer',
+      expires_in: 3600,
+      refresh_token: rt,
+    });
+
+    it('bug scenario: A rotated the RT, B (stale cache) invalidates → Keychain keeps A\'s token, B emits cross-process race_recovered and re-reads it', async () => {
+      // Estado inicial compartido: tokens con rt-old en el "Keychain".
+      mocks.store.set('notion:tokens', JSON.stringify(tok('rt-old')));
+
+      const eventsB: TokenEvent[] = [];
+      const b = new KeychainOAuthProvider('notion', (e) => eventsB.push(e));
+      // B carga su caché (proceso longevo): lastTokensSaveAt queda en 0, así que
+      // el fast-path de RECENT_REFRESH_MS NO aplica — solo la guarda cross-proceso.
+      expect(await b.tokens()).toEqual(tok('rt-old'));
+
+      // A (otro proceso) refresca y rota el RT.
+      const a = new KeychainOAuthProvider('notion');
+      await a.saveTokens(tok('rt-new'));
+
+      // B refresca con rt-old (ya rotado) → invalid_grant → el SDK ordena invalidar.
+      await b.invalidateCredentials('tokens');
+
+      expect(mocks.store.has('notion:tokens')).toBe(true); // el token de A sobrevive
+      expect(eventsB).toEqual([{ event: 'race_recovered', crossProcess: true }]);
+      expect(await b.tokens()).toEqual(tok('rt-new')); // caché soltada → relee el fresco
+    });
+
+    it('negative: Keychain RT equals the failed one (real revocation) → deletes and emits invalidated', async () => {
+      mocks.store.set('notion:tokens', JSON.stringify(tok('rt-dead')));
+      const events: TokenEvent[] = [];
+      const p = new KeychainOAuthProvider('notion', (e) => events.push(e));
+      expect(await p.tokens()).toEqual(tok('rt-dead'));
+
+      await p.invalidateCredentials('tokens');
+
+      expect(mocks.store.has('notion:tokens')).toBe(false);
+      expect(events).toEqual([{ event: 'invalidated', scope: 'tokens' }]);
+    });
+
+    it('no tokens in Keychain (another process already deleted) → destructive path as today', async () => {
+      vi.useFakeTimers();
+      try {
+        const events: TokenEvent[] = [];
+        const p = new KeychainOAuthProvider('notion', (e) => events.push(e));
+        await p.saveTokens(tok('rt-x')); // puebla caché y Keychain
+        vi.advanceTimersByTime(RECENT_REFRESH_MS + 1_000); // fuera del fast-path
+        mocks.store.delete('notion:tokens'); // otro proceso lo borró
+
+        await p.invalidateCredentials('tokens');
+
+        expect(mocks.store.has('notion:tokens')).toBe(false);
+        expect(events).toEqual([
+          { event: 'refreshed', rotated: false },
+          { event: 'invalidated', scope: 'tokens' },
+        ]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('unparseable Keychain blob → no race evidence, destructive path', async () => {
+      mocks.store.set('notion:tokens', JSON.stringify(tok('rt-old')));
+      const events: TokenEvent[] = [];
+      const p = new KeychainOAuthProvider('notion', (e) => events.push(e));
+      expect(await p.tokens()).toEqual(tok('rt-old'));
+      mocks.store.set('notion:tokens', 'not-json'); // blob corrupto escrito después
+
+      await p.invalidateCredentials('tokens');
+
+      expect(mocks.store.has('notion:tokens')).toBe(false);
+      expect(events).toEqual([{ event: 'invalidated', scope: 'tokens' }]);
     });
   });
 
