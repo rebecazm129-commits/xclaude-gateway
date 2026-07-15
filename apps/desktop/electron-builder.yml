@@ -12,6 +12,7 @@ extraResources:
       - xcg-proxy.cjs
       - xcg-config.cjs
       - xcg-ner-worker.cjs
+      - xcg-cchook.cjs
       - "*.node"
       - "*.dylib"
   - from: ../../packages/proxy/models
