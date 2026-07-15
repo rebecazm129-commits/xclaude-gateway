@@ -14,7 +14,21 @@ export type TokenEvent =
   | { event: 'refreshed'; rotated: boolean }
   | { event: 'race_recovered'; crossProcess?: boolean }
   | { event: 'invalidated'; scope: 'tokens' | 'all' }
-  | { event: 'corrupt_blob'; scope: 'tokens' | 'client' };
+  | { event: 'corrupt_blob'; scope: 'tokens' | 'client' }
+  // Emitted by the refresh single-flight interceptor (refresh-fetch.ts):
+  // 'refresh_coalesced' = another process already rotated the RT, so this
+  // refresh was answered from the Keychain without touching the network;
+  // 'lock_timeout' = the cross-process lock couldn't be acquired within the
+  // timeout and the refresh proceeded UNLOCKED (fail-open — statu quo risk).
+  | { event: 'refresh_coalesced' }
+  | { event: 'lock_timeout'; waitedMs: number };
+
+/** Keychain account holding a connector's OAuth tokens. Single source shared by
+ *  the provider and the refresh single-flight interceptor (refresh-fetch.ts),
+ *  which rereads/persists the same item inside its critical section. */
+export function tokensAccount(mcp: string): string {
+  return `${mcp}:tokens`;
+}
 
 export class ReauthRequiredError extends Error {
   constructor(public readonly mcp: string) {
@@ -57,8 +71,15 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
     return { event: this.lastEmitted.event, agoMs: Date.now() - this.lastEmitted.atMs };
   }
 
+  // Event entry point for collaborators outside the provider that participate
+  // in the token lifecycle (the refresh single-flight interceptor): routes
+  // through emitEvent so lastTokenEvent() covers these for oauth_failed triage.
+  noteEvent(e: TokenEvent): void {
+    this.emitEvent(e);
+  }
+
   private acct(kind: 'tokens' | 'client' | 'verifier'): string {
-    return `${this.mcp}:${kind}`;
+    return kind === 'tokens' ? tokensAccount(this.mcp) : `${this.mcp}:${kind}`;
   }
 
   get redirectUrl(): string {

@@ -54,9 +54,17 @@ export type EventBody =
       // para distinguir el modo de fallo sin reconstruirlo a mano desde el JSONL:
       // 'invalidated' ≈ invalid_grant en el refresh (grant muerto/rotado);
       // 'refreshed' ≈ el server devolvió 401 con un token recién refrescado;
-      // 'corrupt_blob' ≈ el fallo vino de un blob de Keychain ilegible.
+      // 'corrupt_blob' ≈ el fallo vino de un blob de Keychain ilegible;
+      // 'refresh_coalesced'/'lock_timeout' ≈ el single-flight actuó justo antes
+      // (los emite el interceptor vía provider.noteEvent, así que cuentan aquí).
       // Ausentes si el provider no emitió ningún evento en la sesión.
-      lastTokenEvent?: 'refreshed' | 'race_recovered' | 'invalidated' | 'corrupt_blob';
+      lastTokenEvent?:
+        | 'refreshed'
+        | 'race_recovered'
+        | 'invalidated'
+        | 'corrupt_blob'
+        | 'refresh_coalesced'
+        | 'lock_timeout';
       lastTokenEventAgoMs?: number;
     }
   | {
@@ -108,11 +116,23 @@ export type EventBody =
       // distingue invalid_grant ('tokens') de invalid_client ('all').
       // 'corrupt_blob': el blob del Keychain no parsea (scope 'tokens'|'client');
       // se trata como credencial ausente y el flujo cae a reauth limpio.
+      // 'refresh_coalesced': el single-flight cross-process (refresh-fetch.ts)
+      // detectó bajo lock que otro proceso ya rotó el RT y respondió el refresh
+      // desde el Keychain sin ir a red (la revocación por reuso que evitamos).
+      // 'lock_timeout': no se pudo adquirir el lock en el plazo; el refresh
+      // procedió SIN él (fail-open) — waitedMs = cuánto se esperó.
       type: 'proxy.token';
-      event: 'refreshed' | 'race_recovered' | 'invalidated' | 'corrupt_blob';
+      event:
+        | 'refreshed'
+        | 'race_recovered'
+        | 'invalidated'
+        | 'corrupt_blob'
+        | 'refresh_coalesced'
+        | 'lock_timeout';
       rotated?: boolean;
       scope?: 'tokens' | 'all' | 'client';
       crossProcess?: boolean;
+      waitedMs?: number;
     }
   | {
       type: 'mcp.request';

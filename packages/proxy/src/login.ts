@@ -3,8 +3,11 @@ import http from 'node:http';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { UnauthorizedError, auth } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
+import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
 
 import { LoginOAuthProvider } from './oauth-provider.js';
+import { createRefreshFetch } from './refresh-fetch.js';
+import { refreshLockPath } from './refresh-lock.js';
 import { hasStoredCredentials } from './credentials.js';
 
 const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000;
@@ -27,10 +30,13 @@ export interface CallbackHandle {
   close(): void;
 }
 export interface RunLoginDeps {
-  authFn?: (provider: OAuthClientProvider, opts: { serverUrl: string; scope?: string }) => Promise<'AUTHORIZED' | 'REDIRECT'>;
+  authFn?: (
+    provider: OAuthClientProvider,
+    opts: { serverUrl: string; scope?: string; fetchFn?: FetchLike },
+  ) => Promise<'AUTHORIZED' | 'REDIRECT'>;
   hasStored?: (name: string) => Promise<boolean>;
   discoverFn?: (url: string) => Promise<unknown>;
-  createTransport?: (url: string, provider: LoginOAuthProvider) => LoginTransport;
+  createTransport?: (url: string, provider: LoginOAuthProvider, fetchFn?: FetchLike) => LoginTransport;
   startCallback?: (provider: LoginOAuthProvider) => Promise<CallbackHandle>;
 }
 
@@ -66,8 +72,15 @@ export async function probeAuthorization(send: () => Promise<void>): Promise<boo
   }
 }
 
-function defaultCreateTransport(url: string, provider: LoginOAuthProvider): LoginTransport {
-  return new StreamableHTTPClientTransport(new URL(url), { authProvider: provider }) as unknown as LoginTransport;
+function defaultCreateTransport(
+  url: string,
+  provider: LoginOAuthProvider,
+  fetchFn?: FetchLike,
+): LoginTransport {
+  return new StreamableHTTPClientTransport(new URL(url), {
+    authProvider: provider,
+    fetch: fetchFn,
+  }) as unknown as LoginTransport;
 }
 
 // Protected-resource discovery (RFC 9728), path-aware with root fallback.
@@ -171,8 +184,12 @@ export async function runLogin({ url, name, scope }: LoginArgs, deps: RunLoginDe
   const startCallback = deps.startCallback ?? defaultStartCallback;
 
   const provider = new LoginOAuthProvider(name);
+  // The login flow refreshes too (the "stored/refreshed credentials" path drives
+  // auth() with an existing RT), so it takes the same per-connector single-flight
+  // as the wrappers: a reconnect racing a wrapper refresh must not burn the RT.
+  const refreshFetch = createRefreshFetch({ mcp: name, lockPath: refreshLockPath(name), provider });
   const callback = await startCallback(provider);
-  const transport = createTransport(url, provider);
+  const transport = createTransport(url, provider, refreshFetch);
   try {
     await transport.start();
 
@@ -201,7 +218,7 @@ export async function runLogin({ url, name, scope }: LoginArgs, deps: RunLoginDe
       }
       // Drive auth() WITHOUT a catch: a real auth failure must surface as a login
       // error, never a false success.
-      const result = await authFn(provider, { serverUrl: url, scope });
+      const result = await authFn(provider, { serverUrl: url, scope, fetchFn: refreshFetch });
       if (result === 'REDIRECT') {
         const code = await callback.waitForCode();
         await transport.finishAuth(code);
@@ -257,7 +274,7 @@ export async function runLogin({ url, name, scope }: LoginArgs, deps: RunLoginDe
     }
     // Metadata present → drive auth() WITHOUT a catch: a real auth failure must
     // surface as a login error, never a false success.
-    const result = await authFn(provider, { serverUrl: url, scope });
+    const result = await authFn(provider, { serverUrl: url, scope, fetchFn: refreshFetch });
     if (result === 'REDIRECT') {
       const code = await callback.waitForCode();
       await transport.finishAuth(code);

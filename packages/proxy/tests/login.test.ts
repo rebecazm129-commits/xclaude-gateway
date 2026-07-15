@@ -101,7 +101,13 @@ describe('runLogin — explicit scope ⇒ auth-first (new branch)', () => {
 
     // auth() driven directly, exactly once, with our narrow scope.
     expect(authFn).toHaveBeenCalledTimes(1);
-    expect(authFn).toHaveBeenCalledWith(expect.anything(), { serverUrl: GH_URL, scope: GH_SCOPE });
+    expect(authFn).toHaveBeenCalledWith(expect.anything(), {
+      serverUrl: GH_URL,
+      scope: GH_SCOPE,
+      // The refresh single-flight interceptor rides along as auth()'s fetchFn
+      // (refresh-fetch.ts) so the login flow's refreshes take the same lock.
+      fetchFn: expect.any(Function),
+    });
     // initialize is never sent on the auth-first branch (so the SDK's 401-driven
     // internal auth — the one that would fall back to PRM scopes_supported — can't fire).
     expect(transport.send).not.toHaveBeenCalled();
@@ -168,7 +174,11 @@ describe('runLogin — explicit scope ⇒ auth-first (new branch)', () => {
     await runLogin({ url: 'https://mcp.atlassian.com/v1/mcp/authv2', name: 'atlassian', scope: '' }, deps);
     // Existing flow: initialize WAS sent (probe), then the deferred branch ran.
     expect(transport.send).toHaveBeenCalledTimes(1);
-    expect(authFn).toHaveBeenCalledWith(expect.anything(), { serverUrl: expect.anything(), scope: '' });
+    expect(authFn).toHaveBeenCalledWith(expect.anything(), {
+      serverUrl: expect.anything(),
+      scope: '',
+      fetchFn: expect.any(Function),
+    });
   });
 });
 
@@ -224,7 +234,11 @@ describe('runLogin — no explicit scope ⇒ existing flow (unchanged)', () => {
     await runLogin({ url: 'https://deferred.test/mcp', name: 'deferred' }, deps);
     expect(transport.send).toHaveBeenCalledTimes(1); // initialize WAS probed
     expect(discoverFn).toHaveBeenCalledTimes(1);
-    expect(authFn).toHaveBeenCalledWith(expect.anything(), { serverUrl: 'https://deferred.test/mcp', scope: undefined });
+    expect(authFn).toHaveBeenCalledWith(expect.anything(), {
+      serverUrl: 'https://deferred.test/mcp',
+      scope: undefined,
+      fetchFn: expect.any(Function),
+    });
     expect(callback.waitForCode).toHaveBeenCalledTimes(1);
     expect(transport.finishAuth).toHaveBeenCalledWith('test-code');
   });

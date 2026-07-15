@@ -15,6 +15,8 @@ import { ulid } from 'ulid';
 
 import { runLogin } from './login.js';
 import { KeychainOAuthProvider, ReauthRequiredError } from './oauth-provider.js';
+import { createRefreshFetch } from './refresh-fetch.js';
+import { refreshLockPath } from './refresh-lock.js';
 
 import { JsonlWriter } from './audit.js';
 import { DetectionEngine } from './detection/engine.js';
@@ -352,7 +354,19 @@ async function runHttp(opts: HttpArgs): Promise<void> {
   const isAuthError = (e: unknown): boolean =>
     e instanceof ReauthRequiredError || e instanceof UnauthorizedError;
 
-  const httpClient = new StreamableHTTPClientTransport(new URL(url), { authProvider });
+  // opts.fetch llega como fetchFn hasta el POST del token endpoint dentro de
+  // auth() (streamableHttp propaga _fetchWithInit a cada auth interno), así que
+  // el interceptor ve todo refresh de esta sesión; los requests MCP normales
+  // pasan por él sin tocar el lock (passthrough por forma del body).
+  const refreshFetch = createRefreshFetch({
+    mcp: name,
+    lockPath: refreshLockPath(name),
+    provider: authProvider,
+  });
+  const httpClient = new StreamableHTTPClientTransport(new URL(url), {
+    authProvider,
+    fetch: refreshFetch,
+  });
   const stdioServer = new StdioServerTransport();
 
   let framesIn = 0;
