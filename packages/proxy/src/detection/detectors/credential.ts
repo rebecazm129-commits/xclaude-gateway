@@ -39,6 +39,21 @@ export const credentialDetected: Detector = (input): DetectorOutput | null => {
   };
 };
 
+// Sibling of credentialDetected that returns the matched VALUES (the raw
+// secrets) instead of type-only findings — the masking path (b.1) needs the
+// exact substrings to redact from the serialized line. Same patterns, same
+// scan. The persisted findings NEVER carry these values (credentialDetected
+// above stays type+location only); this exists solely to feed maskCredentials,
+// which replaces them before anything hits disk.
+export function credentialMatches(text: string): string[] {
+  if (text.length === 0) return [];
+  const matches: string[] = [];
+  for (const { pattern } of CREDENTIAL_PATTERNS) {
+    for (const m of text.matchAll(pattern)) matches.push(m[0]);
+  }
+  return matches;
+}
+
 export const EXAMPLE_PAYLOAD: SelfTestExample = {
   categoryKey: 'credential_detected',
   expectedSeverity: 'critical',

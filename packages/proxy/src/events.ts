@@ -14,6 +14,7 @@ import type { Direction } from '@xcg/shared';
 export type { Direction };
 
 import type { Envelope, Writer } from './audit.js';
+import { maskCredentials } from './detection/masking.js';
 import type {
   DetectionBlock,
   DetectionEnrichment,
@@ -26,6 +27,25 @@ import type { NerDropReason } from './detection/ner/async-detector.js';
 const MAX_LEAF_BYTES = 64 * 1024;
 
 const nextId = monotonicFactory();
+
+// Side channel for credential values the frame-processor wants masked out of
+// THIS event's persisted line. A Symbol key is never emitted by JSON.stringify,
+// so the secret list can never leak into the trail, and it survives object
+// spread ({...event}); emit reads it off the ORIGINAL event before truncation
+// (F1.3c-fix lesson: never trust a field to survive a downstream rebuild).
+const MASK_SECRETS = Symbol('xcg.maskSecrets');
+
+/** Attach credential values to an event for masking at emit time (no-op merge
+ *  if some are already attached). Used only by the wrapper frame-processor. */
+export function attachMaskSecrets(event: EventBody, secrets: readonly string[]): void {
+  if (secrets.length === 0) return;
+  const holder = event as { [MASK_SECRETS]?: string[] };
+  holder[MASK_SECRETS] = [...(holder[MASK_SECRETS] ?? []), ...secrets];
+}
+
+function readMaskSecrets(event: EventBody): string[] | undefined {
+  return (event as { [MASK_SECRETS]?: string[] })[MASK_SECRETS];
+}
 
 export type EventBody =
   | {
@@ -268,9 +288,20 @@ export class EventSink {
     private readonly mcp: string,
     private readonly writers: readonly Writer[] = [],
     private readonly session: string = ulid(),
+    // HMAC key for credential masking. null = masking disabled (tests / the
+    // no-key path); the wrapper always passes a real key (resolveAuditKey,
+    // which never returns null). Masking runs ONLY on events the frame-
+    // processor tagged with secrets, so a key with no tagged event is inert.
+    private readonly hmacKey: Buffer | null = null,
   ) {}
 
   emit(event: EventBody): void {
+    // Read the mask secrets from the ORIGINAL event, before applyTruncation —
+    // immune to how truncation rebuilds the object (a fully-truncated leaf that
+    // CONTAINED the secret drops it entirely: masking becomes a no-op and the
+    // `truncated` flag is visible; truncation is all-or-nothing per leaf, so a
+    // secret is never left half-present to slip past the replace).
+    const secrets = readMaskSecrets(event);
     const finalEvent = applyTruncation(event);
     const envelope: Envelope = {
       v: 1,
@@ -280,8 +311,16 @@ export class EventSink {
       mcp: this.mcp,
       ...finalEvent,
     };
+    // Single masking point covering BOTH writers (JSONL + socket mirror): mask
+    // the serialized line, reparse, hand the masked object to every writer.
+    // `bytes` is intentionally NOT recomputed — it measures the wire frame, and
+    // the persisted content is no longer byte-identical to it once masked.
+    let out: Envelope = envelope;
+    if (secrets !== undefined && secrets.length > 0 && this.hmacKey !== null) {
+      out = JSON.parse(maskCredentials(JSON.stringify(envelope), secrets, this.hmacKey)) as Envelope;
+    }
     for (const writer of this.writers) {
-      writer.write(envelope);
+      writer.write(out);
     }
   }
 

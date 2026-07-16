@@ -22,6 +22,7 @@ import { JsonlWriter } from './audit.js';
 import { DetectionEngine } from './detection/engine.js';
 import { ACTIVE_DETECTORS } from './detection/detectors/index.js';
 import { createManifestStore } from './detection/manifest.js';
+import { resolveAuditKey } from './detection/masking.js';
 import { AsyncDetectorNer } from './detection/ner/async-detector.js';
 import { EventSink, createEnrichmentSink, type Direction } from './events.js';
 import { createFrameProcessor, type FrameProcessor } from './frame-processor.js';
@@ -127,7 +128,9 @@ export function runStdio(opts: ParsedArgs): void {
   const socketWriter = new SocketWriter(socketPath, (reason, message) => {
     sink.emit({ type: 'proxy.socket_dropped', reason, message });
   });
-  sink = new EventSink(name, [writer, socketWriter], session);
+  // Credential-masking key, loaded once per wrapper process (lazy salt with an
+  // ephemeral fallback — a detected credential is never persisted in clear).
+  sink = new EventSink(name, [writer, socketWriter], session, resolveAuditKey(baseDir));
 
   process.stderr.write(`xcg-proxy: socket mirror at ${socketPath}\n`);
 
@@ -329,7 +332,9 @@ async function runHttp(opts: HttpArgs): Promise<void> {
   const socketWriter = new SocketWriter(socketPath, (reason, message) => {
     sink.emit({ type: 'proxy.socket_dropped', reason, message });
   });
-  sink = new EventSink(name, [writer, socketWriter], session);
+  // Credential-masking key, loaded once per wrapper process (lazy salt with an
+  // ephemeral fallback — a detected credential is never persisted in clear).
+  sink = new EventSink(name, [writer, socketWriter], session, resolveAuditKey(baseDir));
   process.stderr.write(`xcg-proxy: socket mirror at ${socketPath}\n`);
 
   const startMs = Date.now();

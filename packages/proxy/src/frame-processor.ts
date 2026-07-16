@@ -5,11 +5,13 @@
 
 import type { DetectionEngine } from './detection/engine.js';
 import type { Direction, EventBody } from './events.js';
+import { attachMaskSecrets } from './events.js';
 import { invertDirection, type InflightTracker } from './latency.js';
 import type { ClassifiedFrame } from './parser.js';
 import { buildDetectorInput } from './detection/engine.js';
 import {
   credentialDetected,
+  credentialMatches,
   dataExportWarning,
   emailSendWarning,
   piiStructured,
@@ -109,7 +111,7 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
           deps.asyncDetector.enqueue(buildDetectorInput(envelope), frame.id);
         }
         const overheadUs = elapsedUs(tsObservedNs);
-        return detections.map((detection) => ({
+        const events: EventBody[] = detections.map((detection) => ({
           type: 'mcp.request',
           direction,
           rpcId: frame.id,
@@ -119,6 +121,14 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
           overheadUs,
           detection,
         }));
+        // Credential masking: if a credential fired, redact its value from
+        // EVERY emitted request event (they share the same params) before the
+        // sink persists them. Scan only when the detector already flagged one.
+        if (detections.some((d) => d.category === 'credential_detected')) {
+          const secrets = credentialMatches(buildDetectorInput(envelope).paramsJson);
+          for (const ev of events) attachMaskSecrets(ev, secrets);
+        }
+        return events;
       }
       case 'response': {
         const latencyMs = deps.tracker.matchResponse(direction, frame.id, tsWallMs);
@@ -157,6 +167,13 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
             for (const detect of CONTENT_DETECTORS) {
               const out = detect(input);
               if (!out) continue;
+              // Inbound credential in the result text → mask it out of the
+              // persisted mcp.response (events[0], which carries the raw
+              // result). Reuse the same scan the detector just did — no extra
+              // pass, no fragile pre-filter.
+              if (out.category === 'credential_detected') {
+                attachMaskSecrets(events[0]!, credentialMatches(text));
+              }
               // data_export_warning is downgraded to 'low' INBOUND only: export
               // language inside a result is a possible tool-poisoning signal but
               // far less actionable than an outbound export command, and it

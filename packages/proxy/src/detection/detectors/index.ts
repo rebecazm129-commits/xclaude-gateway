@@ -16,5 +16,6 @@ import { piiStructured } from './pii-structured.js';
 import { promptInjection } from './prompt-injection.js';
 
 export { credentialDetected, dataExportWarning, emailSendWarning, piiStructured, promptInjection };
+export { credentialMatches } from './credential.js';
 
 export const ACTIVE_DETECTORS: readonly Detector[] = [credentialDetected, promptInjection, emailSendWarning, dataExportWarning, piiStructured];
