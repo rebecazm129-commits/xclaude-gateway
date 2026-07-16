@@ -10,6 +10,7 @@ import type {
 } from '@xcg/shared/config';
 import type {
   ToolCount,
+  CchookInstallResult,
   CchookStatus,
   DetectionListResult,
   DetectionCursor,
@@ -51,6 +52,10 @@ export interface XcgApi {
   configToolCount(name: string): Promise<ToolCount | null>;
   /** Claude Code auditing status (detect + hook + ingester + spool backlog). */
   cchookStatus(): Promise<CchookStatus>;
+  /** Register the capture hook in ~/.claude/settings.json (idempotent). */
+  cchookInstall(): Promise<CchookInstallResult>;
+  /** Surgically remove our hook entries from ~/.claude/settings.json. */
+  cchookUninstall(): Promise<CchookInstallResult>;
   validateHealth(): Promise<HealthResult>;
   repairWraps(): Promise<RepairResult>;
   runSelfTest(): Promise<SelfTestReport>;

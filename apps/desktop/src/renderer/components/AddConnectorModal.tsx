@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type ReactElement, type ReactNode } from '
 
 import type { ConnectResult, IsConnectedResult } from '@xcg/shared/config';
 
+import type { CchookStatus } from '../../shared/types.js';
+
 import { connectMessage } from './config-messages.js';
 import { ConnectorSetupWizard, SETUP_CATALOGS } from './ConnectorSetupWizard.js';
 import { LOGO_SVGS } from './connectorLogos.js';
@@ -9,7 +11,7 @@ import { Modal } from './Modal.js';
 
 import styles from './AddConnectorModal.module.css';
 
-type Group = 'oneclick' | 'slack' | 'google' | 'comingsoon';
+type Group = 'apps' | 'oneclick' | 'slack' | 'google' | 'comingsoon';
 
 interface CatalogEntry {
   readonly label: string;
@@ -18,6 +20,10 @@ interface CatalogEntry {
   readonly logo: string;
   readonly description: string;
   readonly group: Group;
+  /** 'app' = a local audit source wired via hooks (Claude Code), not an OAuth
+   *  connector — its card installs a hook instead of running a connect flow.
+   *  Absent = connector (every pre-F1.3d entry, untouched). */
+  readonly kind?: 'app';
   /** Connect target; absent for "coming soon" entries. */
   readonly url?: string;
   /** Space-separated OAuth scopes (Google needs explicit; DCR connectors omit). */
@@ -28,6 +34,10 @@ interface CatalogEntry {
 }
 
 const CATALOG: readonly CatalogEntry[] = [
+  {
+    label: 'Claude Code', name: 'claude-code', logo: 'terminal', group: 'apps', kind: 'app',
+    description: 'Bash, file edits and MCP tools — every call recorded and classified.',
+  },
   {
     label: 'Notion', name: 'notion', logo: 'notion', group: 'oneclick',
     url: 'https://mcp.notion.com/mcp',
@@ -95,7 +105,18 @@ const CATALOG: readonly CatalogEntry[] = [
 ];
 
 const GROUPS: readonly { id: Group; label: string; note?: ReactNode }[] = [
-  { id: 'oneclick', label: 'One-click connect' },
+  {
+    id: 'oneclick',
+    label: 'One-click connect',
+    // Former modal subtitle (F1.3a promise): it describes OAuth connectors,
+    // not every source, so it lives with the connector groups now.
+    note: (
+      <>
+        Connect a remote service through xCLAUDE to audit every call Claude makes to it. A browser
+        window opens to authorize.
+      </>
+    ),
+  },
   {
     id: 'slack',
     label: 'Slack',
@@ -116,6 +137,9 @@ const GROUPS: readonly { id: Group; label: string; note?: ReactNode }[] = [
       </>
     ),
   },
+  // Connectors first (the majority case, per the validated mockup); the real
+  // 'apps' group still sits above Coming soon.
+  { id: 'apps', label: 'Audit sources' },
   { id: 'comingsoon', label: 'Coming soon' },
 ];
 
@@ -147,6 +171,9 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
   const [error, setError] = useState<string | null>(null);
   const [connectedNames, setConnectedNames] = useState<ReadonlySet<string>>(() => new Set());
   const [clientSeeded, setClientSeeded] = useState<ReadonlySet<string>>(() => new Set());
+  // Claude Code status for the 'app' card. null until the [open] fetch lands
+  // (the button renders disabled-neutral meanwhile, never a false claim).
+  const [cchook, setCchook] = useState<CchookStatus | null>(null);
   const [setupEntry, setSetupEntry] = useState<CatalogEntry | null>(null);
   const [query, setQuery] = useState('');
 
@@ -225,6 +252,50 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
     };
   }, [open]);
 
+  // Claude Code status — re-checked each time the modal opens (an install or
+  // uninstall can happen out of band; same [open] pattern as connectedNames).
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    async function check(): Promise<void> {
+      try {
+        const status = await window.xcg.cchookStatus();
+        if (!cancelled) setCchook(status);
+      } catch (err) {
+        // Degradation: the card keeps its neutral disabled state — logged (F2-01).
+        console.error('cchookStatus failed:', err);
+      }
+    }
+    void check();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  async function handleInstallHook(entry: CatalogEntry): Promise<void> {
+    if (busyName !== null) return;
+    setBusyName(entry.name);
+    setLastResult(null);
+    setError(null);
+    try {
+      const result = await window.xcg.cchookInstall();
+      if (!mountedRef.current) return;
+      if (result.ok) {
+        const status = await window.xcg.cchookStatus();
+        if (!mountedRef.current) return;
+        setCchook(status);
+        onRefresh?.();
+      } else {
+        setError(result.error);
+      }
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setError(err instanceof Error ? err.message : 'unknown error');
+    } finally {
+      if (mountedRef.current) setBusyName(null);
+    }
+  }
+
   async function handleConnect(entry: CatalogEntry): Promise<void> {
     if (entry.url === undefined || busyName !== null) return;
     setBusyName(entry.name);
@@ -256,6 +327,31 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
   const message = lastResult !== null ? connectMessage(lastResult) : null;
 
   function actionButton(entry: CatalogEntry): ReactElement {
+    // 'app' cards install a hook, not an OAuth connect — own cascade, first so
+    // the connector branches below never see them.
+    if (entry.kind === 'app') {
+      if (cchook !== null && !cchook.installed) {
+        return <button type="button" className={styles['btnGhost']} disabled>Not detected on this Mac</button>;
+      }
+      if (cchook?.hookRegistered) {
+        return <button type="button" className={styles['btnGhost']} disabled>Added</button>;
+      }
+      if (busyName === entry.name) {
+        return <button type="button" className={styles['btnConnecting']} disabled>Installing…</button>;
+      }
+      return (
+        <button
+          type="button"
+          className={styles['btnConnect']}
+          onClick={() => void handleInstallHook(entry)}
+          // Disabled while any card is busy AND while the status hasn't loaded
+          // yet (cchook null): never fire an install against unknown state.
+          disabled={busyName !== null || cchook === null}
+        >
+          Install hook
+        </button>
+      );
+    }
     if (entry.group === 'comingsoon') {
       return <button type="button" className={styles['btnGhost']} disabled>Coming soon</button>;
     }
@@ -308,11 +404,6 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
         />
       ) : (
         <>
-      <p className={styles['sub']}>
-        Connect a remote service through xCLAUDE to audit every call Claude makes to it. A browser
-        window opens to authorize.
-      </p>
-
       <div className={styles['searchWrap']}>
         <input
           type="search"
@@ -358,6 +449,12 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
                       </div>
                       <div className={styles['cardDesc']}>{entry.description}</div>
                       <div className={styles['cardAction']}>{actionButton(entry)}</div>
+                      {entry.kind === 'app' ? (
+                        <div className={styles['cardMicroNote']}>
+                          Adds an observation hook to ~/.claude/settings.json — backup created,
+                          removable anytime. Claude Code keeps working even when xCLAUDE is closed.
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>

@@ -137,6 +137,14 @@
   padding-top: 12px;
 }
 
+/* App-card fine print under the action button (hook install disclosure). */
+.cardMicroNote {
+  margin-top: 8px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--kraft-ink-soft);
+}
+
 .btnConnect {
   width: 100%;
   padding: 8px 0;

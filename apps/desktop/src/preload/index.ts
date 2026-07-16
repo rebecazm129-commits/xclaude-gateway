@@ -12,6 +12,7 @@ import type {
 } from '@xcg/shared/config';
 import type {
   ToolCount,
+  CchookInstallResult,
   CchookStatus,
   DetectionListResult,
   DetectionCursor,
@@ -64,6 +65,8 @@ contextBridge.exposeInMainWorld('xcg', {
   configToolCount: (name: string): Promise<ToolCount | null> =>
     ipcRenderer.invoke('config:tool-count', { name }),
   cchookStatus: (): Promise<CchookStatus> => ipcRenderer.invoke('cchook:status'),
+  cchookInstall: (): Promise<CchookInstallResult> => ipcRenderer.invoke('cchook:install'),
+  cchookUninstall: (): Promise<CchookInstallResult> => ipcRenderer.invoke('cchook:uninstall'),
   validateHealth: (): Promise<HealthResult> => ipcRenderer.invoke('system:health'),
   repairWraps: (): Promise<RepairResult> => ipcRenderer.invoke('system:repair-wraps'),
   runSelfTest: (): Promise<SelfTestReport> => ipcRenderer.invoke('system:self-test:run'),

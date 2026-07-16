@@ -12,6 +12,14 @@ export type { AddRemoteToConfigResult, RemoveRemoteFromConfigResult } from './tr
 export { CLAUDE_DESKTOP_CONFIG_PATH, STABLE_XCG_PROXY_PATH } from './paths.js';
 export { writeAtomic } from './io.js';
 export type { WriteAtomicError, WriteAtomicResult } from './io.js';
+export {
+  CCHOOK_MARKER,
+  CCHOOK_EVENTS,
+  buildCchookHookEntry,
+  mergeCchookHooks,
+  removeCchookHooks,
+} from './claude-code-hooks.js';
+export type { CchookHookEntry, CchookHooksResult } from './claude-code-hooks.js';
 export type {
   AddRemoteOk,
   AddRemoteResult,

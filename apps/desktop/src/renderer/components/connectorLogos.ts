@@ -20,6 +20,9 @@ import googlecalendar from '../assets/logos/googlecalendar.svg?raw';
 import googledrive from '../assets/logos/googledrive.svg?raw';
 import asana from '../assets/logos/asana.svg?raw';
 import hubspot from '../assets/logos/hubspot.svg?raw';
+// Hand-drawn terminal glyph (prompt chevron + underscore), not from Simple
+// Icons — same single-path fill="currentColor" contract as the vendored set.
+import terminal from '../assets/logos/terminal.svg?raw';
 
 /** Logo SVG markup keyed by the catalog entry's `logo` slug. */
 export const LOGO_SVGS: Readonly<Record<string, string>> = {
@@ -35,4 +38,5 @@ export const LOGO_SVGS: Readonly<Record<string, string>> = {
   googledrive,
   asana,
   hubspot,
+  terminal,
 };

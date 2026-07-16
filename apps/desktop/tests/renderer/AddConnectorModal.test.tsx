@@ -15,7 +15,18 @@ interface XcgStub {
   openExternalUrl?: ReturnType<typeof vi.fn>;
   configHasClient?: ReturnType<typeof vi.fn>;
   configSeedClient?: ReturnType<typeof vi.fn>;
+  cchookStatus?: ReturnType<typeof vi.fn>;
+  cchookInstall?: ReturnType<typeof vi.fn>;
 }
+
+const CCHOOK_NOT_INSTALLED = {
+  installed: false,
+  hookRegistered: false,
+  pendingSpool: 0,
+  unreadableTotal: 0,
+  lastCycle: null,
+  lastSessionStartTs: null,
+};
 
 function stubXcg(overrides: XcgStub = {}): Required<XcgStub> {
   const api = {
@@ -24,6 +35,8 @@ function stubXcg(overrides: XcgStub = {}): Required<XcgStub> {
     openExternalUrl: vi.fn(async () => undefined),
     configHasClient: vi.fn(async () => false),
     configSeedClient: vi.fn(async () => ({ ok: true, seeded: [], warnings: [] })),
+    cchookStatus: vi.fn(async () => CCHOOK_NOT_INSTALLED),
+    cchookInstall: vi.fn(async () => ({ ok: true, outcome: 'wrote', settingsPath: '/tmp/s.json' })),
     ...overrides,
   };
   vi.stubGlobal('xcg', api);
@@ -44,6 +57,49 @@ afterEach(async () => {
 function renderOpen(): void {
   render(<AddConnectorModal open onClose={vi.fn()} />);
 }
+
+describe('AddConnectorModal — Claude Code app card (F1.3d)', () => {
+  const card = (): HTMLElement => screen.getByTestId('connector-card-claude-code');
+
+  it('not installed on this Mac → disabled "Not detected" button, micro-note visible', async () => {
+    stubXcg(); // default cchookStatus: installed false
+    renderOpen();
+    expect(screen.getByText('Audit sources')).toBeDefined(); // group label
+    const btn = await within(card()).findByRole('button', { name: 'Not detected on this Mac' });
+    expect((btn as HTMLButtonElement).disabled).toBe(true);
+    expect(within(card()).getByText(/Adds an observation hook to ~\/.claude\/settings.json/)).toBeDefined();
+  });
+
+  it('hook already registered → Added', async () => {
+    stubXcg({
+      cchookStatus: vi.fn(async () => ({ ...CCHOOK_NOT_INSTALLED, installed: true, hookRegistered: true })),
+    });
+    renderOpen();
+    const btn = await within(card()).findByRole('button', { name: 'Added' });
+    expect((btn as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('installed without hook → Install hook; happy click installs and lands on Added', async () => {
+    const cchookStatus = vi
+      .fn()
+      .mockResolvedValueOnce({ ...CCHOOK_NOT_INSTALLED, installed: true }) // [open] check
+      .mockResolvedValue({ ...CCHOOK_NOT_INSTALLED, installed: true, hookRegistered: true }); // post-install
+    const api = stubXcg({ cchookStatus });
+    renderOpen();
+    const btn = await within(card()).findByRole('button', { name: 'Install hook' });
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(within(card()).getByRole('button', { name: 'Added' })).toBeDefined();
+    });
+    expect(api.cchookInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it('the former modal subtitle now lives as the one-click group note', () => {
+    stubXcg();
+    renderOpen();
+    expect(screen.getByText(/Connect a remote service through xCLAUDE/)).toBeDefined();
+  });
+});
 
 describe('AddConnectorModal', () => {
   it('renders nothing when closed', () => {

@@ -3,12 +3,15 @@
 // active chip, the Open in Detections callback and the relative heartbeat.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { ClaudeCodeInspector, formatRelative } from '../../src/renderer/components/ClaudeCodeInspector.js';
 import type { CchookStatus } from '../../src/shared/types.js';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const STATUS: CchookStatus = {
   installed: true,
@@ -42,6 +45,49 @@ describe('ClaudeCodeInspector', () => {
     render(<ClaudeCodeInspector status={STATUS} flagged7d={0} onOpenInDetections={onOpen} />);
     fireEvent.click(screen.getByRole('button', { name: 'Open in Detections' }));
     expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ClaudeCodeInspector — Uninstall hook (F1.3d)', () => {
+  it('two-step confirmation: Uninstall hook → Confirm/Cancel; confirm calls cchookUninstall', async () => {
+    const cchookUninstall = vi.fn(async () => ({ ok: true, outcome: 'wrote', settingsPath: '/tmp/s.json' }));
+    vi.stubGlobal('xcg', { cchookUninstall });
+    render(<ClaudeCodeInspector status={STATUS} flagged7d={0} onOpenInDetections={() => {}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Uninstall hook' }));
+    expect(cchookUninstall).not.toHaveBeenCalled(); // first click only arms the confirm
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDefined();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm uninstall' }));
+    await waitFor(() => expect(cchookUninstall).toHaveBeenCalledTimes(1));
+  });
+
+  it('Cancel disarms without calling; error result surfaces as a banner', async () => {
+    const cchookUninstall = vi.fn(async () => ({ ok: false, error: 'settings.json is not valid JSON' }));
+    vi.stubGlobal('xcg', { cchookUninstall });
+    render(<ClaudeCodeInspector status={STATUS} flagged7d={0} onOpenInDetections={() => {}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Uninstall hook' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(cchookUninstall).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Uninstall hook' })).toBeDefined();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Uninstall hook' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm uninstall' }));
+    await waitFor(() => {
+      expect(screen.getByText('settings.json is not valid JSON')).toBeDefined();
+    });
+  });
+
+  it('no Uninstall button when the hook is not registered', () => {
+    render(
+      <ClaudeCodeInspector
+        status={{ ...STATUS, hookRegistered: false }}
+        flagged7d={0}
+        onOpenInDetections={() => {}}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Uninstall hook' })).toBeNull();
   });
 });
 

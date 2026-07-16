@@ -3,7 +3,7 @@
 // forcing the Connector shape here would drag Keychain/Reconnect machinery into
 // a source that has neither. Install/Uninstall buttons are F1.3d.
 
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 
 import type { CchookStatus } from '../../shared/types.js';
 
@@ -35,6 +35,29 @@ export function formatRelative(iso: string, nowMs: number = Date.now()): string 
 
 export function ClaudeCodeInspector({ status, flagged7d, onOpenInDetections }: ClaudeCodeInspectorProps): ReactElement {
   const hookRegistered = status?.hookRegistered ?? false;
+
+  // Uninstall mirrors ConnectorInspector's Remove: two-step confirmation,
+  // busy state, error banner. It calls window.xcg directly (same mixed
+  // pattern ConnectorInspector already uses for configHasCredentials); on
+  // success nothing else happens here — the 2s cchook:status poll makes the
+  // section disappear and Setup resets the selection.
+  const [confirmingUninstall, setConfirmingUninstall] = useState(false);
+  const [uninstalling, setUninstalling] = useState(false);
+  const [uninstallError, setUninstallError] = useState<string | null>(null);
+
+  async function handleConfirmUninstall(): Promise<void> {
+    setUninstalling(true);
+    setUninstallError(null);
+    try {
+      const result = await window.xcg.cchookUninstall();
+      if (!result.ok) setUninstallError(result.error);
+    } catch (err) {
+      setUninstallError(err instanceof Error ? err.message : 'unknown error');
+    } finally {
+      setUninstalling(false);
+      setConfirmingUninstall(false);
+    }
+  }
 
   return (
     <div className={styles['root']}>
@@ -73,6 +96,47 @@ export function ClaudeCodeInspector({ status, flagged7d, onOpenInDetections }: C
       <button type="button" className={styles['openInDetections']} onClick={onOpenInDetections}>
         Open in Detections
       </button>
+
+      {hookRegistered ? (
+        <div className={styles['foot']}>
+          {confirmingUninstall ? (
+            <>
+              <button
+                type="button"
+                className={styles['uninstallConfirmButton']}
+                onClick={() => void handleConfirmUninstall()}
+                disabled={uninstalling}
+              >
+                {uninstalling ? 'Uninstalling…' : 'Confirm uninstall'}
+              </button>
+              <button
+                type="button"
+                className={styles['cancelButton']}
+                onClick={() => setConfirmingUninstall(false)}
+                disabled={uninstalling}
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className={styles['uninstallButton']}
+              onClick={() => {
+                setUninstallError(null);
+                setConfirmingUninstall(true);
+              }}
+              disabled={uninstalling}
+            >
+              Uninstall hook
+            </button>
+          )}
+        </div>
+      ) : null}
+
+      {uninstallError !== null ? (
+        <div className={styles['banner_error']}>{uninstallError}</div>
+      ) : null}
 
       <p className={styles['scopeNote']}>
         Audits tool calls as consumed by the model · doesn't see raw MCP wire · no

@@ -124,6 +124,13 @@ export interface CchookIngestStatus {
   lastSessionStartTs: string | null;
 }
 
+// cchook:install / cchook:uninstall payload. Mirrors the config handlers'
+// {ok|error} discipline with a readable message (the modal/inspector surface
+// it verbatim in their error banners).
+export type CchookInstallResult =
+  | { ok: true; outcome: 'wrote' | 'noop'; settingsPath: string }
+  | { ok: false; error: string };
+
 // cchook:status payload — ingester snapshot + environment probes composed in
 // the main process (claude-code-detect + spool readdir).
 export interface CchookStatus extends CchookIngestStatus {

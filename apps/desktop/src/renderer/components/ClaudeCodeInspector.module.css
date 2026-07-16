@@ -92,6 +92,71 @@
   text-decoration: underline;
 }
 
+/* Uninstall foot — mirrors ConnectorInspector's Remove/Cancel/Confirm trio. */
+.foot {
+  display: flex;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: var(--kraft-hairline) solid var(--kraft-border);
+}
+
+.uninstallButton,
+.cancelButton {
+  background: transparent;
+  border: 1px solid var(--kraft-border);
+  color: var(--kraft-ink-soft);
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--kraft-font-ui);
+  border-radius: var(--kraft-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+
+.uninstallButton:hover:not(:disabled),
+.cancelButton:hover:not(:disabled) {
+  background: var(--kraft-filter-bg);
+  border-color: var(--kraft-border-strong);
+  color: var(--kraft-ink);
+}
+
+.uninstallButton:disabled,
+.cancelButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Danger confirm — filled with the existing critical tokens. */
+.uninstallConfirmButton {
+  background: var(--kraft-critical-bg);
+  border: 1px solid var(--kraft-critical-border);
+  color: var(--kraft-critical-text);
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--kraft-font-ui);
+  border-radius: var(--kraft-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+
+.uninstallConfirmButton:hover:not(:disabled) {
+  border-color: var(--kraft-critical-dot);
+}
+
+.banner_error {
+  padding: 8px 10px;
+  border: 1px solid var(--kraft-critical-border);
+  border-radius: var(--kraft-radius-sm);
+  background: var(--kraft-critical-bg);
+  color: var(--kraft-critical-text);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .scopeNote {
   margin: 0;
   padding-top: 14px;

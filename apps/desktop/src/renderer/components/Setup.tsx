@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 
 import { toConnectors, type Connector } from '@xcg/shared/config/connectors';
 import type { ConnectResult, RemoveRemoteResult, StatusResult } from '@xcg/shared/config';
@@ -53,6 +53,17 @@ export function Setup({ status, addOpen, onAddOpenChange, onRefresh, onOpenInDet
   const cchook = usePolledCchookStatus();
   const hookRegistered = cchook?.hookRegistered ?? false;
   const alertedMcps = useMemo(() => new Set(authAlerts.map((a) => a.mcp)), [authAlerts]);
+
+  // After an uninstall the section disappears on the next poll — reset the
+  // selection with it, or the inspector pane would keep rendering a source
+  // that no longer exists in the list (F1.3d, minimal declared change).
+  // Guarded on cchook !== null so the initial not-yet-polled state never
+  // clears a selection.
+  useEffect(() => {
+    if (selected?.kind === 'claude-code' && cchook !== null && !cchook.hookRegistered) {
+      setSelected(null);
+    }
+  }, [selected, cchook]);
 
   // One pass over all detections → flagged-call count per connector (last 7d).
   // Same predicate the inspector uses (mcp.request, non-allowed category, in

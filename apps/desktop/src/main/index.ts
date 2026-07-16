@@ -29,6 +29,7 @@ import { runValidateHealth, runRepairWraps } from './health-handlers.js';
 import { readLatestToolCount } from './detection-reader.js';
 import type {
   AuditExportResult,
+  CchookInstallResult,
   CchookStatus,
   DetectionCursor,
   DetectionDetail,
@@ -56,6 +57,7 @@ import {
 import { createAuditStore } from './audit-store.js';
 import { cchookSpoolDir } from '@xcg/proxy/cchook-ingest';
 import { getCchookStatus, runCchookIngestCycle } from './cchook-ingester.js';
+import { installCchook, uninstallCchook } from './cchook-install.js';
 import { detectClaudeCode, isHookRegistered } from './claude-code-detect.js';
 import { spawnWrapper, readDetectionsFromAudit, resolveNpxPath } from './selftest-runner.js';
 import { runSelfTest } from './selftest-handler.js';
@@ -149,6 +151,24 @@ ipcMain.handle('cchook:status', async (): Promise<CchookStatus> => {
     pendingSpool,
     ...getCchookStatus(),
   };
+});
+
+// Install/Uninstall of the Claude Code capture hook (~/.claude/settings.json).
+// Synchronous fs work behind the handler, same shape discipline as config:*.
+// After an install, kick an ingest cycle so a just-started session's captures
+// appear without waiting for the 15s tick.
+ipcMain.handle('cchook:install', (): CchookInstallResult => {
+  const result = installCchook();
+  if (result.ok && result.outcome === 'wrote') {
+    void runCchookIngestCycle().catch((err) => {
+      console.error('cchook-ingester: post-install cycle failed:', err);
+    });
+  }
+  return result;
+});
+
+ipcMain.handle('cchook:uninstall', (): CchookInstallResult => {
+  return uninstallCchook();
 });
 
 // Back-compat: the full unpaginated list. Still used by Setup and
