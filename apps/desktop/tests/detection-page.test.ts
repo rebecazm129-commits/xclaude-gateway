@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { paginate, toSlim } from '../src/main/detection-page.js';
+import { matchesFilter, paginate, toDetail, toSlim } from '../src/main/detection-page.js';
 import { createAuditStore } from '../src/main/audit-store.js';
 import { readAudit } from '../src/main/detection-reader.js';
 import type {
@@ -22,17 +22,21 @@ const CATS: Category[] = [
   'data_export_warning', 'tool_call_allowed', 'pii_detected', 'pii_structured',
 ];
 const SEVS: Severity[] = ['low', 'medium', 'high', 'critical'];
-const ALL: DetectionFilter = { mcp: null, timeRange: 'all', categories: [...CATS], severities: [...SEVS] };
+const ALL: DetectionFilter = {
+  mcp: null, timeRange: 'all', categories: [...CATS], severities: [...SEVS],
+  sources: ['gateway', 'claude-code'],
+};
 
 function req(
   id: string,
   ts: string,
-  opts: { mcp?: string; category?: Category; severity?: Severity; args?: unknown } = {},
+  opts: { mcp?: string; category?: Category; severity?: Severity; args?: unknown; source?: string } = {},
 ): EnrichableEvent {
   const e = {
     id, ts, session: 's', mcp: opts.mcp ?? 'm', type: 'mcp.request' as const,
     method: 'tools/call', rpcId: 1, direction: 'client_to_server' as const,
     toolName: 'echo',
+    ...(opts.source !== undefined ? { source: opts.source } : {}),
     detection: {
       category: opts.category ?? 'tool_call_allowed',
       severity: opts.severity ?? 'low',
@@ -111,7 +115,7 @@ describe('paginate — slim rows', () => {
     expect(p.rows[0]).toEqual({
       id: 'a', ts: new Date(NOW).toISOString(), mcp: 'm',
       type: 'mcp.request', category: 'tool_call_allowed', severity: 'low',
-      toolName: 'echo', method: 'tools/call',
+      toolName: 'echo', method: 'tools/call', source: 'gateway',
     });
     expect('argumentsJson' in (p.rows[0] as object)).toBe(false);
   });
@@ -285,6 +289,33 @@ describe('toSlim', () => {
     expect(slim).toEqual({
       id: 'a', ts: new Date(NOW).toISOString(), mcp: 'm', type: 'mcp.request',
       category: 'tool_call_allowed', severity: 'low', toolName: 'echo', method: 'tools/call',
+      source: 'gateway',
     });
+  });
+});
+
+describe('source filter (F1.3b)', () => {
+  const ts = new Date(NOW).toISOString();
+  const gw = req('gw', ts); // wrapper line: no source field at all
+  const cc = req('cc', ts, { source: 'claude-code' });
+
+  it('matchesFilter respects sources: gateway-only, claude-code-only, both', () => {
+    expect(matchesFilter(gw, { ...ALL, sources: ['gateway'] }, NOW)).toBe(true);
+    expect(matchesFilter(cc, { ...ALL, sources: ['gateway'] }, NOW)).toBe(false);
+    expect(matchesFilter(gw, { ...ALL, sources: ['claude-code'] }, NOW)).toBe(false);
+    expect(matchesFilter(cc, { ...ALL, sources: ['claude-code'] }, NOW)).toBe(true);
+    expect(matchesFilter(gw, ALL, NOW)).toBe(true);
+    expect(matchesFilter(cc, ALL, NOW)).toBe(true);
+  });
+
+  it("missing source field normalizes to 'gateway'; any non-'claude-code' value too", () => {
+    expect(toSlim(gw).source).toBe('gateway');
+    expect(toSlim(req('odd', ts, { source: 'something-else' })).source).toBe('gateway');
+  });
+
+  it('toSlim and toDetail copy the normalized source', () => {
+    expect(toSlim(cc).source).toBe('claude-code');
+    expect(toDetail(cc).source).toBe('claude-code');
+    expect(toDetail(gw).source).toBe('gateway');
   });
 });

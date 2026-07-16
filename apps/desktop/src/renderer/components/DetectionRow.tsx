@@ -37,7 +37,16 @@ export function DetectionRow({ row, selected, onClick }: DetectionRowProps): JSX
       <span className={styles['category']}>
         {CATEGORY_LABELS[row.category]}
       </span>
-      <span className={styles['mcp']}>{row.mcp}</span>
+      <span className={styles['mcp']}>
+        {row.mcp}
+        {row.source === 'claude-code' ? (
+          // Mini-pill in the entryKind style (Setup list): suffix badge, not a
+          // sixth column — Claude Code rows stay scannable in the MCP cell.
+          <span className={styles['sourceBadgeCc']} data-testid="source-badge-cc" title="Claude Code">
+            CC
+          </span>
+        ) : null}
+      </span>
       {row.type === 'mcp.request' ? (
         <span className={styles['method']}>
           {row.toolName ?? row.method}

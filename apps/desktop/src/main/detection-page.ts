@@ -12,6 +12,7 @@ import type {
   Severity,
   TimeRange,
 } from '../shared/types.js';
+import { normalizeSource } from '../shared/types.js';
 
 const TIME_WINDOW_MS: Record<Exclude<TimeRange, 'all'>, number> = {
   '1h': 60 * 60 * 1000,
@@ -49,6 +50,7 @@ export function matchesPreSeverity(
 ): boolean {
   if (filter.mcp !== null && e.mcp !== filter.mcp) return false;
   if (!withinTimeWindow(e, filter, now)) return false;
+  if (!filter.sources.includes(normalizeSource(e.source))) return false;
   return filter.categories.includes(e.detection.category);
 }
 
@@ -74,6 +76,7 @@ export function toSlim(e: EnrichableEvent): DetectionRowSlim {
     type: e.type,
     category: e.detection.category,
     severity: e.detection.severity,
+    source: normalizeSource(e.source),
   };
   if (e.type === 'mcp.request') {
     if (e.toolName !== undefined) row.toolName = e.toolName;
@@ -93,6 +96,7 @@ export function toDetail(e: EnrichableEvent): DetectionDetail {
     direction: e.direction,
     category: e.detection.category,
     severity: e.detection.severity,
+    source: normalizeSource(e.source),
     findings: e.detection.findings,
   };
   if (e.type === 'mcp.request') {

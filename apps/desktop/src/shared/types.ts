@@ -50,6 +50,10 @@ export interface DetectionEvent {
   rpcId: RpcId;
   direction: Direction;
   detection: DetectionBlock;
+  // Campo crudo de la línea JSONL ('claude-code' en los eventos sintetizados
+  // por F1.2; ausente en los de wrapper). El reader lo deja pasar tal cual;
+  // detection-page lo normaliza con normalizeSource — nadie más lo interpreta.
+  source?: string;
   // Opcion (b) acumular: si un mcp.detection_enrichment correlaciona con
   // este request por la terna (session, rpcId, direction), su DetectionBlock
   // se adjunta aqui SIN reemplazar `detection` (la regex original se
@@ -88,6 +92,9 @@ export interface DetectionEnrichmentEvent {
   rpcId: RpcId;
   direction: Direction;
   detection: DetectionBlock;
+  // Mismo campo crudo que en DetectionEvent (los enrichments sintetizados de
+  // F1.2 también lo llevan); normalizado solo en detection-page.
+  source?: string;
 }
 
 // Unión que el reader devuelve y el dashboard consume. Discriminada por `type`.
@@ -179,6 +186,18 @@ export interface RetentionBannerInfo {
 // re-exports it); crosses IPC inside DetectionFilter.
 export type TimeRange = '1h' | '24h' | '7d' | 'all';
 
+// Where an audit event came from: 'gateway' = a wrapper observed real MCP
+// traffic; 'claude-code' = synthesized from a Claude Code hook capture (F1.2,
+// source: 'claude-code' on the JSONL line).
+export type SourceKind = 'gateway' | 'claude-code';
+
+// SINGLE normalization point from the raw JSONL `source` field (absent on all
+// wrapper lines) to a SourceKind. If a third source ever exists, widen HERE —
+// do not scatter ifs across page/export/renderer.
+export function normalizeSource(v: unknown): SourceKind {
+  return v === 'claude-code' ? 'claude-code' : 'gateway';
+}
+
 // The full filter the renderer sends to the main. Applied server-side BEFORE the
 // top-N cut so the page (and its counts) never lie.
 export interface DetectionFilter {
@@ -186,6 +205,7 @@ export interface DetectionFilter {
   timeRange: TimeRange;
   categories: Category[];
   severities: Severity[];
+  sources: SourceKind[];
 }
 
 // Compound cursor for stable pagination over a total (ts desc, id desc) order.
@@ -204,6 +224,7 @@ export interface DetectionRowSlim {
   type: 'mcp.request' | 'mcp.detection_enrichment';
   category: Category;
   severity: Severity;
+  source: SourceKind;
   // request-only presentation
   toolName?: string;
   method?: string;
@@ -246,6 +267,7 @@ export interface DetectionDetail {
   direction: Direction;
   category: Category;
   severity: Severity;
+  source: SourceKind;
   findings: DetectionFinding[];
   method?: string;
   toolName?: string;

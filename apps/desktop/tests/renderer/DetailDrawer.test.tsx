@@ -22,6 +22,7 @@ const ROW: DetectionRowSlim = {
   type: 'mcp.detection_enrichment',
   category: 'pii_structured',
   severity: 'medium',
+  source: 'gateway',
 };
 
 function detail(findings: DetectionDetail['findings']): DetectionDetail {
@@ -35,6 +36,7 @@ function detail(findings: DetectionDetail['findings']): DetectionDetail {
     direction: 'server_to_client',
     category: 'pii_structured',
     severity: 'medium',
+    source: 'gateway',
     findings,
   };
 }

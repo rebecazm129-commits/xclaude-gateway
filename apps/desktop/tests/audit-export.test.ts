@@ -24,18 +24,22 @@ const CATS: Category[] = [
   'pii_structured', 'tool_manifest_changed',
 ];
 const SEVS: Severity[] = ['low', 'medium', 'high', 'critical'];
-const ALL: DetectionFilter = { mcp: null, timeRange: 'all', categories: [...CATS], severities: [...SEVS] };
+const ALL: DetectionFilter = {
+  mcp: null, timeRange: 'all', categories: [...CATS], severities: [...SEVS],
+  sources: ['gateway', 'claude-code'],
+};
 
 function reqLine(
   id: string,
   ts: string,
-  o: { mcp?: string; category?: Category; severity?: Severity; params?: unknown } = {},
+  o: { mcp?: string; category?: Category; severity?: Severity; params?: unknown; source?: string } = {},
 ): string {
   return JSON.stringify({
     v: 1, id, ts, session: 's', mcp: o.mcp ?? 'notion', type: 'mcp.request',
     direction: 'client_to_server', rpcId: 1, method: 'tools/call',
     params: o.params ?? { name: 'echo', arguments: { text: 'hi' } },
     bytes: 50, overheadUs: 7,
+    ...(o.source !== undefined ? { source: o.source } : {}),
     detection: { category: o.category ?? 'tool_call_allowed', severity: o.severity ?? 'low', findings: [] },
   });
 }
@@ -156,6 +160,23 @@ describe('exportAudit — CSV', () => {
       `${iso(1000)},"no,tion",mcp.request,tools/call,"weird""tool",credential_detected,critical,0`,
     );
     expect(rows[2]).toBe(`${iso(2000)},notion,mcp.detection_enrichment,,,pii_detected,medium,2`);
+  });
+
+  it('sources filter: claude-code-only exports only synthesized lines (via shared matchesFilter)', async () => {
+    await writeSession(
+      '01B.jsonl',
+      [
+        reqLine('gw', iso(1000)), // wrapper line: no source field
+        reqLine('cc', iso(2000), { source: 'claude-code' }),
+      ].join('\n'),
+    );
+    const filter: DetectionFilter = { ...ALL, sources: ['claude-code'] };
+    const dest = join(root, 'cc-only.jsonl');
+    const { count } = await exportAudit({ dir, destPath: dest, filter, format: 'jsonl', now: NOW });
+    expect(count).toBe(1);
+    const lines = readFileSync(dest, 'utf8').trim().split('\n');
+    expect(lines).toHaveLength(1);
+    expect((JSON.parse(lines[0] as string) as { id: string }).id).toBe('cc');
   });
 
   it('empty result → CSV header only; JSONL empty', async () => {

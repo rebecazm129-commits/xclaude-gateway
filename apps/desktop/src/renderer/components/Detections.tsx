@@ -7,7 +7,9 @@ import type {
   DetectionRowSlim,
   Severity,
   Category,
+  SourceKind,
 } from '../../shared/types.js';
+import { SOURCE_LABELS } from './detections-format.js';
 
 import { DetailDrawer } from './DetailDrawer.js';
 import { DetectionRow } from './DetectionRow.js';
@@ -19,6 +21,7 @@ import { TimeFilter, type TimeRange } from './TimeFilter.js';
 import styles from './Detections.module.css';
 
 const SEVERITY_OPTIONS: readonly Severity[] = ['low', 'medium', 'high', 'critical'];
+const SOURCE_OPTIONS: readonly SourceKind[] = ['gateway', 'claude-code'];
 // Exported so the default-filter membership is unit-testable. The filter is
 // server-side, so a category absent here is filtered OUT by default.
 export const CATEGORY_OPTIONS: readonly Category[] = [
@@ -77,11 +80,14 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
     useState<readonly Severity[]>(SEVERITY_OPTIONS);
   const [selectedCategories, setSelectedCategories] =
     useState<readonly Category[]>(CATEGORY_OPTIONS);
+  const [selectedSources, setSelectedSources] =
+    useState<readonly SourceKind[]>(SOURCE_OPTIONS);
   const [selectedRow, setSelectedRow] = useState<DetectionRowSlim | null>(null);
-  const [openDropdown, setOpenDropdown] = useState<'severity' | 'category' | null>(null);
+  const [openDropdown, setOpenDropdown] = useState<'severity' | 'category' | 'source' | null>(null);
   const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('all');
   const severityRef = useRef<HTMLDivElement>(null);
   const categoryRef = useRef<HTMLDivElement>(null);
+  const sourceRef = useRef<HTMLDivElement>(null);
   const [listHeight, setListHeight] = useState(
     window.innerHeight - HEADER_AND_FILTERS_HEIGHT,
   );
@@ -99,8 +105,9 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
       timeRange: selectedTimeRange,
       categories: [...selectedCategories],
       severities: [...selectedSeverities],
+      sources: [...selectedSources],
     }),
-    [mcpFilter, selectedTimeRange, selectedCategories, selectedSeverities],
+    [mcpFilter, selectedTimeRange, selectedCategories, selectedSeverities, selectedSources],
   );
 
   const page = useDetectionPage(filter);
@@ -125,7 +132,8 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
       const target = e.target as Node;
       const insideSeverity = severityRef.current?.contains(target) ?? false;
       const insideCategory = categoryRef.current?.contains(target) ?? false;
-      if (!insideSeverity && !insideCategory) {
+      const insideSource = sourceRef.current?.contains(target) ?? false;
+      if (!insideSeverity && !insideCategory && !insideSource) {
         setOpenDropdown(null);
       }
     }
@@ -152,7 +160,7 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
     // button reverts to "Export {N} events" for the new count.
     setExportResult(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSeverities, selectedCategories, selectedTimeRange, mcpFilter]);
+  }, [selectedSeverities, selectedCategories, selectedSources, selectedTimeRange, mcpFilter]);
 
   const newCount = useMemo(() => {
     if (lastSeenTopId === null) return 0;
@@ -166,6 +174,7 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
     mcpFilter !== null ||
     selectedSeverities.length !== SEVERITY_OPTIONS.length ||
     selectedCategories.length !== CATEGORY_OPTIONS.length ||
+    selectedSources.length !== SOURCE_OPTIONS.length ||
     selectedTimeRange !== 'all';
 
   const counterLabel = hasActiveFilters
@@ -207,6 +216,7 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
   function handleClearFilters(): void {
     setSelectedSeverities(SEVERITY_OPTIONS);
     setSelectedCategories(CATEGORY_OPTIONS);
+    setSelectedSources(SOURCE_OPTIONS);
     setSelectedTimeRange('all');
     onClearMcpFilter();
   }
@@ -294,6 +304,16 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
           isOpen={openDropdown === 'category'}
           onToggle={() => setOpenDropdown((prev) => (prev === 'category' ? null : 'category'))}
           dropdownRef={categoryRef}
+        />
+        <FilterDropdown
+          label="Source"
+          options={SOURCE_OPTIONS}
+          selected={selectedSources}
+          onChange={setSelectedSources}
+          isOpen={openDropdown === 'source'}
+          onToggle={() => setOpenDropdown((prev) => (prev === 'source' ? null : 'source'))}
+          dropdownRef={sourceRef}
+          formatOption={(o) => SOURCE_LABELS[o]}
         />
         <div className={styles['timeFilterSpacer']}>
           <TimeFilter value={selectedTimeRange} onChange={setSelectedTimeRange} />

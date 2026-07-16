@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { Category, DetectionDetail, DetectionFinding, DetectionRowSlim } from '../../shared/types.js';
 import { Badge } from './Badge.js';
+import { SOURCE_LABELS } from './detections-format.js';
 
 import styles from './DetailDrawer.module.css';
 
@@ -254,6 +255,10 @@ export function DetailDrawer({ row, onClose }: DetailDrawerProps): JSX.Element {
                   <div className={styles['kvRow']}>
                     <span className={styles['kvKey']}>session:</span>
                     <span className={styles['kvValue']}>{detail.session}</span>
+                  </div>
+                  <div className={styles['kvRow']}>
+                    <span className={styles['kvKey']}>source:</span>
+                    <span className={styles['kvValue']}>{SOURCE_LABELS[detail.source]}</span>
                   </div>
                   {overheadUs !== undefined && (
                     <div className={styles['kvRow']}>

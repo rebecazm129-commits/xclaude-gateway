@@ -1,4 +1,10 @@
-import type { Category } from '../../shared/types.js';
+import type { Category, SourceKind } from '../../shared/types.js';
+
+// Shared by the Source filter pill (Detections) and the DetailDrawer line.
+export const SOURCE_LABELS: Record<SourceKind, string> = {
+  gateway: 'Gateway',
+  'claude-code': 'Claude Code',
+};
 
 export const CATEGORY_LABELS: Record<Category, string> = {
   credential_detected: 'Credential leak',

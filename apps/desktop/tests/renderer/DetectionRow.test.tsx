@@ -20,6 +20,7 @@ function row(over: Partial<DetectionRowSlim> = {}): DetectionRowSlim {
     type: 'mcp.detection_enrichment',
     category: 'pii_detected',
     severity: 'low',
+    source: 'gateway',
     ...over,
   };
 }
@@ -67,6 +68,25 @@ describe('DetectionRow — tool column', () => {
     );
     expect(screen.getByText('tools/list')).toBeTruthy();
     expect(screen.queryByText('[NER]')).toBeNull();
+  });
+});
+
+describe('DetectionRow — source badge (F1.3b)', () => {
+  it('shows the CC badge only on claude-code rows', () => {
+    render(
+      <DetectionRow
+        row={row({ source: 'claude-code', type: 'mcp.request', toolName: 'Bash', method: 'tools/call' })}
+        selected={false}
+        onClick={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('source-badge-cc')).toBeTruthy();
+    expect(screen.getByTestId('source-badge-cc').textContent).toBe('CC');
+  });
+
+  it('no badge on gateway rows', () => {
+    render(<DetectionRow row={row()} selected={false} onClick={() => {}} />);
+    expect(screen.queryByTestId('source-badge-cc')).toBeNull();
   });
 });
 

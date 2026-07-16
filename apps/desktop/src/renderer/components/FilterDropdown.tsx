@@ -10,6 +10,9 @@ interface Props<T extends string> {
   isOpen: boolean;
   onToggle: () => void;
   dropdownRef?: Ref<HTMLDivElement>;
+  /** Human-readable label per option; defaults to the raw option value
+   *  (Severity/Category keep their current rendering untouched). */
+  formatOption?: (option: T) => string;
 }
 
 export function FilterDropdown<T extends string>({
@@ -20,6 +23,7 @@ export function FilterDropdown<T extends string>({
   isOpen,
   onToggle,
   dropdownRef,
+  formatOption,
 }: Props<T>): JSX.Element {
   const selectedSet = new Set(selected);
 
@@ -51,7 +55,7 @@ export function FilterDropdown<T extends string>({
                 checked={selectedSet.has(option)}
                 onChange={() => toggle(option)}
               />
-              {option}
+              {formatOption !== undefined ? formatOption(option) : option}
             </label>
           ))}
         </div>
