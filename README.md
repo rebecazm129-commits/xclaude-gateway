@@ -54,6 +54,8 @@ Whether you connect a remote service through xCLAUDE (Notion, Linear, Atlassian,
 
 The audit runs entirely on your Mac: no telemetry, no account, no analytics. xCLAUDE makes no network calls of its own — the only outbound traffic is the connectors you add and their OAuth sign-in, plus the "Request a connector" link, which opens your system browser. Note that wrapped servers still talk to their destination — a local MCP server to your filesystem, a remote connector to its provider over the network. xCLAUDE observes that traffic; it doesn't reroute or withhold it.
 
+**Credential masking.** Detected credentials are the one deliberate exception to capture-all. When the `credential_detected` detector matches an API key or token, its value is masked before the event is written: a 10-character prefix plus an HMAC-SHA256 fingerprint, keyed by a random salt created once per install (`~/Library/Application Support/xCLAUDE Gateway/audit-salt`). The prefix keeps the row recognizable; the fingerprint is irreversible and verifies nothing outside your machine. The same salt keys both audit sources — wrapped MCP traffic and Claude Code — so one credential carries the same fingerprint wherever it appears, and masked events still correlate across sources. There is no toggle. Everything else is recorded as captured (oversized values are size-truncated and flagged as such).
+
 ### Detectors
 
 | Category | Severity | What it detects |

@@ -35,3 +35,9 @@ Out of scope (report to the respective project instead):
 - Upstream dependencies (Node, Electron, libraries) — report upstream.
 
 xCLAUDE Gateway audits MCP traffic locally and makes no network calls of its own. If you believe a build or update behaves otherwise, that is exactly the kind of report we want.
+
+## Sensitive data in the audit log
+
+The audit log records MCP traffic as it crossed the wire (oversized values are size-truncated and flagged) — that is the point of a forensic trail. The one deliberate exception is credentials: values matched by the `credential_detected` detector (API-key and token shapes) are masked before they are written, replaced by a 10-character prefix plus an irreversible HMAC-SHA256 fingerprint keyed by a per-install salt (`~/Library/Application Support/xCLAUDE Gateway/audit-salt`). The same salt keys both the wrapped-MCP and Claude Code paths, so a credential fingerprints identically across sources while remaining unverifiable off your machine. The masking is irreversible and has no toggle.
+
+The log otherwise contains whatever crossed the wire, including any secret that does *not* match a known credential shape. Treat the `wrappers/` directory — and any trail you export — as sensitive.
