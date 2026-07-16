@@ -52,6 +52,7 @@ import {
   writeRetentionConfig,
 } from './retention.js';
 import { createAuditStore } from './audit-store.js';
+import { runCchookIngestCycle } from './cchook-ingester.js';
 import { spawnWrapper, readDetectionsFromAudit, resolveNpxPath } from './selftest-runner.js';
 import { runSelfTest } from './selftest-handler.js';
 import { runConfigConnect } from './connect-handler.js';
@@ -473,6 +474,19 @@ let retentionConfigCache: RetentionConfig | null = null;
 // Single source of truth for the audit trail: detection:list, the tray loop and
 // the retention sweep all read through this incremental cache.
 const auditStore = createAuditStore(WRAPPERS_DIR);
+
+// F1.2: Claude Code spool ingester — drains claude-code/spool/ (xcg-cchook
+// captures) into the wrappers/ trail the auditStore reads. Trigger: app start
+// + every 15 s [propuesta F1.2]. No auditStore invalidation needed: appends
+// grow the session file and the store's size-based refresh picks them up.
+void runCchookIngestCycle().catch((err) => {
+  console.error('cchook-ingester: startup cycle failed:', err);
+});
+setInterval(() => {
+  void runCchookIngestCycle().catch((err) => {
+    console.error('cchook-ingester: cycle failed:', err);
+  });
+}, 15_000);
 
 async function runRetentionSweep(): Promise<void> {
   try {

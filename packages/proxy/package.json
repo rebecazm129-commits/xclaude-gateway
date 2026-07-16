@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     "./detection/selftest": "./src/detection/selftest.ts",
-    "./credentials": "./src/credentials.ts"
+    "./credentials": "./src/credentials.ts",
+    "./cchook-ingest": "./src/cchook-ingest.ts"
   },
   "bin": {
     "xcg-proxy": "./bin/xcg-proxy",

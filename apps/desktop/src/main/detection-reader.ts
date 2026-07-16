@@ -132,12 +132,17 @@ export function parseAuditContent(content: string): ParsedFile {
     // Auth-signal extraction. A single mcp.request line yields BOTH a 'live'
     // signal here AND a detection event below — exactly as the original
     // interleaved loop did (it fell through to the detection guards).
+    // Lines with source 'claude-code' are EXCLUDED (F1.2 v2 point 4c): tool
+    // traffic observed via Claude Code hooks says nothing about the Gateway
+    // connector's auth state — an mcp named 'notion' here must not mark the
+    // homonymous Gateway connector "live". The detection events below still
+    // include them (accepted until F1.3 adds a source filter to the list).
     {
       const obj = parsed as Record<string, unknown>;
       const ty = obj['type'];
       const mcp = obj['mcp'];
       const ts = obj['ts'];
-      if (typeof mcp === 'string' && typeof ts === 'string') {
+      if (typeof mcp === 'string' && typeof ts === 'string' && obj['source'] !== 'claude-code') {
         if (ty === 'proxy.error' && obj['kind'] === 'oauth_failed') {
           authSignals.push({
             mcp,
