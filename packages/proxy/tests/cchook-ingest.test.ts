@@ -12,6 +12,7 @@ import { describe, it, expect } from 'vitest';
 import {
   classify,
   parseHookPayload,
+  readMaskSecrets,
   requestScanText,
   responseScanText,
   splitToolName,
@@ -392,5 +393,64 @@ describe('classify', () => {
         }
       }
     }
+  });
+});
+
+describe('credential masking side channel (b.2)', () => {
+  const SK = `sk-proj-${'Q'.repeat(40)}`;
+  const run = (payload: Record<string, unknown>) => {
+    const parsed = parseHookPayload(JSON.stringify(payload));
+    const { ctx } = makeCtx();
+    return classify(synthesize(parsed, ctx), parsed, ctx.nextId);
+  };
+
+  it('sk-fake in tool_input → the request event carries the secret in the mask channel', () => {
+    const events = run({
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Bash',
+      tool_input: { command: `export KEY=${SK}` },
+      tool_response: { stdout: 'ok', stderr: '' },
+      tool_use_id: 'toolu_req',
+    });
+    const req = events.find((e) => e.type === 'mcp.request')!;
+    expect(readMaskSecrets(req)).toContain(SK);
+    // The response (clean) carries nothing.
+    const resp = events.find((e) => e.type === 'mcp.response')!;
+    expect(readMaskSecrets(resp)).toBeUndefined();
+  });
+
+  it('sk-fake in an MCP string-JSON tool_response → the response event is tagged', () => {
+    const events = run({
+      hook_event_name: 'PostToolUse',
+      tool_name: 'mcp__srv__fetch',
+      tool_input: { url: 'x' },
+      tool_response: JSON.stringify({ content: `token ${SK}` }),
+      tool_use_id: 'toolu_mcp',
+    });
+    const resp = events.find((e) => e.type === 'mcp.response')!;
+    expect(readMaskSecrets(resp)).toContain(SK);
+  });
+
+  it('sk-fake in a native object tool_response (Bash stdout) → the response event is tagged', () => {
+    const events = run({
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Bash',
+      tool_input: { command: 'cat .env' },
+      tool_response: { stdout: `API_KEY=${SK}`, stderr: '' },
+      tool_use_id: 'toolu_bash',
+    });
+    const resp = events.find((e) => e.type === 'mcp.response')!;
+    expect(readMaskSecrets(resp)).toContain(SK);
+  });
+
+  it('a clean event carries no mask channel on any envelope', () => {
+    const events = run({
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Bash',
+      tool_input: { command: 'ls -la' },
+      tool_response: { stdout: 'total 0', stderr: '' },
+      tool_use_id: 'toolu_clean',
+    });
+    for (const e of events) expect(readMaskSecrets(e)).toBeUndefined();
   });
 });

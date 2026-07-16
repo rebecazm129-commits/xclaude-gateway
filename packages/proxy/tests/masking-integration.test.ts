@@ -10,7 +10,9 @@ import { DetectionEngine } from '../src/detection/engine.js';
 import { ACTIVE_DETECTORS } from '../src/detection/detectors/index.js';
 import { createFrameProcessor } from '../src/frame-processor.js';
 import { InflightTracker } from '../src/latency.js';
-import { EventSink } from '../src/events.js';
+import { EventSink, readMaskSecrets } from '../src/events.js';
+import { fingerprint, maskCredentials } from '../src/detection/masking.js';
+import { classify, parseHookPayload, synthesize } from '../src/cchook-ingest.js';
 import type { Envelope, Writer } from '../src/audit.js';
 import type { ClassifiedFrame } from '../src/parser.js';
 
@@ -105,5 +107,40 @@ describe('credential masking — wrapper path', () => {
     const lines = drive(frame, KEY);
     expect(lines[0]).not.toContain(SK);
     expect(lines[0]).toContain('[fp:');
+  });
+
+  it('CROSS-SOURCE: the same secret masks to the SAME fingerprint on the wire and via a hook', () => {
+    const fpOf = (line: string): string => line.match(/\[fp:([0-9a-f]{16})\]/)![1]!;
+
+    // Wire path (b.1): frame-processor → EventSink(KEY).
+    const wireLine = drive(
+      { kind: 'request', id: 1, method: 'tools/call', params: { name: 'echo', arguments: { key: SK } } },
+      KEY,
+    )[0]!;
+
+    // Hook path (b.2): cchook classify tags the envelope, the ingester serialize
+    // step (replicated here with the SAME exported helpers) masks with KEY.
+    const parsed = parseHookPayload(
+      JSON.stringify({
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Bash',
+        tool_input: { command: `export KEY=${SK}` },
+        tool_response: { stdout: 'ok', stderr: '' },
+        tool_use_id: 'toolu_x',
+      }),
+    );
+    let n = 0;
+    const envelopes = classify(
+      synthesize(parsed, { sessionUlid: 'S', captureTimeMs: 1, nextId: () => `ID-${++n}` }),
+      parsed,
+      () => `ID-${++n}`,
+    );
+    const reqEnv = envelopes.find((e) => e.type === 'mcp.request')!;
+    const hookLine = maskCredentials(JSON.stringify(reqEnv), readMaskSecrets(reqEnv)!, KEY);
+
+    expect(wireLine).toContain('[fp:');
+    expect(hookLine).toContain('[fp:');
+    expect(fpOf(wireLine)).toBe(fpOf(hookLine)); // identical fingerprint → correlatable
+    expect(fpOf(wireLine)).toBe(fingerprint(KEY, SK));
   });
 });

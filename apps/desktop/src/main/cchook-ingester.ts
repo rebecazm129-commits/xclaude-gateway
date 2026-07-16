@@ -27,14 +27,30 @@ import { writeAtomic } from '@xcg/shared/config';
 import {
   cchookSpoolDir,
   classify,
+  maskCredentials,
   parseHookPayload,
+  readMaskSecrets,
+  resolveAuditKey,
   synthesize,
 } from '@xcg/proxy/cchook-ingest';
 
-import { WRAPPERS_DIR, decodeUlidTime } from './retention.js';
+import { BASE_DIR, WRAPPERS_DIR, decodeUlidTime } from './retention.js';
 import type { CchookIngestStatus } from '../shared/types.js';
 
 const SPOOL_ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}\.json$/;
+
+// Credential-masking key, resolved once per desktop process from the SAME
+// baseDir/audit-salt the wrappers use — so a credential fingerprints
+// identically whether it was seen on the wire (b.1) or via a Claude Code hook
+// (b.2). resolveAuditKey never throws (ephemeral fallback), so this is a
+// Buffer, never null. Resolved LAZILY and only when a batch actually carries a
+// credential, so the common (clean) path never touches the salt file.
+let auditKey: Buffer | null = null;
+function getAuditKey(override?: Buffer): Buffer {
+  if (override !== undefined) return override;
+  if (auditKey === null) auditKey = resolveAuditKey(BASE_DIR);
+  return auditKey;
+}
 /** Session-map bucket for captures whose payload carries no session_id. */
 const UNKNOWN_SESSION_KEY = '__unknown__';
 
@@ -43,6 +59,10 @@ export interface CchookIngesterPaths {
   wrappersDir?: string;
   /** Dir holding sessions.json / ingest-state.json (default: spool's parent). */
   stateDir?: string;
+  /** Override the credential-masking key (tests: a fixture salt, so the real
+   *  ~/.../audit-salt is never touched). Production omits it → resolveAuditKey
+   *  from BASE_DIR, shared with the wrappers. */
+  hmacKey?: Buffer;
 }
 
 export interface IngestCycleResult {
@@ -223,7 +243,21 @@ async function ingestCycle(
       );
 
       mkdirSync(wrappersDir, { recursive: true });
-      const lines = `${envelopes.map((e) => JSON.stringify(e)).join('\n')}\n`;
+      // Serialize; mask per envelope carrying credential values (the classify
+      // step tagged them via the Symbol channel). A clean envelope is
+      // byte-identical to before b.2. The key is resolved ONLY when the batch
+      // has a secret, so clean batches never touch the salt file.
+      const hasSecret = envelopes.some((e) => (readMaskSecrets(e)?.length ?? 0) > 0);
+      const key = hasSecret ? getAuditKey(paths.hmacKey) : null;
+      const lines = `${envelopes
+        .map((e) => {
+          const line = JSON.stringify(e);
+          const secrets = readMaskSecrets(e);
+          return key !== null && secrets !== undefined && secrets.length > 0
+            ? maskCredentials(line, secrets, key)
+            : line;
+        })
+        .join('\n')}\n`;
       await appendWithFsync(join(wrappersDir, `${sessionUlid}.jsonl`), lines);
 
       lastProcessed = spoolUlid;

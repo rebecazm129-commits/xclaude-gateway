@@ -35,15 +35,19 @@ const nextId = monotonicFactory();
 // (F1.3c-fix lesson: never trust a field to survive a downstream rebuild).
 const MASK_SECRETS = Symbol('xcg.maskSecrets');
 
+// The channel is type-agnostic (the Symbol is the contract, not the shape):
+// the wrapper attaches to EventBody, the cchook-ingest classifier to Envelope.
 /** Attach credential values to an event for masking at emit time (no-op merge
- *  if some are already attached). Used only by the wrapper frame-processor. */
-export function attachMaskSecrets(event: EventBody, secrets: readonly string[]): void {
+ *  if some are already attached). */
+export function attachMaskSecrets(event: object, secrets: readonly string[]): void {
   if (secrets.length === 0) return;
   const holder = event as { [MASK_SECRETS]?: string[] };
   holder[MASK_SECRETS] = [...(holder[MASK_SECRETS] ?? []), ...secrets];
 }
 
-function readMaskSecrets(event: EventBody): string[] | undefined {
+// Exported so the desktop cchook-ingester (which serializes envelopes itself,
+// outside EventSink) can read the same side channel and mask before writing.
+export function readMaskSecrets(event: object): string[] | undefined {
   return (event as { [MASK_SECRETS]?: string[] })[MASK_SECRETS];
 }
 

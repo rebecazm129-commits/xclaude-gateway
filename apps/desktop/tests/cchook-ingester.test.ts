@@ -238,3 +238,45 @@ describe('oracle: the real AuditStore reads the ingested trail', () => {
     expect(listed.authAlerts).toEqual([]);
   });
 });
+
+describe('credential masking through the ingester (b.2)', () => {
+  const KEY = Buffer.from('desktop-fixture-key-desktop-fixt', 'utf8');
+  const SK = `sk-proj-${'W'.repeat(40)}`;
+  const rawWrapperText = (d: TempDirs): string =>
+    readdirSync(d.wrappersDir)
+      .map((f) => readFileSync(join(d.wrappersDir, f), 'utf8'))
+      .join('');
+
+  it('a spooled capture with a credential lands masked in wrappers/, never in clear', async () => {
+    const d = makeDirs();
+    spoolWrite(
+      d.spoolDir,
+      1_000,
+      JSON.stringify({
+        session_id: 'sess-1',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Bash',
+        tool_input: { command: `export OPENAI_KEY=${SK}` },
+        tool_response: { stdout: 'done', stderr: '' },
+        tool_use_id: 'toolu_cred',
+      }),
+    );
+    const res = await runCchookIngestCycle({ ...paths(d), hmacKey: KEY });
+    expect(res.processed).toBe(1);
+
+    const raw = rawWrapperText(d);
+    expect(raw).not.toContain(SK);
+    expect(raw).toContain(`${SK.slice(0, 10)}…[fp:`);
+    // Still valid JSONL and the request row still classifies as a credential.
+    const req = wrapperLines(d).find((e) => e['type'] === 'mcp.request')!;
+    expect((req['detection'] as Record<string, unknown>)['category']).toBe('credential_detected');
+  });
+
+  it('a clean capture is untouched (no [fp:], no key resolution needed)', async () => {
+    const d = makeDirs();
+    spoolWrite(d.spoolDir, 1_000, fixture('11-subagent-bash.json'));
+    // No hmacKey passed AND clean batch → the ingester never resolves a key.
+    await runCchookIngestCycle(paths(d));
+    expect(rawWrapperText(d)).not.toContain('[fp:');
+  });
+});

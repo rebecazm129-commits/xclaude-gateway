@@ -20,12 +20,19 @@
 //   Baseline tool_call_allowed only on the request (emitDetections); inbound
 //   emits nothing when no detector fires, like the wrapper.
 
-import { ACTIVE_DETECTORS } from './detection/detectors/index.js';
+import { ACTIVE_DETECTORS, credentialMatches } from './detection/detectors/index.js';
 import { buildDetectorInput, emitDetections, runDetectors } from './detection/engine.js';
 import type { DetectorInput, McpRequestEnvelope, RpcId } from './detection/types.js';
 import type { Envelope } from './audit.js';
+import { attachMaskSecrets } from './events.js';
 
 export { cchookSpoolDir } from './cchook-paths.js';
+// Re-exported for the desktop ingester's serialize step (precedent:
+// cchookSpoolDir, F1.2) — it masks envelopes outside EventSink with the SAME
+// helpers and the SAME per-install salt the wrappers use, so a credential
+// carries an identical fingerprint whether seen on the wire or via a hook.
+export { readMaskSecrets } from './events.js';
+export { maskCredentials, resolveAuditKey } from './detection/masking.js';
 
 // --- tolerant parse -----------------------------------------------------------
 
@@ -411,8 +418,19 @@ export function classify(
       };
       const detections = emitDetections(input, ACTIVE_DETECTORS); // baseline included
       // (0k): one mcp.request PER detection, same rpcId/method/params.
-      out.push({ ...env, detection: detections[0] });
-      for (const extra of detections.slice(1)) out.push({ ...env, id: nextId(), detection: extra });
+      const reqEvents: Envelope[] = [
+        { ...env, detection: detections[0] },
+        ...detections.slice(1).map((extra) => ({ ...env, id: nextId(), detection: extra })),
+      ];
+      // Credential masking (b.2): if a credential fired, tag every request
+      // event (they share the same tool_input params) with the matched values
+      // so the ingester's serialize step redacts them — same Symbol channel,
+      // same scan, as the wrapper path (b.1).
+      if (detections.some((d) => d.category === 'credential_detected')) {
+        const secrets = credentialMatches(input.paramsJson);
+        for (const e of reqEvents) attachMaskSecrets(e, secrets);
+      }
+      for (const e of reqEvents) out.push(e);
       continue;
     }
 
@@ -435,6 +453,13 @@ export function classify(
           toolName: undefined,
         };
         for (const detection of runDetectors(input, ACTIVE_DETECTORS)) {
+          // Inbound credential in the result/error text → mask it out of the
+          // persisted mcp.response (env, pushed above, carries the raw
+          // result/error). Reuse the same scan; the enrichment below only
+          // carries findings, never the secret.
+          if (detection.category === 'credential_detected') {
+            attachMaskSecrets(env, credentialMatches(text));
+          }
           // 07/07 fix, verbatim from (0h): data_export_warning is downgraded to
           // 'low' INBOUND only (export language in a result is tool-poisoning
           // signal, not an outbound export command); findings land on 'result'.
@@ -463,6 +488,11 @@ export function classify(
       continue;
     }
 
+    // cc.event (SessionStart / unknown) — passes through untouched. Masking v1
+    // (b.2) is deliberately OUT of scope here: these never run through the
+    // detectors and preserve `raw`. SessionStart carries no user content; if a
+    // future unknown hook event carried a secret in raw, that's a separate
+    // candidate (masking it would need its own scan), not a silent gap.
     out.push(env);
   }
   return out;
