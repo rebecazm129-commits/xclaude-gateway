@@ -298,7 +298,7 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
   }
 
   return (
-    <Modal title="Add connector" onClose={onClose} footer={FOOT_NOTE}>
+    <Modal title="Add source" onClose={onClose} footer={FOOT_NOTE}>
       {setupEntry !== null && setupEntry.setupCatalog !== undefined ? (
         <ConnectorSetupWizard
           catalog={SETUP_CATALOGS[setupEntry.setupCatalog]}
@@ -317,16 +317,16 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
         <input
           type="search"
           className={styles['search']}
-          placeholder="Search connectors…"
+          placeholder="Search sources…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          aria-label="Search connectors"
+          aria-label="Search sources"
         />
       </div>
 
       <div className={styles['gallery']}>
         {!anyMatch ? (
-          <p className={styles['noMatch']}>No connectors match “{query}”.</p>
+          <p className={styles['noMatch']}>No sources match “{query}”.</p>
         ) : (
           GROUPS.map((group) => {
             const cards = CATALOG.filter((e) => e.group === group.id && matches(e));

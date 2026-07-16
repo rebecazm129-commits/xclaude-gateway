@@ -109,11 +109,11 @@ describe('Setup — empty state (one checklist, step 1 adapts to configPresent)'
   it('config present: step 1 wraps the existing config', () => {
     stubXcg([]);
     renderSetup(emptyStatus(true));
-    expect(screen.getByText('Start auditing your connectors')).toBeDefined();
+    expect(screen.getByText('Start auditing your sources')).toBeDefined();
     expect(screen.getByText(/Route that traffic through xCLAUDE in three steps:/)).toBeDefined();
     expect(screen.getByText(/wraps the local MCP servers already in your Claude Desktop/)).toBeDefined();
     expect(screen.queryByText(/add at least one MCP server first/)).toBeNull();
-    expect(screen.getByText('Add your connectors here')).toBeDefined();
+    expect(screen.getByText('Add your sources here')).toBeDefined();
     expect(screen.getByText(/the Set up button walks you through it/)).toBeDefined();
     expect(screen.getByText('Disconnect the native versions')).toBeDefined();
     expect(
@@ -124,7 +124,7 @@ describe('Setup — empty state (one checklist, step 1 adapts to configPresent)'
   it('no config: same checklist with the adapted step 1; old marketing state gone', () => {
     stubXcg([]);
     renderSetup(emptyStatus(false));
-    expect(screen.getByText('Start auditing your connectors')).toBeDefined();
+    expect(screen.getByText('Start auditing your sources')).toBeDefined();
     expect(screen.getByText(/Route that traffic through xCLAUDE in three steps:/)).toBeDefined();
     expect(
       screen.getByText(/open Claude Desktop and add at least one MCP server first/),
@@ -146,17 +146,17 @@ describe('Setup — empty state (one checklist, step 1 adapts to configPresent)'
     fireEvent.click(screen.getByRole('button', { name: 'Install' }));
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('dialog')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Add your connectors here' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add your sources here' }));
     expect(screen.getByRole('dialog')).toBeDefined();
   });
 
-  it('standalone "+ Add connector" CTA coexists with the step-2 link and opens the modal', () => {
+  it('standalone "+ Add source" CTA coexists with the step-2 link and opens the modal', () => {
     stubXcg([]);
     renderSetup(emptyStatus(true));
     // Both entry points render: the checklist's in-context link and the
     // screen's primary CTA below it.
-    expect(screen.getByRole('button', { name: 'Add your connectors here' })).toBeDefined();
-    fireEvent.click(screen.getByRole('button', { name: '+ Add connector' }));
+    expect(screen.getByRole('button', { name: 'Add your sources here' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: '+ Add source' }));
     expect(screen.getByRole('dialog')).toBeDefined();
   });
 });

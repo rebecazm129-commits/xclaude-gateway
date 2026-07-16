@@ -264,13 +264,13 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
       <div className={styles['filters']}>
         {mcpFilter !== null && (
           <span className={styles['connectorFilter']}>
-            <span className={styles['connectorFilterLabel']}>connector</span>
+            <span className={styles['connectorFilterLabel']}>MCP</span>
             {mcpFilter}
             <button
               type="button"
               className={styles['connectorFilterClear']}
               onClick={onClearMcpFilter}
-              aria-label={`Clear connector filter: ${mcpFilter}`}
+              aria-label={`Clear MCP filter: ${mcpFilter}`}
             >
               ✕
             </button>
@@ -316,7 +316,7 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
           </div>
         ) : (
           <div className={styles['empty']}>
-            No detections yet. Route a connector through xCLAUDE to start auditing.
+            No detections yet. Route a source through xCLAUDE to start auditing.
           </div>
         )
       ) : (

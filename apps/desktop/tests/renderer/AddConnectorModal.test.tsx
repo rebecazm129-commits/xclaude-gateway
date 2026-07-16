@@ -67,7 +67,7 @@ describe('AddConnectorModal', () => {
   it('filters cards by name and hides groups (and their notes) with no matches', () => {
     stubXcg();
     renderOpen();
-    fireEvent.change(screen.getByLabelText('Search connectors'), { target: { value: 'git' } });
+    fireEvent.change(screen.getByLabelText('Search sources'), { target: { value: 'git' } });
     expect(screen.getByText('GitHub')).toBeDefined();
     expect(screen.queryByText('Notion')).toBeNull();
     expect(screen.queryByText('Gmail')).toBeNull();
@@ -80,8 +80,8 @@ describe('AddConnectorModal', () => {
   it('shows a no-match message when nothing matches', () => {
     stubXcg();
     renderOpen();
-    fireEvent.change(screen.getByLabelText('Search connectors'), { target: { value: 'zzz' } });
-    expect(screen.getByText(/No connectors match/)).toBeDefined();
+    fireEvent.change(screen.getByLabelText('Search sources'), { target: { value: 'zzz' } });
+    expect(screen.getByText(/No sources match/)).toBeDefined();
   });
 
   it('shows Connect for an unconnected entry', () => {

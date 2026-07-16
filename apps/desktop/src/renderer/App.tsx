@@ -25,7 +25,7 @@ import styles from './App.module.css';
 type TabId = 'setup' | 'detections';
 
 const TAB_OPTIONS: readonly TabOption<TabId>[] = [
-  { id: 'setup', label: 'Connectors' },
+  { id: 'setup', label: 'Sources' },
   { id: 'detections', label: 'Detections' },
 ];
 

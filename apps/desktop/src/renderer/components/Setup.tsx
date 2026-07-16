@@ -103,7 +103,7 @@ export function Setup({ status, addOpen, onAddOpenChange, onRefresh, onOpenInDet
         <>
           <div className={styles['summaryRow']}>
             <div className={styles['summary']}>
-              <b>{connectors.length}</b> {connectors.length === 1 ? 'connector' : 'connectors'}
+              <b>{connectors.length}</b> {connectors.length === 1 ? 'source' : 'sources'}
               {' · '}<b>{auditingCount}</b> auditing
               {' · '}<b>{notAuditedCount}</b> not audited
               {unsupportedCount > 0 ? <>{' · '}<b>{unsupportedCount}</b> unsupported</> : null}
@@ -115,7 +115,7 @@ export function Setup({ status, addOpen, onAddOpenChange, onRefresh, onOpenInDet
                 placeholder="Search…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                aria-label="Search connectors"
+                aria-label="Search sources"
               />
               <button
                 type="button"
@@ -123,7 +123,7 @@ export function Setup({ status, addOpen, onAddOpenChange, onRefresh, onOpenInDet
                 onClick={() => onAddOpenChange(true)}
                 aria-haspopup="dialog"
               >
-                + Add connector
+                + Add source
               </button>
             </div>
           </div>
@@ -199,7 +199,7 @@ export function Setup({ status, addOpen, onAddOpenChange, onRefresh, onOpenInDet
               );
             })
             ) : (
-              <p className={styles['noMatch']}>No connectors match.</p>
+              <p className={styles['noMatch']}>No sources match.</p>
             )}
           </div>
 
@@ -215,7 +215,7 @@ export function Setup({ status, addOpen, onAddOpenChange, onRefresh, onOpenInDet
                 onRemove={onRemove}
               />
             ) : (
-              <p className={styles['inspectorEmpty']}>Select a connector to inspect.</p>
+              <p className={styles['inspectorEmpty']}>Select a source to inspect.</p>
             )}
           </div>
         </div>
@@ -230,7 +230,7 @@ export function Setup({ status, addOpen, onAddOpenChange, onRefresh, onOpenInDet
           </span>
           {/* One empty state for both cases; only step 1 adapts to whether a
               Claude Desktop config exists yet. */}
-          <h2 className={styles['emptyHeading']}>Start auditing your connectors</h2>
+          <h2 className={styles['emptyHeading']}>Start auditing your sources</h2>
           <p className={styles['emptyDetail']}>
             Right now Claude talks to your tools directly. Route that traffic through
             xCLAUDE in three steps:
@@ -262,7 +262,7 @@ export function Setup({ status, addOpen, onAddOpenChange, onRefresh, onOpenInDet
                 onClick={() => onAddOpenChange(true)}
                 aria-haspopup="dialog"
               >
-                Add your connectors here
+                Add your sources here
               </button>
               {' '}— reconnect the remote services you use through xCLAUDE instead of
               natively. Google services need a one-time setup — the Set up button walks you
@@ -282,7 +282,7 @@ export function Setup({ status, addOpen, onAddOpenChange, onRefresh, onOpenInDet
             onClick={() => onAddOpenChange(true)}
             aria-haspopup="dialog"
           >
-            + Add connector
+            + Add source
           </button>
         </div>
       )}
