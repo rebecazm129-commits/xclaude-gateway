@@ -6,6 +6,18 @@ export const SOURCE_LABELS: Record<SourceKind, string> = {
   'claude-code': 'Claude Code',
 };
 
+// Tool-column contract: show the closest thing to the wire we can NAME —
+// real tool > real method > synthetic label only when nothing real exists.
+// Requests have a tool/method; tool_manifest_changed enrichments ride the
+// tools/list response (labeled with that method, in DetectionRow). Only the
+// remaining enrichments get a synthetic bracket label here, derived from
+// category — never a blind literal: pii_detected is emitted ONLY by the async
+// NER worker; everything else is inline content classification over a
+// result/error text (wrapper inbound or Claude Code).
+export function enrichmentToolLabel(category: Category): string {
+  return category === 'pii_detected' ? '[NER]' : '[content]';
+}
+
 export const CATEGORY_LABELS: Record<Category, string> = {
   credential_detected: 'Credential leak',
   prompt_injection: 'Prompt injection',

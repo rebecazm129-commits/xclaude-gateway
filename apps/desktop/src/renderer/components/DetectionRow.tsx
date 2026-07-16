@@ -2,7 +2,7 @@ import type { KeyboardEvent } from 'react';
 
 import type { DetectionRowSlim } from '../../shared/types.js';
 import { Badge } from './Badge.js';
-import { CATEGORY_LABELS, formatTimestamp } from './detections-format.js';
+import { CATEGORY_LABELS, enrichmentToolLabel, formatTimestamp } from './detections-format.js';
 
 import styles from './DetectionRow.module.css';
 
@@ -56,7 +56,9 @@ export function DetectionRow({ row, selected, onClick }: DetectionRowProps): JSX
         // the async NER path, so label the source method, not [NER].
         <span className={styles['method']}>tools/list</span>
       ) : (
-        <span className={styles['ner']}>[NER]</span>
+        // Other enrichments: honest per-producer label ([NER] / [content]),
+        // bracket style. See enrichmentToolLabel for the column contract.
+        <span className={styles['ner']}>{enrichmentToolLabel(row.category)}</span>
       )}
     </div>
   );

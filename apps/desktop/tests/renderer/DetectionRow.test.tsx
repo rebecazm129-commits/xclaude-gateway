@@ -43,7 +43,7 @@ describe('DetectionRow — tool column', () => {
     expect(screen.queryByText('[NER]')).toBeNull();
   });
 
-  it('shows [NER] for a NER (pii_detected) enrichment row', () => {
+  it('shows [NER] for a NER (pii_detected) enrichment row — the one place it was true', () => {
     render(
       <DetectionRow
         row={row({ type: 'mcp.detection_enrichment', category: 'pii_detected' })}
@@ -67,6 +67,31 @@ describe('DetectionRow — tool column', () => {
       />,
     );
     expect(screen.getByText('tools/list')).toBeTruthy();
+    expect(screen.queryByText('[NER]')).toBeNull();
+  });
+
+  it('shows [content] for inline content enrichments (wrapper inbound and Claude Code alike)', () => {
+    render(
+      <DetectionRow
+        row={row({ type: 'mcp.detection_enrichment', category: 'credential_detected', severity: 'critical' })}
+        selected={false}
+        onClick={() => {}}
+      />,
+    );
+    expect(screen.getByText('[content]')).toBeTruthy();
+    cleanup();
+    render(
+      <DetectionRow
+        row={row({
+          type: 'mcp.detection_enrichment',
+          category: 'data_export_warning',
+          source: 'claude-code',
+        })}
+        selected={false}
+        onClick={() => {}}
+      />,
+    );
+    expect(screen.getByText('[content]')).toBeTruthy();
     expect(screen.queryByText('[NER]')).toBeNull();
   });
 });
