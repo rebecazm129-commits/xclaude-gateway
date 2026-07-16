@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import type {
   DetectionCursor,
   DetectionDetail,
+  DetectionEnrichmentEvent,
   DetectionEvent,
   DetectionFilter,
   DetectionListResult,
@@ -110,9 +111,13 @@ function slimEvent(e: EnrichableEvent): EnrichableEvent {
       detection: e.detection,
     };
     if (e.toolName !== undefined) slim.toolName = e.toolName;
+    // Raw provenance field (F1.3b): the source filter/badge read it via
+    // normalizeSource downstream — dropping it here made every cached event
+    // read as 'gateway' (F1.3c-fix). Tiny (a short string on cc events only).
+    if (e.source !== undefined) slim.source = e.source;
     return slim;
   }
-  return {
+  const slim: DetectionEnrichmentEvent = {
     id: e.id,
     ts: e.ts,
     session: e.session,
@@ -122,6 +127,8 @@ function slimEvent(e: EnrichableEvent): EnrichableEvent {
     direction: e.direction,
     detection: e.detection,
   };
+  if (e.source !== undefined) slim.source = e.source;
+  return slim;
 }
 
 async function readRange(

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, unlink, utimes, writeFile } from 'node:fs/promises';
+import { appendFile, mkdtemp, rm, unlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -159,12 +159,13 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-function reqJson(id: string, ts: string, opts: { mcp?: string; category?: Category; severity?: Severity; args?: unknown } = {}): string {
+function reqJson(id: string, ts: string, opts: { mcp?: string; category?: Category; severity?: Severity; args?: unknown; source?: string } = {}): string {
   return JSON.stringify({
     v: 1, id, ts, session: 's', mcp: opts.mcp ?? 'm', type: 'mcp.request',
     direction: 'client_to_server', rpcId: 1, method: 'tools/call',
     params: { name: 'echo', ...(opts.args !== undefined ? { arguments: opts.args } : {}) },
     bytes: 10, overheadUs: 7,
+    ...(opts.source !== undefined ? { source: opts.source } : {}),
     detection: { category: opts.category ?? 'tool_call_allowed', severity: opts.severity ?? 'low', findings: [] },
   });
 }
@@ -291,6 +292,47 @@ describe('toSlim', () => {
       category: 'tool_call_allowed', severity: 'low', toolName: 'echo', method: 'tools/call',
       source: 'gateway',
     });
+  });
+});
+
+describe('source survives the REAL detection:page path — JSONL → store cache → page (F1.3c-fix)', () => {
+  it('slim rows carry source, cc-only filter returns exactly the cc line, incremental poll keeps it', async () => {
+    const store = createAuditStore(dir, { minRefreshMs: 0, now: () => NOW });
+    const ts = new Date(NOW).toISOString();
+    await writeFile(
+      join(dir, 'a.jsonl'),
+      `${reqJson('gw1', ts)}\n${reqJson('cc1', ts, { mcp: 'claude-code', source: 'claude-code' })}\n`,
+    );
+
+    // Badge-data present on the slim rows (this is what DetectionRow renders).
+    const all = await store.getPage({ filter: ALL, limit: 10, cursor: null });
+    const byId = new Map(all.rows.map((r) => [r.id, r.source]));
+    expect(byId.get('gw1')).toBe('gateway');
+    expect(byId.get('cc1')).toBe('claude-code');
+
+    // cc-only filter through the real store path returns exactly the cc line.
+    const ccOnly = await store.getPage({
+      filter: { ...ALL, sources: ['claude-code'] },
+      limit: 10,
+      cursor: null,
+    });
+    expect(ccOnly.rows.map((r) => r.id)).toEqual(['cc1']);
+    expect(ccOnly.totalMatching).toBe(1);
+
+    // Incremental append + second poll: the appended-lines path re-enters the
+    // slim cache — the field must survive there too, and cached rows stay right.
+    await appendFile(
+      join(dir, 'a.jsonl'),
+      `${reqJson('cc2', new Date(NOW + 1000).toISOString(), { source: 'claude-code' })}\n`,
+    );
+    await utimes(join(dir, 'a.jsonl'), new Date(NOW + 5000), new Date(NOW + 5000));
+    const second = await store.getPage({
+      filter: { ...ALL, sources: ['claude-code'] },
+      limit: 10,
+      cursor: null,
+    });
+    expect(second.rows.map((r) => r.id)).toEqual(['cc2', 'cc1']);
+    expect(second.rows.every((r) => r.source === 'claude-code')).toBe(true);
   });
 });
 
