@@ -73,9 +73,15 @@ const LOAD_MORE_THRESHOLD = 20;
 interface DetectionsProps {
   readonly mcpFilter: string | null;
   readonly onClearMcpFilter: () => void;
+  /** One-shot source-filter preset (Claude Code inspector's Open in
+   *  Detections). Applied to the internal sources selection on arrival, then
+   *  acknowledged via onSourcesPresetConsumed — the selection itself stays
+   *  owned by this component (unlike the controlled mcpFilter). */
+  readonly sourcesPreset?: readonly SourceKind[] | null;
+  readonly onSourcesPresetConsumed?: () => void;
 }
 
-export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JSX.Element {
+export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, onSourcesPresetConsumed }: DetectionsProps): JSX.Element {
   const [selectedSeverities, setSelectedSeverities] =
     useState<readonly Severity[]>(SEVERITY_OPTIONS);
   const [selectedCategories, setSelectedCategories] =
@@ -112,6 +118,14 @@ export function Detections({ mcpFilter, onClearMcpFilter }: DetectionsProps): JS
 
   const page = useDetectionPage(filter);
   const { rows, retention } = page;
+
+  // Apply the one-shot preset and hand the token back immediately, so a later
+  // manual change to the pill is never fought by a stale preset.
+  useEffect(() => {
+    if (sourcesPreset === null) return;
+    setSelectedSources(sourcesPreset);
+    onSourcesPresetConsumed?.();
+  }, [sourcesPreset, onSourcesPresetConsumed]);
 
   useEffect(() => {
     function onResize(): void {

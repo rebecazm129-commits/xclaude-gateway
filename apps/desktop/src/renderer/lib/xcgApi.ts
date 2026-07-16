@@ -10,6 +10,7 @@ import type {
 } from '@xcg/shared/config';
 import type {
   ToolCount,
+  CchookStatus,
   DetectionListResult,
   DetectionCursor,
   DetectionDetail,
@@ -48,6 +49,8 @@ export interface XcgApi {
    *  (omitted from the stored JSON for public-PKCE clients). */
   configSeedClient(names: string[], clientId: string, clientSecret?: string): Promise<SeedClientResult>;
   configToolCount(name: string): Promise<ToolCount | null>;
+  /** Claude Code auditing status (detect + hook + ingester + spool backlog). */
+  cchookStatus(): Promise<CchookStatus>;
   validateHealth(): Promise<HealthResult>;
   repairWraps(): Promise<RepairResult>;
   runSelfTest(): Promise<SelfTestReport>;

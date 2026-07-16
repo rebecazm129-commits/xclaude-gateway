@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { ConnectResult, RemoveRemoteResult, StatusResult } from '@xcg/shared/config';
 
+import type { SourceKind } from '../shared/types.js';
+
 import { Detections } from './components/Detections.js';
 import { Setup } from './components/Setup.js';
 import { SettingsDrawer } from './components/SettingsDrawer.js';
@@ -68,6 +70,12 @@ export function App(): JSX.Element {
   const [activeTab, setActiveTab] = useState<TabId>(() => readLastTab() ?? 'setup');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [detectionsMcpFilter, setDetectionsMcpFilter] = useState<string | null>(null);
+  // One-shot preset for Detections' source filter (the Claude Code inspector's
+  // "Open in Detections"). Consumed by Detections (applied to its own state)
+  // and cleared here — unlike mcpFilter, the sources selection LIVES in
+  // Detections; App only hands over the initial value.
+  const [detectionsSourcesPreset, setDetectionsSourcesPreset] =
+    useState<readonly SourceKind[] | null>(null);
   // Connectors whose remove left Keychain credentials behind (F1-02). Memory-
   // only, lives here because the inspector that ran the remove unmounts with
   // the removed entry; cleared by the notice's explicit Dismiss.
@@ -165,6 +173,16 @@ export function App(): JSX.Element {
 
   const handleOpenInDetections = useCallback((name: string) => {
     setDetectionsMcpFilter(name);
+    setActiveTab('detections');
+    writeLastTab('detections');
+  }, []);
+
+  // Claude Code variant: the right axis is the SOURCE filter, not mcp — its
+  // events span several mcp names ('claude-code' for native tools, the real
+  // server name for MCP tools consumed via hooks).
+  const handleOpenClaudeCodeInDetections = useCallback(() => {
+    setDetectionsMcpFilter(null);
+    setDetectionsSourcesPreset(['claude-code']);
     setActiveTab('detections');
     writeLastTab('detections');
   }, []);
@@ -271,6 +289,7 @@ export function App(): JSX.Element {
           onAddOpenChange={setAddOpen}
           onRefresh={refreshStatus}
           onOpenInDetections={handleOpenInDetections}
+          onOpenClaudeCodeInDetections={handleOpenClaudeCodeInDetections}
           onAudit={handleAudit}
           onReconnect={handleReconnect}
           onRemove={handleRemove}
@@ -280,6 +299,8 @@ export function App(): JSX.Element {
         <Detections
           mcpFilter={detectionsMcpFilter}
           onClearMcpFilter={() => setDetectionsMcpFilter(null)}
+          sourcesPreset={detectionsSourcesPreset}
+          onSourcesPresetConsumed={() => setDetectionsSourcesPreset(null)}
         />
       )}
       {settingsOpen && (

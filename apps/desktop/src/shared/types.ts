@@ -106,6 +106,35 @@ export type EnrichableEvent = DetectionEvent | DetectionEnrichmentEvent;
 // alerts); previously an inline literal in tray.ts.
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
+// ---- Claude Code auditing status (cchook:status) ----
+
+// Snapshot the spool ingester accumulates in-process (getCchookStatus).
+export interface CchookIngestStatus {
+  /** Result + wall time of the most recent completed cycle; null before one runs. */
+  lastCycle: {
+    processed: number;
+    skippedUnreadable: number;
+    deletedStale: number;
+    ts: string;
+  } | null;
+  /** Running sum of skippedUnreadable across all cycles this process. */
+  unreadableTotal: number;
+  /** Capture ts of the newest SessionStart hook seen (survives restarts via
+   *  ingest-state.json); null if none ingested yet. */
+  lastSessionStartTs: string | null;
+}
+
+// cchook:status payload — ingester snapshot + environment probes composed in
+// the main process (claude-code-detect + spool readdir).
+export interface CchookStatus extends CchookIngestStatus {
+  /** ~/.claude exists or a `claude` binary resolves on PATH/fallbacks. */
+  installed: boolean;
+  /** ~/.claude/settings.json parses and carries the xcg-cchook marker. */
+  hookRegistered: boolean;
+  /** Spool files waiting for the next ingest cycle (dir absent → 0). */
+  pendingSpool: number;
+}
+
 // A connector whose most recent auth event is a (recent) oauth failure with no
 // later live traffic — i.e. it needs an interactive re-login. Derived by the
 // reader from proxy.error/oauth_failed lines; consumed by the desktop.

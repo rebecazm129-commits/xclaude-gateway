@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Notification, dialog, ipcMain, shell } from 'electron';
 import { homedir } from 'node:os';
 import { mkdirSync } from 'node:fs';
+import { readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +29,7 @@ import { runValidateHealth, runRepairWraps } from './health-handlers.js';
 import { readLatestToolCount } from './detection-reader.js';
 import type {
   AuditExportResult,
+  CchookStatus,
   DetectionCursor,
   DetectionDetail,
   DetectionFilter,
@@ -52,7 +54,9 @@ import {
   writeRetentionConfig,
 } from './retention.js';
 import { createAuditStore } from './audit-store.js';
-import { runCchookIngestCycle } from './cchook-ingester.js';
+import { cchookSpoolDir } from '@xcg/proxy/cchook-ingest';
+import { getCchookStatus, runCchookIngestCycle } from './cchook-ingester.js';
+import { detectClaudeCode, isHookRegistered } from './claude-code-detect.js';
 import { spawnWrapper, readDetectionsFromAudit, resolveNpxPath } from './selftest-runner.js';
 import { runSelfTest } from './selftest-handler.js';
 import { runConfigConnect } from './connect-handler.js';
@@ -127,6 +131,25 @@ function retentionBanner(): DetectionListResult['retention'] {
       }
     : null;
 }
+
+// Claude Code auditing status: environment probes (read-only over ~/.claude)
+// + the ingester's in-process snapshot + the spool backlog. Polled at 2s by
+// the Sources tab, so isHookRegistered stays uncached (freshness beats the
+// negligible read cost) while detectClaudeCode caches per process.
+ipcMain.handle('cchook:status', async (): Promise<CchookStatus> => {
+  let pendingSpool = 0;
+  try {
+    pendingSpool = (await readdir(cchookSpoolDir())).filter((n) => n.endsWith('.json')).length;
+  } catch {
+    // Spool dir absent (no capture ever) → 0.
+  }
+  return {
+    installed: detectClaudeCode().installed,
+    hookRegistered: isHookRegistered(),
+    pendingSpool,
+    ...getCchookStatus(),
+  };
+});
 
 // Back-compat: the full unpaginated list. Still used by Setup and
 // ConnectorInspector (not yet migrated to detection:page).

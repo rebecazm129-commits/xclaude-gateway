@@ -11,7 +11,11 @@ import { fileURLToPath } from 'node:url';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ulid } from 'ulid';
 
-import { runCchookIngestCycle } from '../src/main/cchook-ingester.js';
+import {
+  getCchookStatus,
+  resetCchookStatusForTests,
+  runCchookIngestCycle,
+} from '../src/main/cchook-ingester.js';
 import { parseAuditContent } from '../src/main/detection-reader.js';
 import { createAuditStore } from '../src/main/audit-store.js';
 
@@ -61,6 +65,7 @@ const fixture = (name: string): Buffer => readFileSync(join(FIXTURE_DIR, name));
 let errSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  resetCchookStatusForTests();
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -132,6 +137,47 @@ describe('runCchookIngestCycle', () => {
     const mapAfterSecond = JSON.parse(readFileSync(join(d.base, 'sessions.json'), 'utf8')) as Record<string, string>;
     expect(mapAfterSecond).toEqual(mapAfterFirst);
     expect(wrapperLines(d)).toHaveLength(4); // one request/response pair per fixture
+  });
+});
+
+describe('getCchookStatus (F1.3c)', () => {
+  it('cycles update lastCycle and accumulate unreadableTotal', async () => {
+    expect(getCchookStatus()).toEqual({ lastCycle: null, unreadableTotal: 0, lastSessionStartTs: null });
+
+    const d = makeDirs();
+    // The unreadable entry is the NEWEST (seed 3000 > 2000) so it stays above
+    // the watermark and each cycle genuinely retries the read. An unreadable
+    // entry BELOW the watermark hits the accepted third window instead
+    // (deleted unprocessed — see the idempotence comment in the ingester).
+    spoolWrite(d.spoolDir, 2_000, fixture('05-write.json'));
+    mkdirSync(join(d.spoolDir, `${ulid(3_000)}.json`)); // unreadable (EISDIR)
+    await runCchookIngestCycle(paths(d));
+
+    const first = getCchookStatus();
+    expect(first.lastCycle).toMatchObject({ processed: 1, skippedUnreadable: 1, deletedStale: 0 });
+    expect(typeof first.lastCycle?.ts).toBe('string');
+    expect(first.unreadableTotal).toBe(1);
+
+    // Second cycle: still above the watermark → retried, accumulates.
+    await runCchookIngestCycle(paths(d));
+    const second = getCchookStatus();
+    expect(second.lastCycle).toMatchObject({ processed: 0, skippedUnreadable: 1 });
+    expect(second.unreadableTotal).toBe(2);
+  });
+
+  it('a SessionStart capture sets the heartbeat (capture time from the spool ULID) and persists it', async () => {
+    const d = makeDirs();
+    spoolWrite(d.spoolDir, 5_000, fixture('01-sessionstart.json'));
+    await runCchookIngestCycle(paths(d));
+
+    expect(getCchookStatus().lastSessionStartTs).toBe(new Date(5_000).toISOString());
+    // Rides the same ingest-state.json write the cycle already does.
+    const state = JSON.parse(readFileSync(join(d.base, 'ingest-state.json'), 'utf8')) as Record<string, unknown>;
+    expect(state['lastSessionStartTs']).toBe(new Date(5_000).toISOString());
+    // A non-SessionStart capture later does NOT move the heartbeat.
+    spoolWrite(d.spoolDir, 9_000, fixture('05-write.json'));
+    await runCchookIngestCycle(paths(d));
+    expect(getCchookStatus().lastSessionStartTs).toBe(new Date(5_000).toISOString());
   });
 });
 

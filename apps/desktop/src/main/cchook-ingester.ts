@@ -32,6 +32,7 @@ import {
 } from '@xcg/proxy/cchook-ingest';
 
 import { WRAPPERS_DIR, decodeUlidTime } from './retention.js';
+import type { CchookIngestStatus } from '../shared/types.js';
 
 const SPOOL_ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}\.json$/;
 /** Session-map bucket for captures whose payload carries no session_id. */
@@ -94,6 +95,25 @@ async function appendWithFsync(path: string, data: string): Promise<void> {
 // if a 15s tick fires while the previous cycle still runs, skip it.
 let cycleRunning = false;
 
+// ---- accumulated status (F1.3c) — read by the cchook:status IPC handler. ----
+// In-memory, per process; lastSessionStartTs additionally rides the
+// ingest-state.json writes the cycle already does (trivial: same object, same
+// persistJson call) so a restart doesn't blank the heartbeat.
+let lastCycle: CchookIngestStatus['lastCycle'] = null;
+let unreadableTotal = 0;
+let lastSessionStartTs: string | null = null;
+
+export function getCchookStatus(): CchookIngestStatus {
+  return { lastCycle, unreadableTotal, lastSessionStartTs };
+}
+
+/** Test seam: module-level accumulators survive between vitest cases. */
+export function resetCchookStatusForTests(): void {
+  lastCycle = null;
+  unreadableTotal = 0;
+  lastSessionStartTs = null;
+}
+
 export async function runCchookIngestCycle(
   paths: CchookIngesterPaths = {},
 ): Promise<IngestCycleResult> {
@@ -104,6 +124,8 @@ export async function runCchookIngestCycle(
     return await ingestCycle(paths, result);
   } finally {
     cycleRunning = false;
+    lastCycle = { ...result, ts: new Date().toISOString() };
+    unreadableTotal += result.skippedUnreadable;
   }
 }
 
@@ -134,6 +156,11 @@ async function ingestCycle(
     typeof state['lastProcessedSpoolUlid'] === 'string'
       ? (state['lastProcessedSpoolUlid'] as string)
       : null;
+  // Heartbeat restart-seed: memory is empty on a fresh process; the persisted
+  // value from a previous run is still the newest known SessionStart.
+  if (lastSessionStartTs === null && typeof state['lastSessionStartTs'] === 'string') {
+    lastSessionStartTs = state['lastSessionStartTs'] as string;
+  }
 
   const nextId = monotonicFactory();
 
@@ -148,6 +175,12 @@ async function ingestCycle(
     // readdir, would be deleted here unprocessed — one lost capture. Accepted
     // by contract, like the append→state duplicate window above: both trade a
     // vanishing edge case for a simple, crash-safe ordering rule.
+    // Third accepted window (F1.3c finding): an unreadable spool file that got
+    // skipped while a LATER file advanced the watermark ends up below it and
+    // is deleted on the next cycle without ever being ingested — a rare,
+    // bounded loss, visible in unreadableTotal. The alternative (holding the
+    // watermark back / tracking a skipped-set) was rejected: it would demand a
+    // retry policy and a poison-file cap for what the counter already surfaces.
     if (lastProcessed !== null && spoolUlid <= lastProcessed) {
       try {
         await unlink(spoolPath);
@@ -162,6 +195,13 @@ async function ingestCycle(
       const bytes = await readFile(spoolPath);
       const parsed = parseHookPayload(bytes);
       const captureTimeMs = decodeUlidTime(spoolUlid) ?? Date.now();
+
+      // Heartbeat route (a): a SessionStart capture IS the "Claude Code was
+      // alive at T" signal — no reader change needed (cc.event lines are
+      // invisible to the dashboard reader by design).
+      if (parsed.kind === 'hook' && parsed.hookEventName === 'SessionStart') {
+        lastSessionStartTs = new Date(captureTimeMs).toISOString();
+      }
 
       // Stable UUID → ULID mapping; persisted immediately so a crash mid-cycle
       // never re-buckets a session on the next run.
@@ -187,7 +227,10 @@ async function ingestCycle(
       await appendWithFsync(join(wrappersDir, `${sessionUlid}.jsonl`), lines);
 
       lastProcessed = spoolUlid;
-      persistJson(statePath, { lastProcessedSpoolUlid: lastProcessed });
+      persistJson(statePath, {
+        lastProcessedSpoolUlid: lastProcessed,
+        ...(lastSessionStartTs !== null ? { lastSessionStartTs } : {}),
+      });
 
       await unlink(spoolPath);
       result.processed++;

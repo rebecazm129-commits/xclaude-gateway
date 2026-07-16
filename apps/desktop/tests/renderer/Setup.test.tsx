@@ -29,13 +29,26 @@ const STATUS = {
   ],
 } as unknown as StatusResult;
 
-function stubXcg(authAlerts: ConnectorAuthAlertFixture[]): void {
+const CCHOOK_OFF = {
+  installed: false,
+  hookRegistered: false,
+  pendingSpool: 0,
+  unreadableTotal: 0,
+  lastCycle: null,
+  lastSessionStartTs: null,
+};
+
+function stubXcg(
+  authAlerts: ConnectorAuthAlertFixture[],
+  cchook: typeof CCHOOK_OFF = CCHOOK_OFF,
+): void {
   vi.stubGlobal('xcg', {
     listDetections: vi.fn(async () => ({ events: [], authAlerts })),
     configIsConnected: vi.fn(async () => ({ ok: true, connected: false })),
     // Queried by the modal's second check() loop when a test opens it; without
     // the stub every BYO entry logs a during-test TypeError (F2-01 logging).
     configHasClient: vi.fn(async () => false),
+    cchookStatus: vi.fn(async () => cchook),
   });
 }
 interface ConnectorAuthAlertFixture {
@@ -73,6 +86,7 @@ function SetupHarness({
       onAddOpenChange={setAddOpen}
       onRefresh={noop}
       onOpenInDetections={noop}
+      onOpenClaudeCodeInDetections={noop}
       onAudit={noop}
       onReconnect={vi.fn(async () => ({ ok: true, reconnected: true, name: 'notion' }))}
       onRemove={vi.fn(async () => ({ ok: true }))}
@@ -104,6 +118,44 @@ describe('Setup — re-login row glyph', () => {
 function emptyStatus(configPresent: boolean): StatusResult {
   return { ok: true, configPresent, entries: [] } as unknown as StatusResult;
 }
+
+describe('Setup — Claude Code section (F1.3c)', () => {
+  const CCHOOK_ON = {
+    ...CCHOOK_OFF,
+    installed: true,
+    hookRegistered: true,
+    lastSessionStartTs: '2026-07-16T08:00:00.000Z',
+  };
+
+  it('hidden while the hook is not registered', async () => {
+    stubXcg([]);
+    renderSetup();
+    expect(await screen.findByText('notion')).toBeDefined();
+    expect(screen.queryByText('claude-code')).toBeNull();
+    expect(screen.queryByText('Claude Code')).toBeNull();
+  });
+
+  it('visible with hookRegistered: row with HOOKS badge, header counters +1', async () => {
+    stubXcg([], CCHOOK_ON);
+    renderSetup();
+    expect(await screen.findByText('claude-code')).toBeDefined();
+    expect(screen.getByText('Claude Code')).toBeDefined(); // group title
+    expect(screen.getByText('hooks')).toBeDefined(); // entryKind-style badge
+    // 1 connector (notion) + claude-code → 2 sources · 2 auditing.
+    const summary = screen.getByTestId('sources-summary');
+    expect(summary.textContent).toContain('2 sources');
+    expect(summary.textContent).toContain('2 auditing');
+  });
+
+  it('selecting the row mounts ClaudeCodeInspector with the scope note', async () => {
+    stubXcg([], CCHOOK_ON);
+    renderSetup();
+    fireEvent.click(await screen.findByText('claude-code'));
+    expect(screen.getByText('Auditing active')).toBeDefined();
+    expect(screen.getByText(/registered · ~\/.claude\/settings.json/)).toBeDefined();
+    expect(screen.getByText(/doesn't see raw MCP wire/)).toBeDefined();
+  });
+});
 
 describe('Setup — empty state (one checklist, step 1 adapts to configPresent)', () => {
   it('config present: step 1 wraps the existing config', () => {
