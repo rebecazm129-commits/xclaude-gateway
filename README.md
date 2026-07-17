@@ -6,6 +6,7 @@
 
 **A local audit layer for Claude Desktop's MCP traffic — records, classifies and warns; never blocks.**
 
+[![CI](https://img.shields.io/github/actions/workflow/status/rebecazm129-commits/xclaude-gateway/ci.yml?branch=main&label=CI)](https://github.com/rebecazm129-commits/xclaude-gateway/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/rebecazm129-commits/xclaude-gateway?include_prereleases&label=release&color=D86A4D)](https://github.com/rebecazm129-commits/xclaude-gateway/releases)
 [![Status](https://img.shields.io/badge/status-beta-E8A33D)](https://github.com/rebecazm129-commits/xclaude-gateway/releases)
 [![Platform](https://img.shields.io/badge/macOS-arm64%20(Apple%20Silicon)-000000?logo=apple&logoColor=white)](#requirements)
