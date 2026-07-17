@@ -89,6 +89,28 @@ describe('readDetections', () => {
     expect(result[0]?.detection.severity).toBe('low');
   });
 
+  it('tolerates retired event types (historic proxy.socket_dropped lines) without error', async () => {
+    // proxy.socket_dropped dejó de emitirse el 17/07/2026 (SocketWriter
+    // retirado), pero los trails históricos están llenos de estas líneas:
+    // deben seguir parseando sin romper ni producir eventos/señales.
+    const dir = join(tmpDir, 'retired-type');
+    await mkdir(dir, { recursive: true });
+    const dropped = {
+      v: 1, id: 'sd1', ts: '2026-07-17T06:28:31.400Z', session: 's',
+      mcp: 'notion', type: 'proxy.socket_dropped', reason: 'connect_failed',
+      message: 'connect ENOENT /Users/x/Library/Application Support/xCLAUDE Gateway/xcg.sock',
+    };
+    const event = baseEvent('e1', '2026-07-17T06:28:32.000Z');
+    await writeFile(
+      join(dir, 's.jsonl'),
+      JSON.stringify(dropped) + '\n' + JSON.stringify(event) + '\n',
+    );
+    const result = await readDetections(dir);
+    // La línea retirada se ignora; el evento válido que la sigue se lee.
+    expect(result).toHaveLength(1);
+    expect(result[0]?.id).toBe('e1');
+  });
+
   it('skips events without a detection sub-object (e.g. mcp.response)', async () => {
     const dir = join(tmpDir, 'no-detection');
     await mkdir(dir, { recursive: true });

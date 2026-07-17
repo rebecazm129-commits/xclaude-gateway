@@ -27,9 +27,6 @@ export const SIGTERM_GRACE_MS = 1000;
 /** Timeout máximo del fsync sobre el JSONL antes de continuar. */
 export const FSYNC_TIMEOUT_MS = 500;
 
-/** Timeout máximo del socket.end() antes de pasar a destroy(). */
-export const SOCKET_END_TIMEOUT_MS = 200;
-
 /** Snapshot del último estado conocido del child para mapear exitCode. */
 export interface ChildExitInfo {
   code: number | null;
@@ -96,8 +93,6 @@ export function computeExitCode(
  *    desde varios puntos del flujo sin bookkeeping.
  *  - child.isAlive: se consulta antes de stdin.end y antes de cada kill;
  *    si reason='child_exited' el guard inicial salta los pasos 2-3 enteros.
- *  - socket.isAlive: true sólo si el writer sigue 'connected'. Si está
- *    dead (incluyendo proxy.socket_dropped previo), saltamos end()/destroy().
  *  - delay: inyectable para usar vi.useFakeTimers() en los tests.
  */
 export interface ShutdownDeps {
@@ -107,11 +102,6 @@ export interface ShutdownDeps {
     isAlive(): boolean;
     waitForExit(): Promise<void>;
     exitInfo(): ChildExitInfo;
-  };
-  socket: {
-    isAlive(): boolean;
-    end(): Promise<void>;
-    destroy(): void;
   };
   jsonl: {
     fsync(): Promise<void>;
@@ -137,16 +127,19 @@ export type GracefulShutdown = (reason: ShutdownReason) => Promise<void>;
  * lo que preserva la semántica "esperar al cierre" para todos los callers
  * y simplifica el test de idempotencia.
  *
- * Orden de operaciones (los números coinciden con el plan de Fase 6):
+ * Orden de operaciones (los números coinciden con el plan de Fase 6; el
+ * antiguo Paso 7 — socket.end/destroy del SocketWriter — se retiró el
+ * 17/07/2026 junto con el mirror por socket entero: el patrón de disco es el
+ * diseño final y el stub del orquestador nunca llegó al producto. git
+ * conserva la implementación):
  *   1. Guard idempotencia (Promise cacheada).
  *   2. child.stdin.end + race(waitForExit, SHUTDOWN_GRACE_MS).
  *   3. Escalado SIGTERM → SIGKILL si el child sigue vivo.
  *   4. computeExitCode(reason, neededSigkill, child.exitInfo()).
  *   5. (proxy.child_exited lo emite main.ts en su listener, no esta función.)
- *   6. emitShutdown(reason, exitCode) — JSONL siempre, socket sólo si vivo.
+ *   6. emitShutdown(reason, exitCode) — al JSONL vía el sink.
  *   6b. worker.terminate(SIGTERM_GRACE_MS) si hay NER off-path: mata el worker,
- *       que drena su cola pendiente vía sink antes de cerrar el socket.
- *   7. socket.end() con timeout 200ms → destroy. Skip si !socket.isAlive().
+ *       que drena su cola pendiente vía sink antes del fsync final.
  *   8. jsonl.fsync() con timeout 500ms → stderr 'fsync timeout, exiting anyway'.
  *   9. jsonl.close().
  *  10. exit(exitCode).
@@ -191,26 +184,15 @@ export function createGracefulShutdown(deps: ShutdownDeps): GracefulShutdown {
       // Paso 4
       const exitCode = computeExitCode(reason, neededSigkill, deps.child.exitInfo());
 
-      // Paso 6: proxy.shutdown fluye por el EventSink; el SocketWriter ya
-      // hace silent no-op si está dead, así que el chequeo socket.isAlive()
-      // se usa sólo para decidir si vale la pena el end() graceful.
+      // Paso 6: proxy.shutdown fluye por el EventSink al JSONL.
       deps.emitShutdown(reason, exitCode);
 
-      // Paso 6b: terminar el worker NER antes de cerrar el socket. terminate()
+      // Paso 6b: terminar el worker NER antes del fsync final. terminate()
       // mata el worker -> dispara onWorkerDeath -> emite los onDrop pendientes
-      // y proxy.ner_worker_died por el sink, que aun deben vehicularse por el
-      // SocketWriter vivo. Por eso va ANTES del Paso 7. Opcional: no-op si no
-      // hay NER configurado.
+      // y proxy.ner_worker_died por el sink. Opcional: no-op si no hay NER
+      // configurado.
       if (deps.worker !== undefined) {
         await deps.worker.terminate(SIGTERM_GRACE_MS);
-      }
-
-      // Paso 7
-      if (deps.socket.isAlive()) {
-        await Promise.race([
-          deps.socket.end(),
-          deps.delay(SOCKET_END_TIMEOUT_MS).then(() => deps.socket.destroy()),
-        ]);
       }
 
       // Paso 8

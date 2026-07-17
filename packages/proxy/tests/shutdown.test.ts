@@ -6,12 +6,15 @@ import {
   FSYNC_TIMEOUT_MS,
   SHUTDOWN_GRACE_MS,
   SIGTERM_GRACE_MS,
-  SOCKET_END_TIMEOUT_MS,
 } from '../src/shutdown.js';
 
 // Fake timers en TODOS los tests para que las setTimeouts de race() no
 // queden colgando en el event loop ni alarguen los runs. Las pruebas que no
 // avanzan el reloj se basan en microtasks ya resueltas.
+//
+// (La pata `socket` del harness y sus dos tests — skip con socket muerto y
+// end-timeout→destroy — se retiraron el 17/07/2026 junto con el SocketWriter;
+// git conserva ambos.)
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -31,8 +34,6 @@ type StepName =
   | 'kill:SIGTERM'
   | 'kill:SIGKILL'
   | 'emitShutdown'
-  | 'socket.end'
-  | 'socket.destroy'
   | 'jsonl.fsync'
   | 'jsonl.close'
   | 'exit'
@@ -47,8 +48,6 @@ interface MockState {
   childAlive: boolean;
   childExitInfo: ChildExitInfo;
   childExit: Deferred<void>;
-  socketAlive: boolean;
-  socketEnd: Deferred<void>;
   fsync: Deferred<void>;
 }
 
@@ -59,14 +58,12 @@ interface MockHarness {
   killChild(info: ChildExitInfo): void;
 }
 
-function setup(initial: Partial<Pick<MockState, 'childAlive' | 'childExitInfo' | 'socketAlive'>> = {}): MockHarness {
+function setup(initial: Partial<Pick<MockState, 'childAlive' | 'childExitInfo'>> = {}): MockHarness {
   const log: Capture[] = [];
   const state: MockState = {
     childAlive: initial.childAlive ?? true,
     childExitInfo: initial.childExitInfo ?? { code: null, signal: null },
     childExit: defer<void>(),
-    socketAlive: initial.socketAlive ?? true,
-    socketEnd: defer<void>(),
     fsync: defer<void>(),
   };
 
@@ -87,17 +84,6 @@ function setup(initial: Partial<Pick<MockState, 'childAlive' | 'childExitInfo' |
       isAlive: () => state.childAlive,
       waitForExit: () => state.childExit.promise,
       exitInfo: () => state.childExitInfo,
-    },
-    socket: {
-      isAlive: () => state.socketAlive,
-      end: () => {
-        log.push({ step: 'socket.end' });
-        return state.socketEnd.promise;
-      },
-      destroy: () => {
-        log.push({ step: 'socket.destroy' });
-        state.socketAlive = false;
-      },
     },
     jsonl: {
       fsync: () => {
@@ -138,7 +124,6 @@ describe('createGracefulShutdown', () => {
 
   it('idempotencia: dos llamadas concurrentes devuelven el mismo Promise y el flujo corre una vez', async () => {
     const h = setup({ childAlive: false, childExitInfo: { code: 0, signal: null } });
-    h.state.socketEnd.resolve();
     h.state.fsync.resolve();
 
     const shutdown = createGracefulShutdown(h.deps);
@@ -170,7 +155,6 @@ describe('createGracefulShutdown', () => {
       expected: [
         'stdinEnd',
         'emitShutdown',
-        'socket.end',
         'jsonl.fsync',
         'jsonl.close',
         'exit',
@@ -183,7 +167,6 @@ describe('createGracefulShutdown', () => {
       reason: 'child_exited' as const,
       expected: [
         'emitShutdown',
-        'socket.end',
         'jsonl.fsync',
         'jsonl.close',
         'exit',
@@ -195,7 +178,6 @@ describe('createGracefulShutdown', () => {
       childExitInfo: { code: 0, signal: null },
     });
     if (preResolveChildExit) h.state.childExit.resolve();
-    h.state.socketEnd.resolve();
     h.state.fsync.resolve();
 
     const shutdown = createGracefulShutdown(h.deps);
@@ -206,7 +188,6 @@ describe('createGracefulShutdown', () => {
 
   it('reason=child_exited code=0 → exit 0', async () => {
     const h = setup({ childAlive: false, childExitInfo: { code: 0, signal: null } });
-    h.state.socketEnd.resolve();
     h.state.fsync.resolve();
 
     const shutdown = createGracefulShutdown(h.deps);
@@ -217,7 +198,6 @@ describe('createGracefulShutdown', () => {
 
   it('reason=child_exited code=1 → exit 1', async () => {
     const h = setup({ childAlive: false, childExitInfo: { code: 1, signal: null } });
-    h.state.socketEnd.resolve();
     h.state.fsync.resolve();
 
     const shutdown = createGracefulShutdown(h.deps);
@@ -231,7 +211,6 @@ describe('createGracefulShutdown', () => {
       childAlive: false,
       childExitInfo: { code: null, signal: 'SIGSEGV' },
     });
-    h.state.socketEnd.resolve();
     h.state.fsync.resolve();
 
     const shutdown = createGracefulShutdown(h.deps);
@@ -243,7 +222,6 @@ describe('createGracefulShutdown', () => {
   it('reason=parent_closed_stdin con child limpio en grace → exit 0', async () => {
     const h = setup({ childAlive: true });
     h.state.childExit.resolve(); // childExit ya resuelto: race gana antes del SHUTDOWN_GRACE_MS
-    h.state.socketEnd.resolve();
     h.state.fsync.resolve();
 
     const shutdown = createGracefulShutdown(h.deps);
@@ -256,7 +234,6 @@ describe('createGracefulShutdown', () => {
 
   it('reason=parent_closed_stdin con SIGKILL requerido → exit 1', async () => {
     const h = setup({ childAlive: true });
-    h.state.socketEnd.resolve();
     h.state.fsync.resolve();
 
     const shutdown = createGracefulShutdown(h.deps);
@@ -276,7 +253,6 @@ describe('createGracefulShutdown', () => {
 
   it('reason=signal_received con SIGKILL requerido → exit 1', async () => {
     const h = setup({ childAlive: true });
-    h.state.socketEnd.resolve();
     h.state.fsync.resolve();
 
     const shutdown = createGracefulShutdown(h.deps);
@@ -293,7 +269,6 @@ describe('createGracefulShutdown', () => {
 
   it('escalado A: child sale dentro de SHUTDOWN_GRACE_MS → no SIGTERM', async () => {
     const h = setup({ childAlive: true });
-    h.state.socketEnd.resolve();
     h.state.fsync.resolve();
 
     const shutdown = createGracefulShutdown(h.deps);
@@ -310,7 +285,6 @@ describe('createGracefulShutdown', () => {
 
   it('escalado B: child sale tras SIGTERM dentro de SIGTERM_GRACE_MS → no SIGKILL', async () => {
     const h = setup({ childAlive: true });
-    h.state.socketEnd.resolve();
     h.state.fsync.resolve();
 
     const shutdown = createGracefulShutdown(h.deps);
@@ -332,7 +306,6 @@ describe('createGracefulShutdown', () => {
 
   it('escalado C: child nunca sale → SIGTERM seguido de SIGKILL', async () => {
     const h = setup({ childAlive: true });
-    h.state.socketEnd.resolve();
     h.state.fsync.resolve();
 
     const shutdown = createGracefulShutdown(h.deps);
@@ -348,29 +321,10 @@ describe('createGracefulShutdown', () => {
     await pending;
   });
 
-  it('socket caído al entrar al paso 7: skip end/destroy', async () => {
-    const h = setup({
-      childAlive: false,
-      childExitInfo: { code: 0, signal: null },
-      socketAlive: false,
-    });
-    h.state.fsync.resolve();
-
-    const shutdown = createGracefulShutdown(h.deps);
-    await shutdown('child_exited');
-
-    const steps = stepsOnly(h.log);
-    expect(steps).not.toContain('socket.end');
-    expect(steps).not.toContain('socket.destroy');
-    // El resto del flujo sí ocurre.
-    expect(steps).toEqual(['emitShutdown', 'jsonl.fsync', 'jsonl.close', 'exit']);
-  });
-
   it('fsync nunca resuelve: tras FSYNC_TIMEOUT_MS continúa el flujo y stderr recibe el mensaje', async () => {
     const h = setup({
       childAlive: false,
       childExitInfo: { code: 0, signal: null },
-      socketAlive: false,
     });
     // fsync deliberadamente sin resolver
 
@@ -386,27 +340,5 @@ describe('createGracefulShutdown', () => {
     // Flujo continúa pese al timeout.
     expect(stepsOnly(h.log)).toContain('jsonl.close');
     expect(stepsOnly(h.log)).toContain('exit');
-  });
-
-  it('socket.end nunca resuelve: tras SOCKET_END_TIMEOUT_MS llama destroy', async () => {
-    const h = setup({
-      childAlive: false,
-      childExitInfo: { code: 0, signal: null },
-      socketAlive: true,
-    });
-    // socketEnd deliberadamente sin resolver
-    h.state.fsync.resolve();
-
-    const shutdown = createGracefulShutdown(h.deps);
-    const pending = shutdown('child_exited');
-
-    await vi.advanceTimersByTimeAsync(SOCKET_END_TIMEOUT_MS);
-    await pending;
-
-    const steps = stepsOnly(h.log);
-    expect(steps).toContain('socket.end');
-    expect(steps).toContain('socket.destroy');
-    // destroy llega después de end en el log.
-    expect(steps.indexOf('socket.destroy')).toBeGreaterThan(steps.indexOf('socket.end'));
   });
 });

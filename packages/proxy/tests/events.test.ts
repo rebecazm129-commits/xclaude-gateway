@@ -132,18 +132,20 @@ describe('EventSink — envelope shape', () => {
     expect(w.envelopes[0]!.id).not.toBe(w.envelopes[1]!.id);
   });
 
-  it('proxy.socket_dropped preserves reason and message in envelope', () => {
+  // (era proxy.socket_dropped; repurposed al retirarse el SocketWriter,
+  // 17/07/2026 — cubre el mismo passthrough de campos en eventos proxy.*)
+  it('proxy.ner_dropped preserves reason and jobId in envelope', () => {
     const w = new CaptureWriter();
     const sink = new EventSink('x', [w]);
     sink.emit({
-      type: 'proxy.socket_dropped',
-      reason: 'connect_failed',
-      message: 'ENOENT',
+      type: 'proxy.ner_dropped',
+      reason: 'queue_full',
+      jobId: 'job-1',
     });
-    const e = w.envelopes[0]! as Envelope & { reason: string; message: string };
-    expect(e.type).toBe('proxy.socket_dropped');
-    expect(e.reason).toBe('connect_failed');
-    expect(e.message).toBe('ENOENT');
+    const e = w.envelopes[0]! as Envelope & { reason: string; jobId: string };
+    expect(e.type).toBe('proxy.ner_dropped');
+    expect(e.reason).toBe('queue_full');
+    expect(e.jobId).toBe('job-1');
   });
 });
 
@@ -225,13 +227,16 @@ describe('EventSink — truncation of mcp.* payloads', () => {
     expect(e.wrappedArgs[0]).toBe(longArg);
   });
 
-  it('proxy.socket_dropped is NOT subjected to truncation even with huge message', () => {
+  // (era proxy.socket_dropped; repurposed al retirarse el SocketWriter,
+  // 17/07/2026 — pinna que los eventos proxy.* con campos grandes NO pasan
+  // por la truncación de payloads mcp.*)
+  it('proxy.error is NOT subjected to truncation even with huge message', () => {
     const w = new CaptureWriter();
     const sink = new EventSink('x', [w]);
     const huge = 'x'.repeat(70 * 1024);
     sink.emit({
-      type: 'proxy.socket_dropped',
-      reason: 'write_failed',
+      type: 'proxy.error',
+      kind: 'http_status_error',
       message: huge,
     });
     const e = w.envelopes[0]! as Envelope & { truncated?: true; message: string };

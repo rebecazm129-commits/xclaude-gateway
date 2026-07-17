@@ -13,10 +13,9 @@ import type {
 import type { WorkerJobRequest, WorkerJobResponse } from './worker-pure.js';
 
 // Razon por la que un job NER no produjo enrichment. Exportado para que
-// events.ts tipe la variante proxy.ner_dropped sin duplicar el literal
-// (paralelo a SocketDropReason desde socket.js). 'error' es un fallo de
-// inferencia job-level (el worker sigue vivo); 'queue_full'/'worker_dead'
-// son descartes que ni llegan a inferir.
+// events.ts tipe la variante proxy.ner_dropped sin duplicar el literal.
+// 'error' es un fallo de inferencia job-level (el worker sigue vivo);
+// 'queue_full'/'worker_dead' son descartes que ni llegan a inferir.
 export type NerDropReason = 'queue_full' | 'worker_dead' | 'error';
 
 export type OnNerDrop = (

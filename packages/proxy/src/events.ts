@@ -1,5 +1,6 @@
 // EventSink: única superficie por la que main.ts emite eventos.
-// Compone Writers (Fase 3: JsonlWriter; Fase 4 añadirá SocketWriter) sin que
+// Compone Writers (hoy solo JsonlWriter; el SocketWriter de la Fase 4 se
+// retiró el 17/07/2026 — el patrón de disco es el diseño final) sin que
 // la firma de emit() cambie. Aplica truncamiento leaf-level a payloads de
 // mcp.* events antes de pasar a los writers.
 
@@ -21,7 +22,6 @@ import type {
   EnrichmentSink,
 } from './detection/types.js';
 import type { ParseErrorReason, RpcId } from './parser.js';
-import type { SocketDropReason } from './socket.js';
 import type { NerDropReason } from './detection/ner/async-detector.js';
 
 const MAX_LEAF_BYTES = 64 * 1024;
@@ -114,11 +114,10 @@ export type EventBody =
       framesIn: number;
       framesOut: number;
     }
-  | {
-      type: 'proxy.socket_dropped';
-      reason: SocketDropReason;
-      message: string;
-    }
+  // ('proxy.socket_dropped' retirado el 17/07/2026 con el SocketWriter — el
+  // mirror por socket nunca tuvo listener en el producto. Las líneas
+  // históricas del trail siguen siendo parseables: el reader del desktop
+  // ignora tipos que no reconoce.)
   | {
       type: 'proxy.ner_dropped';
       reason: NerDropReason;

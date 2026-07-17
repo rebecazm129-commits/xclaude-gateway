@@ -33,12 +33,12 @@ import {
   computeExitCode,
   FSYNC_TIMEOUT_MS,
   SIGTERM_GRACE_MS,
-  SOCKET_END_TIMEOUT_MS,
   type ChildExitInfo,
   type ShutdownReason,
 } from './shutdown.js';
-import { SocketWriter } from './socket.js';
-import { resolveSocketPath } from './socket-path.js';
+// (SocketWriter/resolveSocketPath retirados el 17/07/2026: el mirror por
+// socket apuntaba al stub del orquestador, que nunca llegó al producto — el
+// patrón de disco es el diseño final. git conserva la implementación.)
 import { LineSplitter } from './splitter.js';
 import { elapsedUs } from './timing.js';
 
@@ -120,19 +120,9 @@ export function runStdio(opts: ParsedArgs): void {
 
   process.stderr.write(`xcg-proxy: session ${session} auditing to ${auditFile}\n`);
 
-  // Closure tardío: el callback se invoca solo desde listeners async del socket
-  // ('error', 'close'), nunca síncrono desde el constructor de SocketWriter, así
-  // que `sink` está siempre asignado cuando se ejecuta.
-  let sink!: EventSink;
-  const socketPath = resolveSocketPath();
-  const socketWriter = new SocketWriter(socketPath, (reason, message) => {
-    sink.emit({ type: 'proxy.socket_dropped', reason, message });
-  });
   // Credential-masking key, loaded once per wrapper process (lazy salt with an
   // ephemeral fallback — a detected credential is never persisted in clear).
-  sink = new EventSink(name, [writer, socketWriter], session, resolveAuditKey(baseDir));
-
-  process.stderr.write(`xcg-proxy: socket mirror at ${socketPath}\n`);
+  const sink = new EventSink(name, [writer], session, resolveAuditKey(baseDir));
 
   const startMs = Date.now();
 
@@ -245,11 +235,6 @@ export function runStdio(opts: ParsedArgs): void {
       waitForExit: () => childExitPromise,
       exitInfo: () => childExitInfo,
     },
-    socket: {
-      isAlive: () => socketWriter.isAlive(),
-      end: () => socketWriter.end(),
-      destroy: () => socketWriter.destroy(),
-    },
     jsonl: {
       fsync: () => writer.fsync(),
       close: () => writer.close(),
@@ -327,15 +312,9 @@ async function runHttp(opts: HttpArgs): Promise<void> {
   }
   process.stderr.write(`xcg-proxy: session ${session} auditing to ${auditFile}\n`);
 
-  let sink!: EventSink;
-  const socketPath = resolveSocketPath();
-  const socketWriter = new SocketWriter(socketPath, (reason, message) => {
-    sink.emit({ type: 'proxy.socket_dropped', reason, message });
-  });
   // Credential-masking key, loaded once per wrapper process (lazy salt with an
   // ephemeral fallback — a detected credential is never persisted in clear).
-  sink = new EventSink(name, [writer, socketWriter], session, resolveAuditKey(baseDir));
-  process.stderr.write(`xcg-proxy: socket mirror at ${socketPath}\n`);
+  const sink = new EventSink(name, [writer], session, resolveAuditKey(baseDir));
 
   const startMs = Date.now();
 
@@ -428,15 +407,8 @@ async function runHttp(opts: HttpArgs): Promise<void> {
 
   const tearDownTail = async (exitCode: number): Promise<void> => {
     // Paso 6b: worker.terminate → drena onDrop pendientes vía sink antes
-    // del socket.end.
+    // del fsync final.
     await asyncDetector.terminate(SIGTERM_GRACE_MS);
-    // Paso 7: socket end/timeout/destroy.
-    if (socketWriter.isAlive()) {
-      await Promise.race([
-        socketWriter.end(),
-        new Promise<void>((resolve) => setTimeout(() => { socketWriter.destroy(); resolve(); }, SOCKET_END_TIMEOUT_MS)),
-      ]);
-    }
     // Paso 8: jsonl.fsync con timeout.
     await Promise.race([
       writer.fsync(),

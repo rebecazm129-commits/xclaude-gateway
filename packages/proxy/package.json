@@ -21,7 +21,6 @@
     "build:cchook": "esbuild src/cchook-entry.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/xcg-cchook.cjs",
     "copy:dylib": "node scripts/copy-dylib.mjs",
     "fetch:model": "node scripts/fetch-model.mjs",
-    "stub": "esbuild scripts/stub-orchestrator.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/xcg-stub.cjs && node dist/xcg-stub.cjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
