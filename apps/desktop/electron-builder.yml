@@ -33,6 +33,13 @@ mac:
 dmg:
   # Sign the DMG container with the same Developer ID identity as the .app
   # (default is false, which left the container unsigned and failing
-  # `spctl -t open`). Order stays sign -> notarize -> staple: our pipeline
-  # notarizes manually after the build.
+  # `spctl -t open`). Order stays sign -> notarize -> staple: the
+  # afterAllArtifactBuild hook below notarizes + staples the DMG.
   sign: true
+# Notarize + staple the DMG after every artifact is built (the integrated
+# mac notarization only covers the .app). The hook verifies the .app staple
+# first, then notarytool submit --wait + stapler staple/validate on the DMG,
+# and THROWS on any gap — a throw aborts the build with exit != 0. Local dev
+# builds can opt out explicitly with XCG_SKIP_DMG_NOTARIZE=1 (the resulting
+# DMG is NOT distributable). Requires APPLE_KEYCHAIN_PROFILE.
+afterAllArtifactBuild: ./scripts/notarize-dmg.cjs
