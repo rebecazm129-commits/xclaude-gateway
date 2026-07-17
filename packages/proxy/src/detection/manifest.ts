@@ -314,11 +314,16 @@ export function createManifestStore(
     try {
       mkdirSync(dir, { recursive: true, mode: 0o700 });
       if (!existsSync(path)) {
-        // Cold-start seed: writeAtomic requires an existing target (it backs it
-        // up + stats it first), so the first write is a plain write.
+        // Cold-start seed: writeAtomic requires an existing target (it stats
+        // it first), so the first write is a plain write.
         writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
       } else {
-        writeAtomic(path, payload);
+        // backup: false — no .bak for baselines. The real "before" of a
+        // baseline lives in the trail's raw tools/list responses; a
+        // first-write-wins .bak froze the seed-time manifest forever and, in
+        // the 11/07 investigation, mixed changes from different dates into
+        // one misleading diff. Existing .bak files in old installs are inert.
+        writeAtomic(path, payload, { backup: false });
       }
     } catch (err) {
       // Best-effort: a write failure must never break the proxy hot path. Worst

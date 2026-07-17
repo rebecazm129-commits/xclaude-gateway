@@ -373,12 +373,14 @@ describe('createManifestStore', () => {
     expect(store.checkAndUpdate('notion', result(tool('a', 'y'))).changed).toBe(false);
   });
 
-  it('cold-start seed uses a plain write (no .bak); a later change writes atomically', () => {
+  it('never creates a .bak: not on seed, not on first change, not on rebaseline (F-C)', () => {
     const store = createManifestStore(baseDir, { now: NOW });
-    store.checkAndUpdate('notion', result(tool('a', 'x')));
+    store.checkAndUpdate('notion', result(tool('a', 'x'))); // seed (plain write)
     expect(readdirSync(manifestsDir()).some((f) => f.endsWith('.bak'))).toBe(false);
-    store.checkAndUpdate('notion', result(tool('a', 'y'))); // change → writeAtomic
-    expect(readdirSync(manifestsDir()).some((f) => f.endsWith('.bak'))).toBe(true);
+    store.checkAndUpdate('notion', result(tool('a', 'y'))); // first change → writeAtomic
+    expect(readdirSync(manifestsDir()).some((f) => f.endsWith('.bak'))).toBe(false);
+    store.checkAndUpdate('notion', result(tool('a', 'z'))); // rebaseline again
+    expect(readdirSync(manifestsDir()).some((f) => f.endsWith('.bak'))).toBe(false);
   });
 
   it('concurrent wrappers converge without a spurious detection', () => {

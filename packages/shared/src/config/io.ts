@@ -28,6 +28,14 @@ export type WriteAtomicResult =
   | { ok: true }
   | { ok: false; error: WriteAtomicError };
 
+export interface WriteAtomicOptions {
+  // Create `<path>.bak` (first-write-wins) before overwriting. Default true:
+  // the backup captures the pre-xCLAUDE state of USER-owned files (Claude
+  // Desktop config, ~/.claude settings). Stores whose files are fully
+  // xCLAUDE-owned and versioned elsewhere can opt out with false.
+  backup?: boolean;
+}
+
 // Atomic write: tmpfile in same dir, fsync tmp, rename to target, fsync dir.
 // Preserves the original file's permissions. .bak is created first-write-wins:
 // only if it doesn't exist already (it represents the user's pre-xCLAUDE
@@ -39,6 +47,7 @@ export type WriteAtomicResult =
 export function writeAtomic(
   configPath: string,
   newContent: unknown,
+  opts: WriteAtomicOptions = {},
 ): WriteAtomicResult {
   try {
     const dir = dirname(configPath);
@@ -46,7 +55,7 @@ export function writeAtomic(
 
     // First-write-wins backup. If a previous install already wrote .bak,
     // leave it untouched.
-    if (!existsSync(bakPath)) {
+    if ((opts.backup ?? true) && !existsSync(bakPath)) {
       copyFileSync(configPath, bakPath);
       const bakFd = openSync(bakPath, 'r');
       fsyncSync(bakFd);
