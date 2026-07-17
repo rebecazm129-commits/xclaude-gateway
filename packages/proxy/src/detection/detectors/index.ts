@@ -10,12 +10,12 @@
 import type { Detector } from '../types.js';
 
 import { credentialDetected } from './credential.js';
-import { dataExportWarning } from './data-export-warning.js';
+import { dataExportWarning, dataExportWarningInbound } from './data-export-warning.js';
 import { emailSendWarning } from './email-send-warning.js';
 import { piiStructured } from './pii-structured.js';
 import { promptInjection } from './prompt-injection.js';
 
-export { credentialDetected, dataExportWarning, emailSendWarning, piiStructured, promptInjection };
+export { credentialDetected, dataExportWarning, dataExportWarningInbound, emailSendWarning, piiStructured, promptInjection };
 export { credentialMatches } from './credential.js';
 
 export const ACTIVE_DETECTORS: readonly Detector[] = [credentialDetected, promptInjection, emailSendWarning, dataExportWarning, piiStructured];

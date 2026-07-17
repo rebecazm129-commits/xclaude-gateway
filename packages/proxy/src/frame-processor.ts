@@ -12,7 +12,7 @@ import { buildDetectorInput } from './detection/engine.js';
 import {
   credentialDetected,
   credentialMatches,
-  dataExportWarning,
+  dataExportWarningInbound,
   emailSendWarning,
   piiStructured,
   promptInjection,
@@ -65,7 +65,8 @@ function extractResultText(result: unknown): string {
 // Multi-label, like the request side: each matching detector yields its own
 // mcp.detection_enrichment. Order mirrors the request chain ACTIVE_DETECTORS
 // (severity desc): credential, prompt_injection, email_send_warning,
-// data_export_warning, pii_structured.
+// data_export_warning (INBOUND variant — explicit destination required, see
+// data-export-warning.ts), pii_structured.
 //
 // NER (pii_detected) is deliberately EXCLUDED here: it is off-path/async and
 // only enqueued on the request path (severity low; routing every connector
@@ -81,7 +82,7 @@ const CONTENT_DETECTORS: readonly Detector[] = [
   credentialDetected,
   promptInjection,
   emailSendWarning,
-  dataExportWarning,
+  dataExportWarningInbound,
   piiStructured,
 ];
 
@@ -174,16 +175,15 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
               if (out.category === 'credential_detected') {
                 attachMaskSecrets(events[0]!, credentialMatches(text));
               }
-              // data_export_warning is downgraded to 'low' INBOUND only: export
-              // language inside a result is a possible tool-poisoning signal but
-              // far less actionable than an outbound export command, and it
-              // false-positives on ordinary document text (Drive contentSnippets
-              // with "Save the file as: …", 07/07). Kept rather than dropped
-              // because prompt_injection's patterns do NOT cover direct export
-              // instructions injected in results (verified 06-07/07). The
-              // request path keeps the detector's own severity ('medium').
-              const severity = out.category === 'data_export_warning' ? 'low' : out.severity;
-              const detection = { ...out, severity, findings: out.findings.map((f) => ({ ...f, location: 'result' })) };
+              // data_export_warning INBOUND fires only via the strict variant
+              // in CONTENT_DETECTORS: export language must name an EXPLICIT
+              // destination (to/into/onto + URL, host or path) — the strong
+              // tool-poisoning shape. Doc prose ("Save the file as: …", the
+              // 07/07 Drive FP) and code ("export const …") no longer match,
+              // so what does match keeps the detector's own severity
+              // ('medium'): the strictness lives in the regex, not in a
+              // severity downgrade (the 07/07 inbound 'low' is gone).
+              const detection = { ...out, findings: out.findings.map((f) => ({ ...f, location: 'result' })) };
               events.push({ type: 'mcp.detection_enrichment', rpcId: frame.id, direction, detection, overheadUs });
             }
           }
