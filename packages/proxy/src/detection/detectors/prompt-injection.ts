@@ -33,17 +33,23 @@ const INJECTION_PATTERNS: readonly InjectionPattern[] = [
   },
 ];
 
-export const promptInjection: Detector = (input): DetectorOutput | null => {
-  const { paramsJson } = input;
-  if (paramsJson.length === 0) return null;
-
+// Pure scan over the injection patterns, reusable outside the Detector
+// contract (tool-manifest description grading reuses it — same patterns,
+// no second classifier). One finding per match, location 'params'; callers
+// that scan something other than params only look at match presence.
+export function injectionFindings(text: string): DetectionFinding[] {
   const findings: DetectionFinding[] = [];
+  if (text.length === 0) return findings;
   for (const { pattern, type } of INJECTION_PATTERNS) {
-    for (const _match of paramsJson.matchAll(pattern)) {
+    for (const _match of text.matchAll(pattern)) {
       findings.push({ type, location: 'params' });
     }
   }
+  return findings;
+}
 
+export const promptInjection: Detector = (input): DetectorOutput | null => {
+  const findings = injectionFindings(input.paramsJson);
   if (findings.length === 0) return null;
 
   return {

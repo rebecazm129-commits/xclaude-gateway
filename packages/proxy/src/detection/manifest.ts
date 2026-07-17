@@ -15,6 +15,8 @@ import { join } from 'node:path';
 import { writeAtomic } from '@xcg/shared/config';
 import type { DetectionBlock, DetectionFinding, Severity } from '@xcg/shared';
 
+import { injectionFindings } from './detectors/prompt-injection.js';
+
 export const MANIFEST_VERSION = 1;
 
 // ---- pure canonicalization / hashing ----
@@ -48,22 +50,65 @@ export interface ToolDef {
   inputSchema?: unknown;
 }
 
+// Schema SURFACE of a tool: every property name declared under any nested
+// `properties` object of the inputSchema plus every `required` entry, each
+// sorted + deduped. Type/description/constraint edits inside the schema leave
+// the shape unchanged — only a NEW name (a new way for data to flow into the
+// tool) grows it. Recursive on purpose: a parameter smuggled in via anyOf or
+// a nested object is surface too.
+export interface ToolShape {
+  p: string[]; // property names, sorted
+  r: string[]; // required entries, sorted
+}
+
 // Per-tool signature, split so the diff can distinguish a description change
-// from a schema change (different finding types; both severity high).
+// from a schema change. `sh` grades schema changes (new surface → high, rest
+// → medium); it is absent on baselines written before the shape existed —
+// that absence IS the migration marker (legacy classification, see
+// diffManifest).
 export interface ToolSig {
   d: string; // sha256(description)
   s: string; // sha256(canonicalJson(inputSchema))
+  sh?: ToolShape;
 }
 
 export interface Manifest {
-  hash: string; // sha256 over the whole (name-sorted) map — order-independent
+  hash: string; // sha256 over the name-sorted {d,s} map — order-independent,
+  //              and deliberately EXCLUDING sh so pre-shape baselines keep
+  //              their hash (no spurious change on upgrade, no reseed).
   tools: Record<string, ToolSig>; // name -> sig
+}
+
+function collectShape(node: unknown, props: Set<string>, req: Set<string>): void {
+  if (Array.isArray(node)) {
+    for (const v of node) collectShape(v, props, req);
+    return;
+  }
+  if (node === null || typeof node !== 'object') return;
+  const o = node as Record<string, unknown>;
+  const p = o['properties'];
+  if (p !== null && typeof p === 'object' && !Array.isArray(p)) {
+    for (const name of Object.keys(p)) props.add(name);
+  }
+  const r = o['required'];
+  if (Array.isArray(r)) {
+    for (const x of r) if (typeof x === 'string') req.add(x);
+  }
+  for (const v of Object.values(o)) collectShape(v, props, req);
+}
+
+export function toolShape(tool: ToolDef): ToolShape {
+  const props = new Set<string>();
+  const req = new Set<string>();
+  collectShape(tool.inputSchema ?? null, props, req);
+  return { p: [...props].sort(), r: [...req].sort() };
 }
 
 function toolSig(tool: ToolDef): ToolSig {
   return {
     d: sha256(typeof tool.description === 'string' ? tool.description : ''),
     s: sha256(canonicalJson(tool.inputSchema ?? null)),
+    sh: toolShape(tool),
   };
 }
 
@@ -89,18 +134,47 @@ export function buildManifest(tools: readonly ToolDef[]): Manifest {
   const map: Record<string, ToolSig> = {};
   for (const t of tools) map[t.name] = toolSig(t); // last-wins on duplicate names
   const sortedNames = Object.keys(map).sort();
-  const canonical = sortedNames.map((n) => [n, map[n]]);
+  // Hash input is {d,s} only (key order matters for JSON.stringify): byte-for-
+  // byte identical to the pre-shape serialization, so existing baselines'
+  // hashes stay comparable across the upgrade.
+  const canonical = sortedNames.map((n) => [n, { d: map[n]!.d, s: map[n]!.s }]);
   return { hash: sha256(JSON.stringify(canonical)), tools: map };
 }
 
 // ---- diff → findings + severity ----
 
 // null when the manifests are equivalent. Otherwise a DetectionBlock with one
-// finding per change (type + tool name in `location`), severity = the highest
-// present: description/schema change → high; add/remove → medium.
-export function diffManifest(prev: Manifest, next: Manifest): DetectionBlock | null {
+// finding per change (type + tool name in `location`).
+//
+// Grading (F-A, corpus 06-17/07: vendors rewrite tool docs near-daily, and a
+// description edit INSIDE the inputSchema is still a doc edit):
+//   high   → surface_added (new property name or required entry: a new way
+//            for data to flow into the tool), or injection_marker (the NEW
+//            description matches the existing prompt-injection patterns —
+//            reused scan, not a second classifier).
+//   medium → everything else: description_changed / schema_changed (doc or
+//            typing edits with no new surface), tool_added / tool_removed.
+// Migration: a prev sig without `sh` (pre-shape baseline) can't grade its
+// schema, so that tool's description/schema changes classify with the legacy
+// rule (→ high) exactly once; the rebaseline persists shapes and the next
+// change grades normally. No reseed, no blind window.
+//
+// `nextTools` carries the live (raw) tool defs so the injection scan can read
+// the NEW description in the clear — the baseline only ever stores hashes.
+export function diffManifest(
+  prev: Manifest,
+  next: Manifest,
+  nextTools?: readonly ToolDef[],
+): DetectionBlock | null {
   if (prev.hash === next.hash) return null;
+  const descByName = new Map<string, string>();
+  if (nextTools !== undefined) {
+    for (const t of nextTools) {
+      if (typeof t.description === 'string') descByName.set(t.name, t.description);
+    }
+  }
   const findings: DetectionFinding[] = [];
+  let high = false;
   const names = new Set([...Object.keys(prev.tools), ...Object.keys(next.tools)]);
   for (const name of [...names].sort()) {
     const p = prev.tools[name];
@@ -110,16 +184,34 @@ export function diffManifest(prev: Manifest, next: Manifest): DetectionBlock | n
     } else if (p !== undefined && n === undefined) {
       findings.push({ type: 'tool_removed', location: name });
     } else if (p !== undefined && n !== undefined) {
-      if (p.d !== n.d) findings.push({ type: 'description_changed', location: name });
-      if (p.s !== n.s) findings.push({ type: 'schema_changed', location: name });
+      const legacy = p.sh === undefined;
+      if (p.d !== n.d) {
+        if (injectionFindings(descByName.get(name) ?? '').length > 0) {
+          findings.push({ type: 'injection_marker', location: name });
+          high = true;
+        } else {
+          findings.push({ type: 'description_changed', location: name });
+          if (legacy) high = true;
+        }
+      }
+      if (p.s !== n.s) {
+        const surface =
+          !legacy &&
+          n.sh !== undefined &&
+          (n.sh.p.some((x) => !p.sh!.p.includes(x)) ||
+            n.sh.r.some((x) => !p.sh!.r.includes(x)));
+        if (surface) {
+          findings.push({ type: 'surface_added', location: name });
+          high = true;
+        } else {
+          findings.push({ type: 'schema_changed', location: name });
+          if (legacy) high = true;
+        }
+      }
     }
   }
   if (findings.length === 0) return null;
-  const severity: Severity = findings.some(
-    (f) => f.type === 'description_changed' || f.type === 'schema_changed',
-  )
-    ? 'high'
-    : 'medium';
+  const severity: Severity = high ? 'high' : 'medium';
   return { category: 'tool_manifest_changed', severity, findings };
 }
 
@@ -190,7 +282,22 @@ export function createManifestStore(
       const d = (v as Record<string, unknown>)['d'];
       const s = (v as Record<string, unknown>)['s'];
       if (typeof d !== 'string' || typeof s !== 'string') return null;
-      map[k] = { d, s };
+      // sh is optional (pre-shape baselines lack it) and validated leniently:
+      // a malformed sh degrades to "no shape" for that tool (legacy grading,
+      // same as the migration path) — never a whole-baseline reseed.
+      const shRaw = (v as Record<string, unknown>)['sh'];
+      let sh: ToolShape | undefined;
+      if (shRaw !== null && typeof shRaw === 'object' && !Array.isArray(shRaw)) {
+        const p = (shRaw as Record<string, unknown>)['p'];
+        const r = (shRaw as Record<string, unknown>)['r'];
+        if (
+          Array.isArray(p) && p.every((x): x is string => typeof x === 'string') &&
+          Array.isArray(r) && r.every((x): x is string => typeof x === 'string')
+        ) {
+          sh = { p, r };
+        }
+      }
+      map[k] = sh !== undefined ? { d, s, sh } : { d, s };
     }
     return { hash, tools: map };
   }
@@ -221,14 +328,15 @@ export function createManifestStore(
   }
 
   function checkAndUpdate(mcp: string, result: unknown): ManifestOutcome {
-    const next = buildManifest(extractTools(result));
+    const tools = extractTools(result);
+    const next = buildManifest(tools);
     const prev = readBaseline(mcp);
     if (prev === null) {
       writeBaseline(mcp, next); // silent seed / reseed
       return { changed: false };
     }
     if (prev.hash === next.hash) return { changed: false }; // no change, no rewrite
-    const detection = diffManifest(prev, next);
+    const detection = diffManifest(prev, next, tools);
     // Align the baseline to the new manifest either way (never alert twice for
     // the same change). detection is null only in the hash-differs-but-no-diff
     // edge; still reseed silently.
