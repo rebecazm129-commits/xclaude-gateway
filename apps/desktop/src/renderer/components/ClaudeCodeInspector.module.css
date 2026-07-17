@@ -1,7 +1,6 @@
 /* ClaudeCodeInspector — mirrors ConnectorInspector.module.css (root/head/rows/
- * label/value/openInDetections use the same tokens) with two own pieces: the
- * green "Auditing active" chip (status tokens, not severity) and the scope
- * note footer. */
+ * label/value/openInDetections/headStatus/flagged* use the same tokens); the
+ * one own piece is the scope note footer. */
 
 .root {
   display: flex;
@@ -25,18 +24,27 @@
   word-break: break-all;
 }
 
-.activeChip {
+/* Status badge — same three classes as ConnectorInspector's header status
+ * (dot + mono label). CC's status is binary (hookRegistered), so only the
+ * audited dot color is needed. */
+.headStatus {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-left: auto;
-  color: var(--kraft-status);
-  border: var(--kraft-hairline) solid var(--kraft-status);
-  border-radius: var(--kraft-radius-sm);
-  padding: 2px 7px;
   font-family: var(--kraft-font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  white-space: nowrap;
+  font-size: 11px;
+  letter-spacing: 0.04em;
 }
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--kraft-radius-dot);
+  flex-shrink: 0;
+}
+
+.dotAudited { background: var(--kraft-status); }
 
 .rows {
   margin: 0;
@@ -90,6 +98,87 @@
 
 .openInDetections:hover {
   text-decoration: underline;
+}
+
+/* Recent flagged calls — copied verbatim from ConnectorInspector.module.css
+ * (same grid, hairlines and tokens) so the two lists render identically. */
+.flagged {
+  display: flex;
+  flex-direction: column;
+  gap: 12px; /* air between the header (title + Open in Detections) and the rows */
+}
+
+.flaggedHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.flaggedTitle {
+  margin: 0;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--kraft-ink-soft);
+}
+
+.flaggedList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  /* Per-row padding + hairline define the rhythm (like the detail .row), so no
+   * inter-row gap here. */
+  gap: 0;
+}
+
+.flaggedRow {
+  display: grid;
+  grid-template-columns: 72px 1fr 120px auto;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+  font-size: 12px;
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
+}
+
+.flaggedRow:last-child {
+  border-bottom: none;
+}
+
+.flaggedRow > :first-child {
+  justify-self: start;
+}
+
+.flaggedTool {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--kraft-font-mono);
+}
+
+.flaggedCategory {
+  justify-self: end;
+  white-space: nowrap;
+  color: var(--kraft-ink-soft);
+}
+
+.flaggedTime {
+  justify-self: end;
+  white-space: nowrap;
+  font-family: var(--kraft-font-mono);
+  font-size: 11px;
+  color: var(--kraft-ink-disabled);
+}
+
+.flaggedEmpty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--kraft-ink-soft);
 }
 
 /* Uninstall foot — mirrors ConnectorInspector's Remove/Cancel/Confirm trio. */
@@ -164,4 +253,10 @@
   font-size: 11px;
   line-height: 1.5;
   color: var(--kraft-ink-soft);
+}
+
+/* A second note stacks under the first without repeating the divider. */
+.scopeNote + .scopeNote {
+  padding-top: 0;
+  border-top: none;
 }

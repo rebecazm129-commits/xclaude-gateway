@@ -4,7 +4,7 @@ import { toConnectors, type Connector } from '@xcg/shared/config/connectors';
 import type { ConnectResult, RemoveRemoteResult, StatusResult } from '@xcg/shared/config';
 
 import { AddConnectorModal } from './AddConnectorModal.js';
-import { ClaudeCodeInspector } from './ClaudeCodeInspector.js';
+import { ClaudeCodeInspector, isClaudeCodeFlagged } from './ClaudeCodeInspector.js';
 import { ConnectorInspector } from './ConnectorInspector.js';
 import { errorMessage } from './config-messages.js';
 import { SelfTest } from './SelfTest.js';
@@ -66,8 +66,10 @@ export function Setup({ status, addOpen, onAddOpenChange, onRefresh, onOpenInDet
   }, [selected, cchook]);
 
   // One pass over all detections → flagged-call count per connector (last 7d).
-  // Same predicate the inspector uses (mcp.request, non-allowed category, in
-  // window), but aggregated once for every row instead of a filter per row.
+  // Same predicate the connector inspector uses (mcp.request, non-allowed
+  // category, in window), aggregated once for every row instead of a filter
+  // per row. Connector rows ONLY — the Claude Code row counts by source, not
+  // by mcp (ccFlagged7d below).
   const flaggedByMcp = useMemo(() => {
     const weekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const map = new Map<string, number>();
@@ -81,6 +83,16 @@ export function Setup({ status, addOpen, onAddOpenChange, onRefresh, onOpenInDet
       }
     }
     return map;
+  }, [detections]);
+
+  // Claude Code counts by ORIGIN (source axis — see isClaudeCodeFlagged for
+  // the duality note): flaggedByMcp keys hook-captured MCP calls under their
+  // server name, so .get('claude-code') would only see built-in tools. Same
+  // predicate the CC inspector's counter and list use, so the row badge can
+  // never disagree with them.
+  const ccFlagged7d = useMemo(() => {
+    const weekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    return detections.filter((e) => isClaudeCodeFlagged(e, weekAgoMs)).length;
   }, [detections]);
 
   // Loading state while status hasn't arrived yet from App.tsx's mount effect.
@@ -264,14 +276,10 @@ export function Setup({ status, addOpen, onAddOpenChange, onRefresh, onOpenInDet
                         <span className={styles['entryKind']}>hooks</span>
                         <span
                           className={
-                            (flaggedByMcp.get('claude-code') ?? 0) > 0
-                              ? styles['flagged']
-                              : styles['flaggedZero']
+                            ccFlagged7d > 0 ? styles['flagged'] : styles['flaggedZero']
                           }
                         >
-                          {(flaggedByMcp.get('claude-code') ?? 0) > 0
-                            ? `${flaggedByMcp.get('claude-code')} flagged`
-                            : '0'}
+                          {ccFlagged7d > 0 ? `${ccFlagged7d} flagged` : '0'}
                         </span>
                       </span>
                     </li>
@@ -288,7 +296,6 @@ export function Setup({ status, addOpen, onAddOpenChange, onRefresh, onOpenInDet
             {selected?.kind === 'claude-code' ? (
               <ClaudeCodeInspector
                 status={cchook}
-                flagged7d={flaggedByMcp.get('claude-code') ?? 0}
                 onOpenInDetections={onOpenClaudeCodeInDetections}
               />
             ) : selectedConnector !== null ? (

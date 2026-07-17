@@ -151,7 +151,10 @@ describe('Setup — Claude Code section (F1.3c)', () => {
     stubXcg([], CCHOOK_ON);
     renderSetup();
     fireEvent.click(await screen.findByText('claude-code'));
-    expect(screen.getByText('Auditing active')).toBeDefined();
+    // Two exact 'Auditing' nodes in Setup: the sources group title and the
+    // inspector's status badge — assert the badge by its class token.
+    const auditing = screen.getAllByText('Auditing');
+    expect(auditing.some((el) => el.className.includes('headStatus'))).toBe(true);
     expect(screen.getByText(/registered · ~\/.claude\/settings.json/)).toBeDefined();
     expect(screen.getByText(/doesn't see raw MCP wire/)).toBeDefined();
   });
