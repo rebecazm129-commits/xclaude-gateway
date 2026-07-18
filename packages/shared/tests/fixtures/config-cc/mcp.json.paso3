@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "toy-stdio": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/Users/user/spikes/xcg-spike3/toy-server.js"
+      ],
+      "env": {}
+    }
+  }
+}

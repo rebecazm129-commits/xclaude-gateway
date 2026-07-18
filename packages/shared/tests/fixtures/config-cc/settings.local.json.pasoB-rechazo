@@ -1,0 +1,6 @@
+{
+  "disabledMcpjsonServers": [
+    "toy-stdio",
+    "toy-http"
+  ]
+}
