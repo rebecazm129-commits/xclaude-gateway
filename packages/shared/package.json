@@ -11,6 +11,7 @@
   },
   "scripts": {
     "test": "vitest run",
+    "test:stress": "XCG_STRESS=1 vitest run tests/config-cc/writer.stress.test.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
