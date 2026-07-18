@@ -34,6 +34,12 @@ export interface WriteAtomicOptions {
   // Desktop config, ~/.claude settings). Stores whose files are fully
   // xCLAUDE-owned and versioned elsewhere can opt out with false.
   backup?: boolean;
+  // Append a trailing newline after the serialized JSON. Default true (the
+  // historical behavior every existing call site relies on). config-cc's
+  // .mcp.json writer passes false: Claude Code writes that file WITHOUT a
+  // trailing newline (spike 3 fixtures) and round-trip byte-identity
+  // depends on reproducing it exactly.
+  trailingNewline?: boolean;
 }
 
 // Atomic write: tmpfile in same dir, fsync tmp, rename to target, fsync dir.
@@ -67,7 +73,8 @@ export function writeAtomic(
 
     // Write new content to tmpfile in same dir.
     const tmpPath = join(dir, `${basename(configPath)}.tmp.${process.pid}`);
-    const serialized = `${JSON.stringify(newContent, null, 2)}\n`;
+    const nl = (opts.trailingNewline ?? true) ? '\n' : '';
+    const serialized = `${JSON.stringify(newContent, null, 2)}${nl}`;
     writeFileSync(tmpPath, serialized, { mode: origMode });
 
     // fsync the tmpfile.

@@ -45,3 +45,26 @@ describe('writeAtomic — backup option', () => {
     expect(readFileSync(`${path}.bak`, 'utf8')).toBe('{"v":"old-backup"}\n');
   });
 });
+
+describe('writeAtomic — trailingNewline option (F2.1c)', () => {
+  let dir: string;
+  let path: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'xcg-io-'));
+    path = join(dir, 'target.json');
+    writeFileSync(path, '{"v":"original"}\n');
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('default: keeps the historical trailing newline', () => {
+    expect(writeAtomic(path, { v: 1 }).ok).toBe(true);
+    expect(readFileSync(path, 'utf8')).toBe('{\n  "v": 1\n}\n');
+  });
+
+  it('trailingNewline: false — bytes end on the closing brace (CC .mcp.json shape)', () => {
+    expect(writeAtomic(path, { v: 1 }, { backup: false, trailingNewline: false }).ok).toBe(true);
+    expect(readFileSync(path, 'utf8')).toBe('{\n  "v": 1\n}');
+  });
+});
