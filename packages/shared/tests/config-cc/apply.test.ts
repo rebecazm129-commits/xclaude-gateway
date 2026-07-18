@@ -37,7 +37,17 @@ describe('applyPlan × spike 3 fixtures (F2.1b)', () => {
     if (files.gatingPath === undefined) throw new Error('unreachable');
     const gating = readSettingsLocal(files.gatingPath);
     if (!gating.ok) throw new Error('unreachable');
-    return { raw: mcp.raw, plan: computePlan(classifyEntries(mcp.servers, gating), intent) };
+    return { raw: mcp.raw, plan: computePlan(classifyEntries(mcp.servers, gating), intent, XCG_PATH) };
+  }
+
+  // Wraps the approve-all fixture with a STALE non-canonical binary and
+  // persists it — the starting state for the F2.2 rehome cases.
+  const OLD_XCG_PATH = '/old/dev-tree/bin/xcg-proxy';
+  function installWrappedWithOldPath(): void {
+    installApproveAll();
+    const files = resolveScopeFiles({ scope: 'project', projectDir });
+    const { raw, plan } = pipeline('wrap');
+    writeFileSync(files.entriesPath, JSON.stringify(applyPlan(raw, plan, OLD_XCG_PATH), null, 2));
   }
 
   function installApproveAll(): void {
@@ -134,6 +144,52 @@ describe('applyPlan × spike 3 fixtures (F2.1b)', () => {
     const once = applyPlan(raw, plan, XCG_PATH);
     const twice = applyPlan(once, plan, XCG_PATH);
     expect(JSON.stringify(twice, null, 2)).toBe(JSON.stringify(once, null, 2));
+  });
+
+  it('rehome (F2.2): ONLY command changes — key order, args, env, everything else identical', () => {
+    installWrappedWithOldPath();
+    const { raw, plan } = pipeline('wrap');
+    const before = (raw as { mcpServers: Record<string, Record<string, unknown>> }).mcpServers;
+    expect(plan.actions.find((a) => a.name === 'toy-stdio')?.action).toBe('rehome');
+    const applied = serversOf(applyPlan(raw, plan, XCG_PATH));
+    const oldEntry = before['toy-stdio'];
+    const rehomed = applied['toy-stdio'];
+    if (oldEntry === undefined || rehomed === undefined) throw new Error('unreachable');
+    expect(rehomed.command).toBe(XCG_PATH);
+    expect(oldEntry.command).toBe(OLD_XCG_PATH); // input untouched
+    expect(Object.keys(rehomed)).toEqual(Object.keys(oldEntry)); // key order kept
+    expect(rehomed.args).toBe(oldEntry.args); // same reference: byte-identical
+    expect(rehomed.env).toBe(oldEntry.env);
+    expect(rehomed.type).toBe(oldEntry.type);
+    expect(applied['toy-http']).toBe(before['toy-http']); // untouched neighbor
+  });
+
+  it('rehome is idempotent: applying the same plan twice ≡ once', () => {
+    installWrappedWithOldPath();
+    const { raw, plan } = pipeline('wrap');
+    const once = applyPlan(raw, plan, XCG_PATH);
+    const twice = applyPlan(once, plan, XCG_PATH);
+    expect(JSON.stringify(twice, null, 2)).toBe(JSON.stringify(once, null, 2));
+  });
+
+  it('unwrap wins over rehome: stale-command wrapped state restores the fixture BYTES', () => {
+    installWrappedWithOldPath();
+    const { raw, plan } = pipeline('unwrap');
+    const restored = applyPlan(raw, plan, XCG_PATH);
+    const originalText = readFileSync(join(FIXTURE_DIR, 'mcp.json.paso4'), 'utf8');
+    expect(JSON.stringify(restored, null, 2)).toBe(originalText);
+  });
+
+  it('defends against a rogue hand-built plan: rehome on a non-wrapped entry is a no-op', () => {
+    installApproveAll();
+    const { raw } = pipeline('wrap');
+    const pristine = (raw as { mcpServers: Record<string, unknown> }).mcpServers['toy-stdio'];
+    const rogue: CcPlan = {
+      intent: 'wrap',
+      actions: [{ action: 'rehome', name: 'toy-stdio', entry: { raw: pristine } }],
+    };
+    const applied = serversOf(applyPlan(raw, rogue, XCG_PATH));
+    expect(applied['toy-stdio']).toBe(pristine);
   });
 
   it('defends against a rogue hand-built plan: unwrap action on a non-wrapped entry is a no-op', () => {

@@ -70,8 +70,15 @@ export function applyPlan(raw: unknown, plan: CcPlan, xcgPath: string): unknown 
     const wrapped = isAlreadyWrapped(cmd, args);
     if (action.action === 'wrap') {
       newMcp[name] = wrapped ? entry : wrapEntry(name, entry, xcgPath);
-    } else {
+    } else if (action.action === 'unwrap') {
       newMcp[name] = wrapped ? inKeyOrderOf(entry, unwrapEntry(entry)) : entry;
+    } else {
+      // rehome (F2.2): rewrite ONLY command, exactly like transform.ts
+      // applyWrap's re-homing branch — the spread keeps key order, args, env
+      // and unknown keys byte-identical. Same defensive re-check philosophy
+      // as wrap/unwrap: an entry no longer wrapped, or already pointing at
+      // the canonical path, passes through untouched (idempotent).
+      newMcp[name] = wrapped && cmd !== xcgPath ? { ...entry, command: xcgPath } : entry;
     }
   }
   return { ...raw, mcpServers: newMcp };

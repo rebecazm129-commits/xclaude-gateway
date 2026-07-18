@@ -200,7 +200,7 @@ describe.skipIf(process.env.XCG_STRESS !== '1')('updateMcpJson stress harness (F
     return (state) => {
       const gating = readSettingsLocal(gatingPath);
       if (!gating.ok) throw new Error('unreachable');
-      return applyPlan(state.raw, computePlan(classifyEntries(state.servers, gating), intent), XCG_PATH);
+      return applyPlan(state.raw, computePlan(classifyEntries(state.servers, gating), intent, XCG_PATH), XCG_PATH);
     };
   }
 

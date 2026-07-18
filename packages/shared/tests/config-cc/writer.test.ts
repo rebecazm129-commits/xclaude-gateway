@@ -49,7 +49,7 @@ describe('updateMcpJson × spike 3 fixtures (F2.1c part 1)', () => {
     return (state) => {
       const gating = readSettingsLocal(gatingPath);
       if (!gating.ok) throw new Error('unreachable');
-      return applyPlan(state.raw, computePlan(classifyEntries(state.servers, gating), intent), XCG_PATH);
+      return applyPlan(state.raw, computePlan(classifyEntries(state.servers, gating), intent, XCG_PATH), XCG_PATH);
     };
   }
 

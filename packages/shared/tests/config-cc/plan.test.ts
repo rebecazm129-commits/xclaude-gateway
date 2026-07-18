@@ -50,7 +50,7 @@ describe('computePlan × spike 3 fixtures (F2.1b)', () => {
     if (files.gatingPath === undefined) throw new Error('unreachable');
     const gating = readSettingsLocal(files.gatingPath);
     if (!gating.ok) throw new Error('unreachable');
-    return computePlan(classifyEntries(mcp.servers, gating), intent);
+    return computePlan(classifyEntries(mcp.servers, gating), intent, XCG_PATH);
   }
 
   function actionOf(plan: CcPlan, name: string): CcPlanAction {
@@ -60,13 +60,14 @@ describe('computePlan × spike 3 fixtures (F2.1b)', () => {
   }
 
   // Serializes paso4 with the enabled toy-stdio wrapped, for plans over the
-  // already-wrapped state.
-  function wrappedPaso4Content(): string {
+  // already-wrapped state. `wrapPath` lets tests build a wrapped entry whose
+  // command is a stale non-canonical binary (F2.2 rehome cases).
+  function wrappedPaso4Content(wrapPath: string = XCG_PATH): string {
     const plan = planFor('wrap', { settingsFixture: 'settings.local.json.paso6' });
     const files = resolveScopeFiles({ scope: 'project', projectDir });
     const mcp = readMcpJson(files.entriesPath);
     if (!mcp.ok) throw new Error('unreachable');
-    return JSON.stringify(applyPlan(mcp.raw, plan, XCG_PATH), null, 2);
+    return JSON.stringify(applyPlan(mcp.raw, plan, wrapPath), null, 2);
   }
 
   it('wrap + approve-all (paso6): toy-stdio → wrap; toy-http → skip unsupported', () => {
@@ -113,6 +114,33 @@ describe('computePlan × spike 3 fixtures (F2.1b)', () => {
       settingsFixture: 'settings.local.json.pasoB-rechazo',
     });
     expect(actionOf(plan, 'toy-stdio').action).toBe('unwrap');
+  });
+
+  it('wrap over a wrapped entry with a STALE command: rehome (F2.2)', () => {
+    const wrapped = wrappedPaso4Content('/old/dev-tree/bin/xcg-proxy');
+    const plan = planFor('wrap', {
+      mcpContent: wrapped,
+      settingsFixture: 'settings.local.json.paso6',
+    });
+    expect(actionOf(plan, 'toy-stdio').action).toBe('rehome');
+  });
+
+  it('unwrap wins over rehome: a stale-command wrapped entry unwraps normally', () => {
+    const wrapped = wrappedPaso4Content('/old/dev-tree/bin/xcg-proxy');
+    const plan = planFor('unwrap', {
+      mcpContent: wrapped,
+      settingsFixture: 'settings.local.json.paso6',
+    });
+    expect(actionOf(plan, 'toy-stdio').action).toBe('unwrap');
+  });
+
+  it('gating wins over rehome: stale-command wrapped but disabled → skip disabled', () => {
+    const wrapped = wrappedPaso4Content('/old/dev-tree/bin/xcg-proxy');
+    const plan = planFor('wrap', {
+      mcpContent: wrapped,
+      settingsFixture: 'settings.local.json.pasoB-rechazo',
+    });
+    expect(actionOf(plan, 'toy-stdio')).toMatchObject({ action: 'skip', reason: 'disabled' });
   });
 
   it('unwrap over the pristine fixture: skip not-wrapped (desired state)', () => {
