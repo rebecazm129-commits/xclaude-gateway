@@ -15,3 +15,7 @@ Instructions for Claude Code sessions in this repository.
 - **If a verification fails, propose the fix and wait for the OK before
   applying it.** This applies to every fix, including one-line test
   adjustments.
+- **Claude Code's persistent memory must NOT hold state or decisions of this
+  project** — only pointers to the ESTADO document (Notion, provided by
+  Rebeca at session start) and to this CLAUDE.md. Any memory write related
+  to this project is ANNOUNCED before executing, like every other action.
