@@ -25,7 +25,7 @@ function wrappableNames(plan: WrapPlan): Set<string> {
 // Build a wrapped entry from the original entry's raw object. Copies every
 // key verbatim, then overrides `command` and `args` with the wrapper contract.
 // env/cwd/extras flow through untouched.
-function wrapEntry(name: string, original: Record<string, unknown>, xcgPath: string): Record<string, unknown> {
+export function wrapEntry(name: string, original: Record<string, unknown>, xcgPath: string): Record<string, unknown> {
   const origCommand = typeof original.command === 'string' ? original.command : '';
   const origArgs = isStringArray(original.args) ? original.args : [];
   return {
@@ -39,7 +39,7 @@ function wrapEntry(name: string, original: Record<string, unknown>, xcgPath: str
 // original command and args, preserves env/cwd/extras. Caller must verify
 // isAlreadyWrapped(command, args) before invoking. Handles both the legacy
 // pre-2.b form (--wrap as args[0]) and the current form (stdio as args[0]).
-function unwrapEntry(entry: Record<string, unknown>): Record<string, unknown> {
+export function unwrapEntry(entry: Record<string, unknown>): Record<string, unknown> {
   const args = isStringArray(entry.args) ? entry.args : [];
   const offset = args[0] === 'stdio' ? 1 : 0;
   const origCommand = args[offset + 1] ?? '';
