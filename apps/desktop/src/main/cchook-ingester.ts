@@ -35,6 +35,7 @@ import {
 } from '@xcg/proxy/cchook-ingest';
 
 import { BASE_DIR, WRAPPERS_DIR, decodeUlidTime } from './retention.js';
+import { runCompactionCycle } from './compactor.js';
 import type { CchookIngestStatus } from '../shared/types.js';
 
 const SPOOL_ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}\.json$/;
@@ -149,7 +150,7 @@ export async function runCchookIngestCycle(
   }
 }
 
-async function ingestCycle(
+async function drainSpool(
   paths: CchookIngesterPaths,
   result: IngestCycleResult,
 ): Promise<IngestCycleResult> {
@@ -276,4 +277,19 @@ async function ingestCycle(
     }
   }
   return result;
+}
+
+async function ingestCycle(
+  paths: CchookIngesterPaths,
+  result: IngestCycleResult,
+): Promise<IngestCycleResult> {
+  const wrappersDir = paths.wrappersDir ?? WRAPPERS_DIR;
+  try {
+    return await drainSpool(paths, result);
+  } finally {
+    // F2.2: compact terminated session files each ingest tick
+    // (independent of spool activity — wrapper-only trails need
+    // compaction too).
+    await runCompactionCycle(wrappersDir, Date.now());
+  }
 }
