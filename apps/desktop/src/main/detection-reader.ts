@@ -191,19 +191,15 @@ export function parseAuditContent(content: string): ParsedFile {
   return { events, authSignals };
 }
 
-// Pure assembly of the full result from per-file parsed contributions (given in
-// readdir order). Dedups by id across files, correlates enrichment↔request by
-// (session, rpcId, direction) WITHOUT mutating the input events (output rows are
-// shallow copies — the AuditStore's cache is never mutated), keeps orphan
-// enrichments, sorts by ts desc, and derives authAlerts. readAudit and the
-// AuditStore both call this, so they agree by construction.
-export function assembleAudit(
+// deriveAuthAlerts — pure: derives connector auth alerts from the
+// authSignals across all files, with the same 24h "needsRelogin"
+// window and stable ordering that assembleAudit uses. Extracted so
+// both assembleAudit AND the AuditStore's early-exit can share a
+// single source of truth for auth alerts (F2.2 paso 4).
+export function deriveAuthAlerts(
   files: readonly ParsedFile[],
   now: number,
-): DetectionListResult {
-  const seenIds = new Set<string>();
-  const requests: DetectionEvent[] = [];
-  const enrichments: DetectionEnrichmentEvent[] = [];
+): ConnectorAuthAlert[] {
   // ISO-Z timestamps compare lexicographically === chronologically.
   const lastFailTs: Record<string, string> = {};
   const lastFailMsg: Record<string, string> = {};
@@ -225,6 +221,47 @@ export function assembleAudit(
         if (prev === undefined || sig.ts > prev) lastRecoveryTs[sig.mcp] = sig.ts;
       }
     }
+  }
+  // needsRelogin: a recent failure (≤24h) with no later live traffic.
+  // Sorted deterministically: lastFailureTs desc, then mcp asc.
+  const authAlerts: ConnectorAuthAlert[] = [];
+  for (const mcp of Object.keys(lastFailTs)) {
+    const failTs = lastFailTs[mcp]!;
+    const failMs = Date.parse(failTs);
+    if (Number.isNaN(failMs) || now - failMs > DAY_MS) continue;
+    const liveTs = lastLiveTs[mcp];
+    const recoveryTs = lastRecoveryTs[mcp];
+    const laterSignal =
+      liveTs !== undefined && recoveryTs !== undefined
+        ? liveTs > recoveryTs
+          ? liveTs
+          : recoveryTs
+        : liveTs ?? recoveryTs;
+    if (laterSignal !== undefined && failTs < laterSignal) continue;
+    authAlerts.push({ mcp, lastFailureTs: failTs, message: lastFailMsg[mcp] ?? '' });
+  }
+  authAlerts.sort((a, b) =>
+    a.lastFailureTs === b.lastFailureTs
+      ? a.mcp.localeCompare(b.mcp)
+      : b.lastFailureTs.localeCompare(a.lastFailureTs),
+  );
+  return authAlerts;
+}
+
+// Pure assembly of the full result from per-file parsed contributions (given in
+// readdir order). Dedups by id across files, correlates enrichment↔request by
+// (session, rpcId, direction) WITHOUT mutating the input events (output rows are
+// shallow copies — the AuditStore's cache is never mutated), keeps orphan
+// enrichments, sorts by ts desc, and derives authAlerts. readAudit and the
+// AuditStore both call this, so they agree by construction.
+export function assembleAudit(
+  files: readonly ParsedFile[],
+  now: number,
+): DetectionListResult {
+  const seenIds = new Set<string>();
+  const requests: DetectionEvent[] = [];
+  const enrichments: DetectionEnrichmentEvent[] = [];
+  for (const file of files) {
     for (const ev of file.events) {
       if (seenIds.has(ev.id)) continue;
       seenIds.add(ev.id);
@@ -262,29 +299,7 @@ export function assembleAudit(
     .map((enr) => ({ ...enr }));
   const events: EnrichableEvent[] = [...outRequests, ...orphanEnrichments];
   events.sort((a, b) => b.ts.localeCompare(a.ts));
-  // needsRelogin: a recent failure (≤24h) with no later live traffic. Sorted
-  // deterministically: lastFailureTs desc, then mcp asc (stable banner/tests).
-  const authAlerts: ConnectorAuthAlert[] = [];
-  for (const mcp of Object.keys(lastFailTs)) {
-    const failTs = lastFailTs[mcp]!;
-    const failMs = Date.parse(failTs);
-    if (Number.isNaN(failMs) || now - failMs > DAY_MS) continue;
-    const liveTs = lastLiveTs[mcp];
-    const recoveryTs = lastRecoveryTs[mcp];
-    const laterSignal =
-      liveTs !== undefined && recoveryTs !== undefined
-        ? liveTs > recoveryTs
-          ? liveTs
-          : recoveryTs
-        : liveTs ?? recoveryTs;
-    if (laterSignal !== undefined && failTs < laterSignal) continue;
-    authAlerts.push({ mcp, lastFailureTs: failTs, message: lastFailMsg[mcp] ?? '' });
-  }
-  authAlerts.sort((a, b) =>
-    a.lastFailureTs === b.lastFailureTs
-      ? a.mcp.localeCompare(b.mcp)
-      : b.lastFailureTs.localeCompare(a.lastFailureTs),
-  );
+  const authAlerts = deriveAuthAlerts(files, now);
   return { events, authAlerts };
 }
 

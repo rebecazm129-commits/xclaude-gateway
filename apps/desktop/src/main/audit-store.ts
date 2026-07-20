@@ -28,6 +28,7 @@ import type {
 } from '../shared/types.js';
 import {
   assembleAudit,
+  deriveAuthAlerts,
   parseAuditContent,
   type AuthSignal,
   type ParsedFile,
@@ -67,6 +68,13 @@ export interface AuditStoreOptions {
   // Coalescing clock. Default Date.now. Separate from `now` so tests can fix the
   // authAlerts time without freezing the refresh window.
   monotonic?: () => number;
+  // Early-exit TTL: within this window and with an unchanged content
+  // signature, refresh() reuses the cached `events` array and only
+  // recomputes `authAlerts` (which depends on now()). Default 60_000
+  // (60 seconds); the diseño F2.2 fixed this as the coarseness needed
+  // for the 24h authAlerts window boundary. Set to 0 to disable the
+  // early-exit (assembles every refresh — matches pre-F2.2 behaviour).
+  assembleTtlMs?: number;
   // Test hook: invoked after each disk read with the byte range consumed.
   onRead?: (name: string, from: number, to: number) => void;
 }
@@ -154,6 +162,7 @@ export function createAuditStore(
   const minRefreshMs = opts.minRefreshMs ?? 250;
   const now = opts.now ?? ((): number => Date.now());
   const monotonic = opts.monotonic ?? ((): number => Date.now());
+  const assembleTtlMs = opts.assembleTtlMs ?? 60_000;
   const onRead = opts.onRead;
 
   const cache = new Map<string, FileCacheEntry>();
@@ -162,6 +171,19 @@ export function createAuditStore(
   let lastRefreshAt = -Infinity;
   let dirty = false; // an invalidation is pending → force next refresh
   let inFlight: Promise<DetectionListResult> | null = null;
+  // Early-exit state:
+  // - lastSignature: derived from the content-relevant fields of the
+  //   cache after each refresh (present names sorted, sizes, mtimes).
+  //   null before any assemble has run.
+  // - lastAssembledEvents: kept separately from lastResult.events so
+  //   an early-exit can share the reference safely (see the defensive
+  //   copy on the return path below).
+  // - lastAssembleAt: monotonic() at the last full assemble. TTL is
+  //   measured against this, NOT against lastRefreshAt (which
+  //   advances on early-exit refreshes too).
+  let lastSignature: string | null = null;
+  let lastAssembledEvents: EnrichableEvent[] | null = null;
+  let lastAssembleAt = 0;
 
   async function listJsonl(): Promise<string[]> {
     try {
@@ -240,20 +262,43 @@ export function createAuditStore(
     return entry;
   }
 
+  // signatureOf — pure: derives a string signature from the cache
+  // entries that captures every dimension of change refresh() reacts
+  // to: (a) presence set (readdir membership), (b) per-file size
+  // (appends), (c) per-file mtime (rewrites). Sorted by name so the
+  // result is stable across readdir orderings. Any change here is a
+  // conflict; early-exit is only taken when this signature matches
+  // the one from the last full assemble AND the TTL hasn't expired.
+  //
+  // Corner not covered: same-size same-mtime rewrite (utimes-forged).
+  // The reader already inherits this limitation from refreshFile's
+  // (size, mtime) short-circuit — the early-exit does not worsen it.
+  // The 60s TTL bounds the staleness window either way.
+  function signatureOf(entries: readonly ParsedFile[], names: readonly string[]): string {
+    const sortedNames = [...names].sort();
+    const parts: string[] = [];
+    for (const name of sortedNames) {
+      const entry = cache.get(name);
+      if (entry === undefined) {
+        parts.push(`${name}:missing`);
+        continue;
+      }
+      parts.push(`${name}:${entry.size}:${entry.mtimeMs}`);
+    }
+    return parts.join('|');
+  }
+
   async function refresh(): Promise<DetectionListResult> {
-    // Apply out-of-band invalidations first.
     for (const name of pendingInvalidations) cache.delete(name);
     pendingInvalidations.clear();
+    const wasDirty = dirty;
     dirty = false;
 
     const files = await listJsonl();
     const present = new Set(files);
-    // Drop vanished files (purge / manual delete).
     for (const name of [...cache.keys()]) {
       if (!present.has(name)) cache.delete(name);
     }
-    // Refresh each file in readdir order and collect its contribution in that
-    // same order (matches readAudit's ordering exactly).
     const parsedFiles: ParsedFile[] = [];
     for (const name of files) {
       const entry = await refreshFile(name);
@@ -261,7 +306,36 @@ export function createAuditStore(
         parsedFiles.push({ events: entry.events, authSignals: entry.authSignals });
       }
     }
-    const result = assembleAudit(parsedFiles, now());
+
+    // Early-exit: content signature unchanged AND TTL not expired AND
+    // no out-of-band invalidation pending → reuse cached events, only
+    // recompute authAlerts (which depends on now()). This recovers
+    // ~11-20% of the tick when nothing changed (F2.2 paso 4).
+    const signature = signatureOf(parsedFiles, files);
+    const ttlOk = monotonic() - lastAssembleAt < assembleTtlMs;
+    const canEarlyExit =
+      !wasDirty &&
+      lastAssembledEvents !== null &&
+      lastSignature !== null &&
+      signature === lastSignature &&
+      ttlOk;
+
+    let result: DetectionListResult;
+    if (canEarlyExit) {
+      // Defensive copy: consumer cannot mutate the cache's events
+      // reference via push/sort/splice. Object references inside are
+      // shared — consumers (paginate, computeTrayCounts) take readonly
+      // arrays and don't mutate.
+      const events = [...lastAssembledEvents!];
+      const authAlerts = deriveAuthAlerts(parsedFiles, now());
+      result = { events, authAlerts };
+    } else {
+      result = assembleAudit(parsedFiles, now());
+      lastAssembledEvents = result.events;
+      lastSignature = signature;
+      lastAssembleAt = monotonic();
+    }
+
     lastResult = result;
     lastRefreshAt = monotonic();
     return result;

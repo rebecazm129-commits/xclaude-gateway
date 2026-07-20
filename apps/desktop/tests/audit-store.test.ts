@@ -235,6 +235,85 @@ describe('AuditStore — coalescing', () => {
   });
 });
 
+describe('AuditStore — early-exit (assemble TTL)', () => {
+  it('within TTL and unchanged: reuses event objects (early-exit) but recomputes authAlerts on a new now()', async () => {
+    let mono = 0;
+    let authNow = NOW;
+    const store = createAuditStore(dir, {
+      minRefreshMs: 0,
+      assembleTtlMs: 60_000,
+      now: () => authNow,
+      monotonic: () => mono,
+    });
+    // One request (drives events identity) + one oauth_failed 12h before NOW
+    // (drives an authAlert that ages out of the 24h window as now() advances).
+    await writeFile(
+      join(dir, 'a.jsonl'),
+      reqLine('a', iso()) + '\n' + oauthLine('f', 'notion', iso(-12 * HOUR)) + '\n',
+    );
+
+    const r1 = await store.get();
+    expect(ids(r1)).toEqual(['a']);
+    expect(r1.authAlerts.map((x) => x.mcp)).toEqual(['notion']); // fail 12h ago → alerting
+
+    // No filesystem change; advance the TTL clock a little (< TTL) and push
+    // now() past the 24h window (fail at NOW-12h; NOW+13h is 25h later).
+    mono = 1000;
+    authNow = NOW + 13 * HOUR;
+    const r2 = await store.get();
+
+    // Early-exit took: the event OBJECTS are the SAME references. A full
+    // assembleAudit would have produced fresh {...req} copies with new identity.
+    expect(r2.events[0]).toBe(r1.events[0]);
+    // authAlerts, however, were recomputed against the new now(): the fail is
+    // now > 24h old, so the alert is gone — the time-dependent part is NOT
+    // frozen by the early-exit.
+    expect(r2.authAlerts).toEqual([]);
+  });
+
+  it('a filesystem change bypasses the early-exit: assembleAudit runs and events change', async () => {
+    let mono = 0;
+    const store = createAuditStore(dir, {
+      minRefreshMs: 0,
+      assembleTtlMs: 60_000,
+      now: () => NOW,
+      monotonic: () => mono,
+    });
+    await writeFile(join(dir, 'a.jsonl'), reqLine('a', iso()) + '\n');
+    const r1 = await store.get();
+    expect(ids(r1)).toEqual(['a']);
+
+    // Append a new event within the TTL → signature changes → no early-exit.
+    mono = 1000;
+    await appendFile(join(dir, 'a.jsonl'), reqLine('b', iso(1)) + '\n');
+    const r2 = await store.get();
+    expect(ids(r2).sort()).toEqual(['a', 'b']); // new event present
+    // Full re-assemble → fresh copies: the 'a' object identity differs.
+    const a1 = r1.events.find((e) => e.id === 'a')!;
+    const a2 = r2.events.find((e) => e.id === 'a')!;
+    expect(a2).not.toBe(a1);
+  });
+
+  it('TTL expiry forces a re-assemble even when nothing changed (content equal, fresh objects)', async () => {
+    let mono = 0;
+    const store = createAuditStore(dir, {
+      minRefreshMs: 0,
+      assembleTtlMs: 60_000,
+      now: () => NOW,
+      monotonic: () => mono,
+    });
+    await writeFile(join(dir, 'a.jsonl'), reqLine('a', iso()) + '\n');
+    const r1 = await store.get();
+    expect(ids(r1)).toEqual(['a']);
+
+    // No change, but advance past the TTL → early-exit not taken; re-assemble.
+    mono = 60_001;
+    const r2 = await store.get();
+    expect(ids(r2)).toEqual(['a']); // same content
+    expect(r2.events[0]).not.toBe(r1.events[0]); // fresh object → re-assembled
+  });
+});
+
 describe('AuditStore — retention sweep integration', () => {
   it('drops purged sessions via invalidate() after a sweep unlinks them', async () => {
     const OLD_ULID = '01KRDWJ6Y9SYW2KQRTRZSX6ERT'; // decodeTime ≈ 2026-05-12
