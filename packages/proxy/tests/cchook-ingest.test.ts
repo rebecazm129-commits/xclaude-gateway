@@ -187,6 +187,7 @@ describe('synthesize', () => {
       expect(e['source']).toBe('claude-code');
       expect(e['ccSession']).toBe('5ca4f040-c6b9-41db-b984-e180498c0c3b');
       expect(e['promptId']).toBe('f4566ecb-16e5-4e96-bb18-c6a1582f118c');
+      expect(e['cwd']).toBe('/Users/user/xcg-spike');
       expect(e['durationMs']).toBe(19);
     }
   });

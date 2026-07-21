@@ -30,13 +30,15 @@ const ALL: DetectionFilter = {
 function req(
   id: string,
   ts: string,
-  opts: { mcp?: string; category?: Category; severity?: Severity; args?: unknown; source?: string } = {},
+  opts: { mcp?: string; category?: Category; severity?: Severity; args?: unknown; source?: string; toolName?: string; ccSession?: string; cwd?: string } = {},
 ): EnrichableEvent {
   const e = {
     id, ts, session: 's', mcp: opts.mcp ?? 'm', type: 'mcp.request' as const,
     method: 'tools/call', rpcId: 1, direction: 'client_to_server' as const,
-    toolName: 'echo',
+    toolName: opts.toolName ?? 'echo',
     ...(opts.source !== undefined ? { source: opts.source } : {}),
+    ...(opts.ccSession !== undefined ? { ccSession: opts.ccSession } : {}),
+    ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
     detection: {
       category: opts.category ?? 'tool_call_allowed',
       severity: opts.severity ?? 'low',
@@ -159,13 +161,15 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-function reqJson(id: string, ts: string, opts: { mcp?: string; category?: Category; severity?: Severity; args?: unknown; source?: string } = {}): string {
+function reqJson(id: string, ts: string, opts: { mcp?: string; category?: Category; severity?: Severity; args?: unknown; source?: string; ccSession?: string; cwd?: string } = {}): string {
   return JSON.stringify({
     v: 1, id, ts, session: 's', mcp: opts.mcp ?? 'm', type: 'mcp.request',
     direction: 'client_to_server', rpcId: 1, method: 'tools/call',
     params: { name: 'echo', ...(opts.args !== undefined ? { arguments: opts.args } : {}) },
     bytes: 10, overheadUs: 7,
     ...(opts.source !== undefined ? { source: opts.source } : {}),
+    ...(opts.ccSession !== undefined ? { ccSession: opts.ccSession } : {}),
+    ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
     detection: { category: opts.category ?? 'tool_call_allowed', severity: opts.severity ?? 'low', findings: [] },
   });
 }
@@ -293,6 +297,75 @@ describe('toSlim', () => {
       source: 'gateway',
     });
   });
+
+  it('CC provenance (F2.4): row carries ccSession and project = basename(cwd)', () => {
+    const ts = new Date(NOW).toISOString();
+    const cc = req('c', ts, {
+      source: 'claude-code', ccSession: 'uuid-X', cwd: '/Users/user/proyecto-x',
+    });
+    const slim = toSlim(cc);
+    expect(slim.ccSession).toBe('uuid-X');
+    expect(slim.project).toBe('proyecto-x'); // basename, not the full path
+    // Absent on non-CC rows (forward-only tolerance).
+    const gw = toSlim(req('g', ts));
+    expect(gw.ccSession).toBeUndefined();
+    expect(gw.project).toBeUndefined();
+  });
+});
+
+describe('tool + ccSession filters (F2.4)', () => {
+  const ts = new Date(NOW).toISOString();
+  const echo = req('e1', ts); // toolName 'echo', no CC provenance
+  const write = req('w1', ts, { toolName: 'Write' });
+  const ccA = req('a1', ts, { source: 'claude-code', ccSession: 'uuid-A', toolName: 'Bash' });
+  const ccB = req('b1', ts, { source: 'claude-code', ccSession: 'uuid-B', toolName: 'Bash' });
+  // CC enrichment carrying ccSession (no toolName — enrichments never have one).
+  const enrA = {
+    id: 'n1', ts, session: 's', mcp: 'm', type: 'mcp.detection_enrichment' as const,
+    rpcId: 1, direction: 'client_to_server' as const,
+    source: 'claude-code', ccSession: 'uuid-A',
+    detection: { category: 'pii_detected' as Category, severity: 'medium' as Severity, findings: [] },
+  } as EnrichableEvent;
+  const events = [echo, write, ccA, ccB, enrA];
+
+  it('tool filter matches toolName; null and absent mean no filter', () => {
+    const p = paginate(events, { ...ALL, tool: 'Write' }, 10, null, NOW);
+    expect(p.rows.map((r) => r.id)).toEqual(['w1']);
+    expect(p.totalMatching).toBe(1);
+    // null ≡ absent ≡ ALL (backward compatible).
+    expect(paginate(events, { ...ALL, tool: null }, 10, null, NOW).totalMatching)
+      .toBe(paginate(events, ALL, 10, null, NOW).totalMatching);
+  });
+
+  it('an active tool filter excludes enrichment rows (they carry no toolName)', () => {
+    const p = paginate(events, { ...ALL, tool: 'Bash' }, 10, null, NOW);
+    expect(p.rows.map((r) => r.id).sort()).toEqual(['a1', 'b1']); // n1 excluded
+  });
+
+  it('ccSession filter matches requests AND enrichments; wrapper events excluded', () => {
+    const p = paginate(events, { ...ALL, ccSession: 'uuid-A' }, 10, null, NOW);
+    expect(p.rows.map((r) => r.id).sort()).toEqual(['a1', 'n1']);
+    expect(p.totalMatching).toBe(2);
+    // null ≡ absent.
+    expect(paginate(events, { ...ALL, ccSession: null }, 10, null, NOW).totalMatching)
+      .toBe(paginate(events, ALL, 10, null, NOW).totalMatching);
+  });
+
+  it('combines with sources: cc-only + ccSession picks exactly that session', () => {
+    const p = paginate(
+      events,
+      { ...ALL, sources: ['claude-code'], ccSession: 'uuid-B' },
+      10, null, NOW,
+    );
+    expect(p.rows.map((r) => r.id)).toEqual(['b1']);
+    // And with tool on top: cc-only + ccSession + tool narrows to the request.
+    const q = paginate(
+      events,
+      { ...ALL, sources: ['claude-code'], ccSession: 'uuid-A', tool: 'Bash' },
+      10, null, NOW,
+    );
+    expect(q.rows.map((r) => r.id)).toEqual(['a1']);
+  });
 });
 
 describe('source survives the REAL detection:page path — JSONL → store cache → page (F1.3c-fix)', () => {
@@ -333,6 +406,53 @@ describe('source survives the REAL detection:page path — JSONL → store cache
     });
     expect(second.rows.map((r) => r.id)).toEqual(['cc2', 'cc1']);
     expect(second.rows.every((r) => r.source === 'claude-code')).toBe(true);
+  });
+});
+
+describe('ccSession/cwd survive the REAL detection:page path — JSONL → store cache → page (F2.4)', () => {
+  it('slim rows carry ccSession+project, ccSession filter works via the store, incremental poll keeps them', async () => {
+    const store = createAuditStore(dir, { minRefreshMs: 0, now: () => NOW });
+    const ts = new Date(NOW).toISOString();
+    await writeFile(
+      join(dir, 'a.jsonl'),
+      `${reqJson('gw1', ts)}\n` +
+        `${reqJson('cc1', ts, { source: 'claude-code', ccSession: 'uuid-A', cwd: '/Users/user/proj-a' })}\n` +
+        `${reqJson('cc2', ts, { source: 'claude-code', ccSession: 'uuid-B', cwd: '/Users/user/proj-b' })}\n`,
+    );
+
+    // The slim cache must retain ccSession/cwd (the F1.3c scar: dropping them
+    // in slimEvent breaks silently — rows would lose the fields and the
+    // ccSession filter would return nothing).
+    const all = await store.getPage({ filter: ALL, limit: 10, cursor: null });
+    const byId = new Map(all.rows.map((r) => [r.id, r]));
+    expect(byId.get('cc1')?.ccSession).toBe('uuid-A');
+    expect(byId.get('cc1')?.project).toBe('proj-a');
+    expect(byId.get('cc2')?.project).toBe('proj-b');
+    expect(byId.get('gw1')?.ccSession).toBeUndefined();
+    expect(byId.get('gw1')?.project).toBeUndefined();
+
+    // ccSession filter through the real store path.
+    const onlyA = await store.getPage({
+      filter: { ...ALL, ccSession: 'uuid-A' },
+      limit: 10,
+      cursor: null,
+    });
+    expect(onlyA.rows.map((r) => r.id)).toEqual(['cc1']);
+    expect(onlyA.totalMatching).toBe(1);
+
+    // Incremental append re-enters the slim cache — fields must survive there too.
+    await appendFile(
+      join(dir, 'a.jsonl'),
+      `${reqJson('cc3', new Date(NOW + 1000).toISOString(), { source: 'claude-code', ccSession: 'uuid-A', cwd: '/Users/user/proj-a' })}\n`,
+    );
+    await utimes(join(dir, 'a.jsonl'), new Date(NOW + 5000), new Date(NOW + 5000));
+    const second = await store.getPage({
+      filter: { ...ALL, ccSession: 'uuid-A' },
+      limit: 10,
+      cursor: null,
+    });
+    expect(second.rows.map((r) => r.id)).toEqual(['cc3', 'cc1']);
+    expect(second.rows[0]?.project).toBe('proj-a');
   });
 });
 

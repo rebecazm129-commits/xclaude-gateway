@@ -54,6 +54,11 @@ export interface DetectionEvent {
   // por F1.2; ausente en los de wrapper). El reader lo deja pasar tal cual;
   // detection-page lo normaliza con normalizeSource — nadie más lo interpreta.
   source?: string;
+  // Provenance CC (F2.4). ccSession = UUID de la sesión de Claude Code;
+  // cwd = directorio del proyecto (forward-only: solo lo emite el ingester
+  // desde F2.4, los envelopes históricos y los de wrapper no lo llevan).
+  ccSession?: string;
+  cwd?: string;
   // Opcion (b) acumular: si un mcp.detection_enrichment correlaciona con
   // este request por la terna (session, rpcId, direction), su DetectionBlock
   // se adjunta aqui SIN reemplazar `detection` (la regex original se
@@ -95,6 +100,9 @@ export interface DetectionEnrichmentEvent {
   // Mismo campo crudo que en DetectionEvent (los enrichments sintetizados de
   // F1.2 también lo llevan); normalizado solo en detection-page.
   source?: string;
+  // Mismo ccSession condicional que DetectionEvent (los enrichments CC lo
+  // llevan). cwd NO viaja en enrichments — solo en el par request/response.
+  ccSession?: string;
 }
 
 // Unión que el reader devuelve y el dashboard consume. Discriminada por `type`.
@@ -242,6 +250,13 @@ export interface DetectionFilter {
   categories: Category[];
   severities: Severity[];
   sources: SourceKind[];
+  // Filtros CC (F2.4). OPCIONALES (no `| null` a secas) para que los
+  // constructores existentes (renderer, export, tests) sigan compilando sin
+  // tocarlos: ausente ≡ null ≡ sin filtrar. tool matchea toolName (solo
+  // mcp.request — un filtro de tool activo excluye enrichments); ccSession
+  // matchea el campo ccSession (requests Y enrichments CC lo llevan).
+  tool?: string | null;
+  ccSession?: string | null;
 }
 
 // Compound cursor for stable pagination over a total (ts desc, id desc) order.
@@ -264,6 +279,12 @@ export interface DetectionRowSlim {
   // request-only presentation
   toolName?: string;
   method?: string;
+  // CC provenance (F2.4): solo en filas claude-code. project = basename(cwd),
+  // el nombre corto que la UI pinta; el cwd completo NO cruza en la fila (el
+  // drawer lo puede reconstruir vía detection:detail si hiciera falta).
+  // Forward-only: filas de envelopes históricos no llevan project.
+  ccSession?: string;
+  project?: string;
 }
 
 // detection:page payload. Counts are server-computed so the renderer never needs

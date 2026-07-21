@@ -254,11 +254,14 @@ export interface SynthesizeContext {
 
 // Provenance extras ride the Envelope's index signature (F1.0-P2). source:
 // 'claude-code' doubles as the reader's auth-signal guard (F1.2 v2 point 4).
+// cwd (F2.4) is forward-only: historical envelopes don't carry it, so every
+// consumer downstream must tolerate absence.
 function provenance(parsed: ParsedHookEvent): Record<string, unknown> {
   return {
     source: 'claude-code',
     ...(parsed.sessionId !== undefined ? { ccSession: parsed.sessionId } : {}),
     ...(parsed.promptId !== undefined ? { promptId: parsed.promptId } : {}),
+    ...(parsed.cwd !== undefined ? { cwd: parsed.cwd } : {}),
     ...(parsed.agentId !== undefined ? { agentId: parsed.agentId } : {}),
     ...(parsed.agentType !== undefined ? { agentType: parsed.agentType } : {}),
     ...(parsed.durationMs !== undefined ? { durationMs: parsed.durationMs } : {}),

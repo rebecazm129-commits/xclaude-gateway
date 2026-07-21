@@ -123,6 +123,11 @@ function slimEvent(e: EnrichableEvent): EnrichableEvent {
     // normalizeSource downstream — dropping it here made every cached event
     // read as 'gateway' (F1.3c-fix). Tiny (a short string on cc events only).
     if (e.source !== undefined) slim.source = e.source;
+    // CC provenance (F2.4): same conditional pattern as source — the Claude
+    // Code view filters by ccSession and shows project (cwd) on the row.
+    // Dropping these here would silently break the filter (the F1.3c scar).
+    if (e.ccSession !== undefined) slim.ccSession = e.ccSession;
+    if (e.cwd !== undefined) slim.cwd = e.cwd;
     return slim;
   }
   const slim: DetectionEnrichmentEvent = {
@@ -136,6 +141,8 @@ function slimEvent(e: EnrichableEvent): EnrichableEvent {
     detection: e.detection,
   };
   if (e.source !== undefined) slim.source = e.source;
+  // CC enrichments carry ccSession too (F2.4) — kept for the ccSession filter.
+  if (e.ccSession !== undefined) slim.ccSession = e.ccSession;
   return slim;
 }
 

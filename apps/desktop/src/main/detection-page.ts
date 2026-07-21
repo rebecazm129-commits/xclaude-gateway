@@ -3,6 +3,8 @@
 // BEFORE the top-N cut (so counts never lie), and the cut walks a stable total
 // order (ts desc, id desc) via a compound cursor.
 
+import { basename } from 'node:path';
+
 import type {
   DetectionCursor,
   DetectionDetail,
@@ -49,6 +51,21 @@ export function matchesPreSeverity(
   now: number,
 ): boolean {
   if (filter.mcp !== null && e.mcp !== filter.mcp) return false;
+  // CC filters (F2.4): optional fields — absent ≡ null ≡ no filter. tool
+  // matches toolName, which only requests carry, so an active tool filter
+  // excludes enrichment rows; ccSession matches both kinds (CC enrichments
+  // carry it). Wrapper events (no ccSession) are excluded by an active
+  // ccSession filter.
+  if (filter.tool !== undefined && filter.tool !== null) {
+    if (e.type !== 'mcp.request' || e.toolName !== filter.tool) return false;
+  }
+  if (
+    filter.ccSession !== undefined &&
+    filter.ccSession !== null &&
+    e.ccSession !== filter.ccSession
+  ) {
+    return false;
+  }
   if (!withinTimeWindow(e, filter, now)) return false;
   if (!filter.sources.includes(normalizeSource(e.source))) return false;
   return filter.categories.includes(e.detection.category);
@@ -78,9 +95,14 @@ export function toSlim(e: EnrichableEvent): DetectionRowSlim {
     severity: e.detection.severity,
     source: normalizeSource(e.source),
   };
+  // CC provenance (F2.4): ccSession on both kinds (CC enrichments carry it);
+  // project only on requests (cwd doesn't travel in enrichments). The row
+  // ships basename(cwd) — the short name the UI renders — not the full path.
+  if (e.ccSession !== undefined) row.ccSession = e.ccSession;
   if (e.type === 'mcp.request') {
     if (e.toolName !== undefined) row.toolName = e.toolName;
     row.method = e.method;
+    if (e.cwd !== undefined) row.project = basename(e.cwd);
   }
   return row;
 }
