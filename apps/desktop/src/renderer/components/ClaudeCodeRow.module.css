@@ -1,9 +1,9 @@
 /* Claude Code row — same visual grammar as DetectionRow.module.css (tokens,
-   heights, hover), different grid: [badge] · Tool · Context · When. Keep the
-   grid in sync with ClaudeCode.module.css's .columnHeader. */
+   heights, hover), Detections' column order: Time · [badge] · Tool ·
+   Details. Keep the grid in sync with ClaudeCode.module.css's .columnHeader. */
 .row {
   display: grid;
-  grid-template-columns: 90px 180px 1fr 130px;
+  grid-template-columns: 130px 90px 180px 1fr;
   align-items: center;
   padding: 6px 16px;
   border-bottom: var(--kraft-hairline) solid var(--kraft-border);
@@ -35,6 +35,11 @@
   background: var(--kraft-filter-bg);
 }
 
+.timestamp {
+  color: var(--kraft-ink-soft);
+  white-space: nowrap;
+}
+
 .tool {
   color: var(--kraft-ink);
   overflow: hidden;
@@ -58,7 +63,11 @@
   white-space: nowrap;
 }
 
-.when {
-  color: var(--kraft-ink-soft);
-  white-space: nowrap;
+/* Readable category label prefixing Details on flagged rows — ui font to
+   stand apart from the mono payload text (DetectionRow's .category grammar). */
+.categoryTag {
+  font-family: var(--kraft-font-ui);
+  font-weight: 500;
+  color: var(--kraft-ink);
+  margin-right: 8px;
 }

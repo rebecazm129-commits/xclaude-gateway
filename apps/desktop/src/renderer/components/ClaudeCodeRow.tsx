@@ -2,20 +2,26 @@ import type { KeyboardEvent } from 'react';
 
 import type { DetectionRowSlim } from '../../shared/types.js';
 import { Badge } from './Badge.js';
-import { enrichmentToolLabel, formatTimestamp } from './detections-format.js';
+import { CATEGORY_LABELS, enrichmentToolLabel, formatTimestamp } from './detections-format.js';
 
 import styles from './ClaudeCodeRow.module.css';
 
-// Row for the Claude Code view (F2.4): [severity badge] · Tool · Args ·
-// When. Own component instead of a parameterized DetectionRow: the column
-// set/order differs and the CC source mini-pill is redundant here (every row
-// is claude-code). Atoms (Badge, formatTimestamp, enrichmentToolLabel) are
-// shared — only the layout is this view's own.
+// Row for the Claude Code view (F2.4 commit 4): Time · [severity badge] ·
+// Tool · Details — same order/naming as Detections' row. Own component
+// instead of a parameterized DetectionRow: the column set differs (no
+// Category column, no MCP column, no CC mini-pill) while the atoms (Badge,
+// formatTimestamp, CATEGORY_LABELS, enrichmentToolLabel) are shared.
 //
-// Args = argsSummary (commit 3: real summarized args, derived server-side by
-// summarizeArgs from the persisted/masked trail). Fallback when a row has no
-// summary (enrichments, calls without string args): the commit-2 Context —
-// project (basename(cwd)) when present, else the mcp name.
+// Details cell:
+// - requests: argsSummary ?? project ?? mcp. Flagged rows (category !==
+//   tool_call_allowed) PREFIX the readable category label — chosen over a
+//   tag next to the badge: the 90px badge column has no room for text and a
+//   fifth column would break the Detections-parity grid; the 1fr Details
+//   cell absorbs it as context for the payload. Baseline rows show nothing.
+// - enrichments: the category label IS the Details (an enrichment has no
+//   args/project; "[content] · claude-code" said nothing). The Tool cell
+//   keeps enrichmentToolLabel — the producer ([NER] vs [content]) is still
+//   signal in an all-CC view.
 
 interface ClaudeCodeRowProps {
   row: DetectionRowSlim;
@@ -35,6 +41,8 @@ export function ClaudeCodeRow({ row, selected, onClick }: ClaudeCodeRowProps): J
     ? `${styles['row']} ${styles['rowSelected']}`
     : styles['row'];
 
+  const flagged = row.category !== 'tool_call_allowed';
+
   return (
     <div
       className={className}
@@ -43,15 +51,23 @@ export function ClaudeCodeRow({ row, selected, onClick }: ClaudeCodeRowProps): J
       onClick={onClick}
       onKeyDown={handleKeyDown}
     >
+      <span className={styles['timestamp']}>{formatTimestamp(row.ts)}</span>
       <Badge severity={row.severity} />
       {row.type === 'mcp.request' ? (
         <span className={styles['tool']}>{row.toolName ?? row.method}</span>
       ) : (
-        // Enrichment rows: same per-producer label contract as DetectionRow.
         <span className={styles['toolSoft']}>{enrichmentToolLabel(row.category)}</span>
       )}
-      <span className={styles['context']}>{row.argsSummary ?? row.project ?? row.mcp}</span>
-      <span className={styles['when']}>{formatTimestamp(row.ts)}</span>
+      {row.type === 'mcp.request' ? (
+        <span className={styles['context']}>
+          {flagged && (
+            <span className={styles['categoryTag']}>{CATEGORY_LABELS[row.category]}</span>
+          )}
+          {row.argsSummary ?? row.project ?? row.mcp}
+        </span>
+      ) : (
+        <span className={styles['context']}>{CATEGORY_LABELS[row.category]}</span>
+      )}
     </div>
   );
 }

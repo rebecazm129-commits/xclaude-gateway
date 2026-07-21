@@ -9,10 +9,13 @@ import type {
   Severity,
 } from '../../shared/types.js';
 
+import { AuditFooter } from './AuditFooter.js';
 import { CATEGORY_OPTIONS, SEVERITY_OPTIONS } from './Detections.js';
 import { ClaudeCodeRow } from './ClaudeCodeRow.js';
 import { DetailDrawer } from './DetailDrawer.js';
+import { formatTimestamp } from './detections-format.js';
 import { FilterDropdown } from './FilterDropdown.js';
+import { SeverityBreakdown } from './SeverityBreakdown.js';
 import { TimeFilter, type TimeRange } from './TimeFilter.js';
 
 import styles from './ClaudeCode.module.css';
@@ -26,9 +29,10 @@ import styles from './ClaudeCode.module.css';
 
 const ROW_HEIGHT = 40;
 // Chrome above/around the list: titlebar (42, mirrors --kraft-titlebar-height
-// in index.css) + header (84) + tabs (40) + filter bar (56, .filters) +
-// column header (~33). No footer in this view (unlike Detections).
-const CHROME_HEIGHT = 255;
+// in index.css) + header (84) + tabs (40) + severity cards (~86) + filter bar
+// (56, .filters) + column header (~33) + footer (~34) — Detections parity
+// since commit 4 (cards above, footer below).
+const CHROME_HEIGHT = 375;
 // Rows from the end at which we prefetch the next page (same threshold as
 // Detections' infinite scroll).
 const LOAD_MORE_THRESHOLD = 20;
@@ -47,18 +51,17 @@ export type CcListItem =
   | { kind: 'row'; row: DetectionRowSlim }
   | { kind: 'separator'; ccSession: string; label: string };
 
-function timeOnly(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+// "17 Jul, 19:13" — formatTimestamp's grammar minus the seconds.
+function startedStamp(iso: string): string {
+  return formatTimestamp(iso).replace(/:\d{2}$/, '');
 }
 
 // buildListItems — pure (exported for tests): inserts a separator before the
 // first row of each ccSession block (rows arrive ts desc; a block =
 // consecutive rows sharing ccSession). Rows without ccSession (historical /
-// pre-F2.4) never get separators. Label: short session · project (or mcp) ·
-// time span of the block — computed over the LOADED rows, so the span is per
-// visible block, not per whole on-disk session.
+// pre-F2.4) never get separators. Label (commit-4 redesign, hash dropped):
+// project (or mcp) + "started <short date> <HH:MM>" of the session's first
+// event — the oldest row of the block within the LOADED page.
 export function buildListItems(rows: readonly DetectionRowSlim[]): CcListItem[] {
   const items: CcListItem[] = [];
   for (let i = 0; i < rows.length; i++) {
@@ -67,9 +70,8 @@ export function buildListItems(rows: readonly DetectionRowSlim[]): CcListItem[] 
     if (cc !== undefined && (i === 0 || rows[i - 1]!.ccSession !== cc)) {
       let j = i;
       while (j + 1 < rows.length && rows[j + 1]!.ccSession === cc) j++;
-      const newest = row.ts; // ts desc → first of the block is the newest
-      const oldest = rows[j]!.ts;
-      const label = `${cc.slice(0, 8)} · ${row.project ?? row.mcp} · ${timeOnly(oldest)}–${timeOnly(newest)}`;
+      const oldest = rows[j]!.ts; // ts desc → last of the block is the oldest
+      const label = `${row.project ?? row.mcp} · started ${startedStamp(oldest)}`;
       items.push({ kind: 'separator', ccSession: cc, label });
     }
     items.push({ kind: 'row', row });
@@ -215,6 +217,20 @@ export function ClaudeCode(): JSX.Element {
     };
   }, [openDropdown]);
 
+  // Severity-card gestures — Detections' exact narrowing behavior.
+  function handleSelectTotal(): void {
+    setSelectedSeverities(SEVERITY_OPTIONS);
+  }
+
+  function handleSelectSeverity(severity: Severity): void {
+    setSelectedSeverities((prev) => {
+      if (prev.length === 1 && prev[0] === severity) {
+        return SEVERITY_OPTIONS;
+      }
+      return [severity];
+    });
+  }
+
   function handleRowClick(row: DetectionRowSlim): void {
     triggerRef.current = document.activeElement as HTMLElement | null;
     setSelectedRow(row);
@@ -235,6 +251,14 @@ export function ClaudeCode(): JSX.Element {
 
   return (
     <>
+      <SeverityBreakdown
+        counts={page.severityCounts}
+        total={page.categoryFilteredTotal}
+        selectedSeverities={selectedSeverities}
+        totalSeverityOptionsCount={SEVERITY_OPTIONS.length}
+        onSelectTotal={handleSelectTotal}
+        onSelectSeverity={handleSelectSeverity}
+      />
       <div className={styles['filters']} ref={barRef}>
         <button
           type="button"
@@ -275,18 +299,23 @@ export function ClaudeCode(): JSX.Element {
           }
           formatOption={(o) => o.slice(0, 8)}
         />
-        <FilterDropdown
-          label="Project"
-          options={projectOptions}
-          selected={projectFilter === null ? projectOptions : [projectFilter]}
-          onChange={(next) =>
-            pickSingle(projectFilter, projectOptions, next, setProjectFilter)
-          }
-          isOpen={openDropdown === 'project'}
-          onToggle={() =>
-            setOpenDropdown((v) => (v === 'project' ? null : 'project'))
-          }
-        />
+        {projectOptions.length > 0 && (
+          // Hidden until at least one loaded row carries a project — today
+          // every historical envelope lacks cwd, so the chip would offer an
+          // empty menu (commit-4 dogfood note).
+          <FilterDropdown
+            label="Project"
+            options={projectOptions}
+            selected={projectFilter === null ? projectOptions : [projectFilter]}
+            onChange={(next) =>
+              pickSingle(projectFilter, projectOptions, next, setProjectFilter)
+            }
+            isOpen={openDropdown === 'project'}
+            onToggle={() =>
+              setOpenDropdown((v) => (v === 'project' ? null : 'project'))
+            }
+          />
+        )}
         <div className={styles['timeFilterSpacer']}>
           <button
             type="button"
@@ -308,10 +337,10 @@ export function ClaudeCode(): JSX.Element {
       ) : (
         <div className={styles['listContainer']}>
           <div className={styles['columnHeader']}>
+            <span className={styles['columnHeaderCell']}>Time</span>
             <span className={styles['columnHeaderCell']}>Severity</span>
             <span className={styles['columnHeaderCell']}>Tool</span>
-            <span className={styles['columnHeaderCell']}>Args</span>
-            <span className={styles['columnHeaderCell']}>When</span>
+            <span className={styles['columnHeaderCell']}>Details</span>
           </div>
           <FixedSizeList
             height={listHeight}
@@ -355,6 +384,7 @@ export function ClaudeCode(): JSX.Element {
       {selectedRow !== null && (
         <DetailDrawer row={selectedRow} onClose={handleDrawerClose} />
       )}
+      <AuditFooter filter={filter} total={page.total} totalMatching={page.totalMatching} />
     </>
   );
 }

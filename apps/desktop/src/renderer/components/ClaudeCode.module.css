@@ -66,21 +66,23 @@
   color: var(--kraft-accent);
 }
 
-/* Session separator — subtle full-width line between session blocks. Same
-   40px slot as a row (uniform FixedSizeList item size). */
+/* Session separator — commit-4 redesign: Setup's .groupTitle grammar (10px,
+   500, soft ink, uppercase, tracked) with no background fill, aligned to the
+   row bottom so it reads as a group heading for the block below. Same 40px
+   slot as a row (uniform FixedSizeList item size). */
 .sessionSeparator {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   height: 40px;
   box-sizing: border-box;
   padding: 6px 16px;
   font-family: var(--kraft-font-ui);
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 500;
   color: var(--kraft-ink-soft);
-  background: var(--kraft-filter-bg);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   border-bottom: var(--kraft-hairline) solid var(--kraft-border);
-  text-transform: none;
-  letter-spacing: 0.02em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -104,7 +106,7 @@
 
 .columnHeader {
   display: grid;
-  grid-template-columns: 90px 180px 1fr 130px;
+  grid-template-columns: 130px 90px 180px 1fr;
   align-items: center;
   padding: 8px 16px;
   gap: 20px;
