@@ -103,6 +103,7 @@ export function toSlim(e: EnrichableEvent): DetectionRowSlim {
     if (e.toolName !== undefined) row.toolName = e.toolName;
     row.method = e.method;
     if (e.cwd !== undefined) row.project = basename(e.cwd);
+    if (e.argsSummary !== undefined) row.argsSummary = e.argsSummary;
   }
   return row;
 }

@@ -76,6 +76,12 @@ export interface DetectionEvent {
   // recibe string ya serializado, no toca params crudo ni hace stringify
   // en cada render del drawer (D.3.b.3.a).
   argumentsJson?: string;
+  // Derivado por el reader (F2.4, summarizeArgs): resumen de una línea
+  // (~100 chars) del argumento principal del tool call, para la columna Args
+  // de la vista Claude Code. Sale del payload YA persistido/enmascarado.
+  // A diferencia de argumentsJson (heavy, solo drawer), este es pequeño y
+  // sobrevive en la caché slim.
+  argsSummary?: string;
   // Microsegundos de overhead introducido por el proxy al procesar el
   // frame. Dato de presentacion para el bloque "Technical details" del
   // drawer (D.3.b.3.a). Opcional: JSONLs antiguos pueden no traerlo.
@@ -285,6 +291,9 @@ export interface DetectionRowSlim {
   // Forward-only: filas de envelopes históricos no llevan project.
   ccSession?: string;
   project?: string;
+  // Resumen corto del argumento principal (F2.4, ver DetectionEvent). NO es
+  // forward-only: se deriva del disco en cada parse, históricos incluidos.
+  argsSummary?: string;
 }
 
 // detection:page payload. Counts are server-computed so the renderer never needs

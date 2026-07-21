@@ -6,16 +6,16 @@ import { enrichmentToolLabel, formatTimestamp } from './detections-format.js';
 
 import styles from './ClaudeCodeRow.module.css';
 
-// Row for the Claude Code view (F2.4): [severity badge] · Tool · Context ·
+// Row for the Claude Code view (F2.4): [severity badge] · Tool · Args ·
 // When. Own component instead of a parameterized DetectionRow: the column
 // set/order differs and the CC source mini-pill is redundant here (every row
 // is claude-code). Atoms (Badge, formatTimestamp, enrichmentToolLabel) are
 // shared — only the layout is this view's own.
 //
-// Context = the most informative field available on the slim row without new
-// extraction logic: project (basename(cwd), forward-only from F2.4) when
-// present, else the mcp name (the real server for MCP tools consumed via
-// hooks; 'claude-code' for native tools).
+// Args = argsSummary (commit 3: real summarized args, derived server-side by
+// summarizeArgs from the persisted/masked trail). Fallback when a row has no
+// summary (enrichments, calls without string args): the commit-2 Context —
+// project (basename(cwd)) when present, else the mcp name.
 
 interface ClaudeCodeRowProps {
   row: DetectionRowSlim;
@@ -50,7 +50,7 @@ export function ClaudeCodeRow({ row, selected, onClick }: ClaudeCodeRowProps): J
         // Enrichment rows: same per-producer label contract as DetectionRow.
         <span className={styles['toolSoft']}>{enrichmentToolLabel(row.category)}</span>
       )}
-      <span className={styles['context']}>{row.project ?? row.mcp}</span>
+      <span className={styles['context']}>{row.argsSummary ?? row.project ?? row.mcp}</span>
       <span className={styles['when']}>{formatTimestamp(row.ts)}</span>
     </div>
   );

@@ -1,15 +1,16 @@
 // @vitest-environment jsdom
-// F2.4 commit 2: the Claude Code tab exists and navigates, the view mounts
-// and paints CC rows (own row layout: badge · tool · context · when), and the
-// source filter is FIXED — no Source chip in the UI, every page request pins
-// sources: ['claude-code'].
+// F2.4: the Claude Code tab exists and navigates; the view paints CC rows
+// (badge · tool · args · when, with the Context fallback), the source filter
+// is FIXED, the chips drive the server-side filters from commit 1, the
+// flagged counter toggles Flagged only, and session separators appear on
+// ccSession changes.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { App } from '../../src/renderer/App.js';
-import { ClaudeCode } from '../../src/renderer/components/ClaudeCode.js';
-import type { DetectionPageResult, DetectionRowSlim } from '../../src/shared/types.js';
+import { ClaudeCode, buildListItems, FLAGGED_CATEGORIES } from '../../src/renderer/components/ClaudeCode.js';
+import type { DetectionFilter, DetectionPageResult, DetectionRowSlim } from '../../src/shared/types.js';
 
 const EMPTY_PAGE: DetectionPageResult = {
   rows: [],
@@ -27,13 +28,14 @@ const CC_ROWS: DetectionRowSlim[] = [
     id: 'r1', ts: '2026-07-17T19:13:27.392Z', mcp: 'xcg-toy', type: 'mcp.request',
     category: 'tool_call_allowed', severity: 'low', source: 'claude-code',
     toolName: 'toy_ping', method: 'tools/call',
-    ccSession: 'uuid-A', project: 'proj-a',
+    ccSession: 'uuid-A', project: 'proj-a', argsSummary: 'echo hola',
   },
   {
     id: 'r2', ts: '2026-07-17T19:13:24.865Z', mcp: 'claude-code', type: 'mcp.request',
     category: 'tool_call_allowed', severity: 'low', source: 'claude-code',
     toolName: 'Bash', method: 'tools/call',
-    // No project (historical envelope, forward-only): context falls back to mcp.
+    ccSession: 'uuid-B',
+    // No project/argsSummary: the Args cell falls back to Context (mcp).
   },
 ];
 
@@ -69,6 +71,10 @@ function stubXcgForApp(): ReturnType<typeof vi.fn> {
   return listDetectionPage;
 }
 
+function shippedFilters(mock: ReturnType<typeof vi.fn>): DetectionFilter[] {
+  return mock.mock.calls.map((c) => (c[0] as { filter: DetectionFilter }).filter);
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -90,31 +96,107 @@ describe('Claude Code tab (F2.4)', () => {
 });
 
 describe('ClaudeCode view (F2.4)', () => {
-  it('mounts and paints CC rows: tool, context (project or mcp fallback), when', async () => {
+  it('paints CC rows: tool, args summary with Context fallback, headers', async () => {
     stubXcgForView(PAGE_WITH_ROWS);
     render(<ClaudeCode />);
     await waitFor(() => {
       expect(screen.getByText('toy_ping')).toBeDefined();
     });
-    // Context column: project when present, mcp as fallback.
-    expect(screen.getByText('proj-a')).toBeDefined();
+    // Args column: argsSummary when present, Context (project ?? mcp) fallback.
+    expect(screen.getByText('echo hola')).toBeDefined();
     expect(screen.getByText('Bash')).toBeDefined();
     expect(screen.getByText('claude-code')).toBeDefined();
-    // Column headers of the CC design, When last.
-    const headers = ['Severity', 'Tool', 'Context', 'When'];
-    for (const h of headers) expect(screen.getByText(h)).toBeDefined();
+    // Column headers of the CC design, Args third, When last.
+    for (const h of ['Severity', 'Tool', 'Args', 'When']) {
+      expect(screen.getByText(h)).toBeDefined();
+    }
   });
 
   it('source filter is fixed: no Source chip, every page call pins claude-code', async () => {
-    const listDetectionPage = stubXcgForView(EMPTY_PAGE);
+    const mock = stubXcgForView(EMPTY_PAGE);
     render(<ClaudeCode />);
-    await waitFor(() => expect(listDetectionPage).toHaveBeenCalled());
-    // No UI control to alter the source (Detections' pill is absent).
+    await waitFor(() => expect(mock).toHaveBeenCalled());
     expect(screen.queryByRole('button', { name: /Source/ })).toBeNull();
-    // And the filter shipped to main is pinned on every call.
-    for (const call of listDetectionPage.mock.calls) {
-      const params = call[0] as { filter: { sources: string[] } };
-      expect(params.filter.sources).toEqual(['claude-code']);
+    for (const f of shippedFilters(mock)) {
+      expect(f.sources).toEqual(['claude-code']);
     }
+  });
+
+  it('Tool chip ships the server-side tool filter', async () => {
+    const mock = stubXcgForView(PAGE_WITH_ROWS);
+    render(<ClaudeCode />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /Tool/ })).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: /Tool/ }));
+    fireEvent.click(screen.getByLabelText('Bash'));
+    await waitFor(() => {
+      expect(shippedFilters(mock).some((f) => f.tool === 'Bash')).toBe(true);
+    });
+  });
+
+  it('Session chip ships the server-side ccSession filter', async () => {
+    const mock = stubXcgForView(PAGE_WITH_ROWS);
+    render(<ClaudeCode />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /Session/ })).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: /Session/ }));
+    fireEvent.click(screen.getByLabelText('uuid-A'));
+    await waitFor(() => {
+      expect(shippedFilters(mock).some((f) => f.ccSession === 'uuid-A')).toBe(true);
+    });
+  });
+
+  it('flagged counter shows the probe count and toggles Flagged only', async () => {
+    const mock = stubXcgForView(PAGE_WITH_ROWS);
+    render(<ClaudeCode />);
+    // Counter text from the flagged-pinned probe (stub returns totalMatching 2).
+    const counter = await screen.findByRole('button', { name: '2 flagged' });
+    // Before the click, the MAIN list ships the full category set.
+    await waitFor(() => {
+      expect(
+        shippedFilters(mock).some((f) => f.categories.includes('tool_call_allowed')),
+      ).toBe(true);
+    });
+    fireEvent.click(counter);
+    // After the click every fresh call excludes the baseline category.
+    await waitFor(() => {
+      const filters = shippedFilters(mock);
+      const last = filters[filters.length - 1]!;
+      expect(last.categories.includes('tool_call_allowed')).toBe(false);
+      expect(last.categories.sort()).toEqual([...FLAGGED_CATEGORIES].sort());
+    });
+  });
+
+  it('session separators appear where ccSession changes', async () => {
+    stubXcgForView(PAGE_WITH_ROWS);
+    render(<ClaudeCode />);
+    await waitFor(() => {
+      expect(screen.getByText(/uuid-A · proj-a/)).toBeDefined();
+    });
+    // Second block: no project → mcp in the separator label.
+    expect(screen.getByText(/uuid-B · claude-code/)).toBeDefined();
+  });
+});
+
+describe('buildListItems (F2.4)', () => {
+  it('inserts a separator before each ccSession block; sessionless rows get none', () => {
+    const mk = (id: string, ts: string, cc?: string): DetectionRowSlim => ({
+      id, ts, mcp: 'm', type: 'mcp.request', category: 'tool_call_allowed',
+      severity: 'low', source: 'claude-code',
+      ...(cc !== undefined ? { ccSession: cc } : {}),
+    });
+    const rows = [
+      mk('a1', '2026-07-17T19:15:00.000Z', 'uuid-A'),
+      mk('a2', '2026-07-17T19:14:00.000Z', 'uuid-A'),
+      mk('b1', '2026-07-17T19:13:00.000Z', 'uuid-B'),
+      mk('h1', '2026-07-17T19:12:00.000Z'), // historical: no ccSession
+    ];
+    const items = buildListItems(rows);
+    expect(items.map((i) => i.kind)).toEqual([
+      'separator', 'row', 'row', 'separator', 'row', 'row',
+    ]);
+    const seps = items.filter((i) => i.kind === 'separator');
+    expect(seps[0]?.kind === 'separator' && seps[0].ccSession).toBe('uuid-A');
+    expect(seps[1]?.kind === 'separator' && seps[1].ccSession).toBe('uuid-B');
+    // Block time span rides the label (oldest–newest of the block).
+    expect(seps[0]?.kind === 'separator' && seps[0].label).toContain('uuid-A');
   });
 });

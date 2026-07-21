@@ -14,6 +14,76 @@
 
 .timeFilterSpacer {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Flagged-only toggle chip — FilterDropdown trigger grammar (pill, hairline,
+   same type scale) with an accent state when active. */
+.flaggedChip {
+  background: var(--kraft-surface);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  color: var(--kraft-ink);
+  font-family: var(--kraft-font-ui);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: var(--kraft-radius-pill);
+  cursor: pointer;
+  transition:
+    background var(--kraft-transition-fast) ease,
+    border-color var(--kraft-transition-fast) ease;
+}
+
+.flaggedChip:hover {
+  background: var(--kraft-filter-bg);
+  border-color: var(--kraft-ink-soft);
+}
+
+.flaggedChipActive {
+  border-color: var(--kraft-accent);
+  color: var(--kraft-accent);
+}
+
+/* "N flagged" counter — smartCounter type scale (Detections), clickable. */
+.flaggedCounter {
+  background: none;
+  border: none;
+  font-family: var(--kraft-font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--kraft-ink-soft);
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.flaggedCounter:hover {
+  color: var(--kraft-ink);
+  text-decoration: underline;
+}
+
+.flaggedCounterActive {
+  color: var(--kraft-accent);
+}
+
+/* Session separator — subtle full-width line between session blocks. Same
+   40px slot as a row (uniform FixedSizeList item size). */
+.sessionSeparator {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  box-sizing: border-box;
+  padding: 6px 16px;
+  font-family: var(--kraft-font-ui);
+  font-size: 11px;
+  color: var(--kraft-ink-soft);
+  background: var(--kraft-filter-bg);
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
+  text-transform: none;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .empty {

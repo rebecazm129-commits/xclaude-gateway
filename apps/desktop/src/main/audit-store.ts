@@ -128,6 +128,9 @@ function slimEvent(e: EnrichableEvent): EnrichableEvent {
     // Dropping these here would silently break the filter (the F1.3c scar).
     if (e.ccSession !== undefined) slim.ccSession = e.ccSession;
     if (e.cwd !== undefined) slim.cwd = e.cwd;
+    // argsSummary (F2.4): small derived string (≤100 chars) — kept, unlike
+    // its heavy sibling argumentsJson, so the Args column survives the cache.
+    if (e.argsSummary !== undefined) slim.argsSummary = e.argsSummary;
     return slim;
   }
   const slim: DetectionEnrichmentEvent = {

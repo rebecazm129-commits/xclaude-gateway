@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { readAudit, readDetections, readLatestToolCount } from '../src/main/detection-reader.js';
+import { readAudit, readDetections, readLatestToolCount, summarizeArgs } from '../src/main/detection-reader.js';
 import { SELFTEST_WRAPPER_NAME } from '../src/main/selftest-runner.js';
 import { CONNECTOR_RECOVERED_TYPE } from '../src/main/recovery-writer.js';
 
@@ -472,5 +472,53 @@ describe('readAudit — authAlerts', () => {
     );
     const { authAlerts } = await readAudit(dir, NOW);
     expect(authAlerts).toEqual([]);
+  });
+});
+
+describe('summarizeArgs (F2.4)', () => {
+  it('Bash → command; file tools → file_path', () => {
+    expect(summarizeArgs('Bash', { command: 'ls -la', description: 'x' })).toBe('ls -la');
+    expect(summarizeArgs('Read', { file_path: '/Users/user/a.txt' })).toBe('/Users/user/a.txt');
+    expect(summarizeArgs('Write', { file_path: '/tmp/b', content: 'zzz' })).toBe('/tmp/b');
+    expect(summarizeArgs('Edit', { file_path: '/tmp/c', old_string: 'a', new_string: 'b' })).toBe('/tmp/c');
+  });
+
+  it('MCP tools → generic priority (url/query/...), else first string value', () => {
+    expect(summarizeArgs('toy_fetch', { url: 'https://example.test/x', mode: 1 })).toBe('https://example.test/x');
+    expect(summarizeArgs('toy_search', { query: 'hello world' })).toBe('hello world');
+    // No priority key present → first string-valued property wins.
+    expect(summarizeArgs('toy_ping', { text2: 'pong-me' })).toBe('pong-me');
+  });
+
+  it('absent/empty/non-object args → undefined', () => {
+    expect(summarizeArgs('Bash', undefined)).toBeUndefined();
+    expect(summarizeArgs('Bash', null)).toBeUndefined();
+    expect(summarizeArgs('Bash', [1, 2])).toBeUndefined();
+    expect(summarizeArgs('Bash', { a: 1, b: true })).toBeUndefined();
+    expect(summarizeArgs('Bash', { command: '   ' })).toBeUndefined();
+  });
+
+  it('collapses whitespace and truncates at 100 chars with an ellipsis', () => {
+    expect(summarizeArgs('Bash', { command: 'echo a\n  &&  echo b' })).toBe('echo a && echo b');
+    const long = 'x'.repeat(150);
+    const out = summarizeArgs('Bash', { command: long });
+    expect(out).toHaveLength(100);
+    expect(out?.endsWith('…')).toBe(true);
+  });
+
+  it('parse derives argsSummary on real lines (historical included — not forward-only)', async () => {
+    const dir = join(tmpDir, 'args-summary');
+    await mkdir(dir, { recursive: true });
+    const line = JSON.stringify({
+      v: 1, id: 'as1', ts: '2025-05-14T12:00:00.000Z', session: 's', mcp: 'm',
+      type: 'mcp.request', direction: 'client_to_server', rpcId: 1,
+      method: 'tools/call',
+      params: { name: 'Bash', arguments: { command: 'git status' } },
+      detection: { category: 'tool_call_allowed', severity: 'low', findings: [] },
+    });
+    await writeFile(join(dir, 's.jsonl'), line + '\n');
+    const result = await readDetections(dir);
+    const ev = result[0] as unknown as { argsSummary?: string };
+    expect(ev.argsSummary).toBe('git status');
   });
 });

@@ -109,6 +109,52 @@ export interface ParsedFile {
 // original inline loop (blank lines, malformed JSON, self-test exclusion), and
 // the same toolName/argumentsJson/overheadUs derivation so cached events are
 // render-ready. Dedup is deliberately NOT done here (see assembleAudit).
+// argsSummary (F2.4): prioridad del "argumento principal" por tool. Bash es
+// su comando; las tools de fichero su path. Para el resto (MCP incluidas),
+// la lista genérica cubre los campos-cabecera habituales; si ninguno está,
+// cae al primer valor string de arguments (orden de inserción del JSON).
+// Sin dumps de objetos — el drawer ya enseña argumentsJson completo.
+const ARGS_SUMMARY_PRIORITY: readonly string[] = [
+  'command', 'file_path', 'path', 'url', 'query', 'pattern', 'text',
+];
+const ARGS_SUMMARY_MAX = 100;
+
+function clipSummary(s: string): string {
+  const oneLine = s.replace(/\s+/g, ' ').trim();
+  if (oneLine.length <= ARGS_SUMMARY_MAX) return oneLine;
+  return `${oneLine.slice(0, ARGS_SUMMARY_MAX - 1)}…`;
+}
+
+// summarizeArgs — pure (exported for tests): the short one-line summary the
+// Claude Code view shows in its Args column. Input is the ALREADY-PERSISTED
+// arguments object from the trail — credential masking happened at write
+// time, so this never touches a raw channel. Whitespace collapses to single
+// spaces; truncated at ARGS_SUMMARY_MAX. undefined when nothing string-valued
+// exists to summarize.
+export function summarizeArgs(
+  toolName: string | undefined,
+  args: unknown,
+): string | undefined {
+  if (typeof args !== 'object' || args === null || Array.isArray(args)) {
+    return undefined;
+  }
+  const obj = args as Record<string, unknown>;
+  const candidates: string[] = [];
+  if (toolName === 'Bash') candidates.push('command');
+  else if (toolName === 'Read' || toolName === 'Write' || toolName === 'Edit') {
+    candidates.push('file_path');
+  }
+  candidates.push(...ARGS_SUMMARY_PRIORITY);
+  for (const key of candidates) {
+    const v = obj[key];
+    if (typeof v === 'string' && v.trim() !== '') return clipSummary(v);
+  }
+  for (const v of Object.values(obj)) {
+    if (typeof v === 'string' && v.trim() !== '') return clipSummary(v);
+  }
+  return undefined;
+}
+
 export function parseAuditContent(content: string): ParsedFile {
   const events: EnrichableEvent[] = [];
   const authSignals: AuthSignal[] = [];
@@ -177,6 +223,12 @@ export function parseAuditContent(content: string): ParsedFile {
             // Referencias circulares u otros casos raros: omitir el campo.
           }
         }
+        // argsSummary (F2.4): derivado AQUÍ (no en toSlim — la caché slim ya
+        // dropeó params/argumentsJson cuando toSlim corre). Mismo patrón que
+        // toolName; al reconstruirse del disco, los históricos también lo
+        // llevan. slimEvent lo retiene, toSlim lo copia a la fila.
+        const summary = summarizeArgs(parsed.toolName, raw.params?.arguments);
+        if (summary !== undefined) parsed.argsSummary = summary;
       }
       // overheadUs si el JSONL lo trae. Aplica a TODOS los mcp.request.
       const rawOverhead = parsed as unknown as { overheadUs?: unknown };

@@ -30,7 +30,7 @@ const ALL: DetectionFilter = {
 function req(
   id: string,
   ts: string,
-  opts: { mcp?: string; category?: Category; severity?: Severity; args?: unknown; source?: string; toolName?: string; ccSession?: string; cwd?: string } = {},
+  opts: { mcp?: string; category?: Category; severity?: Severity; args?: unknown; source?: string; toolName?: string; ccSession?: string; cwd?: string; argsSummary?: string } = {},
 ): EnrichableEvent {
   const e = {
     id, ts, session: 's', mcp: opts.mcp ?? 'm', type: 'mcp.request' as const,
@@ -39,6 +39,7 @@ function req(
     ...(opts.source !== undefined ? { source: opts.source } : {}),
     ...(opts.ccSession !== undefined ? { ccSession: opts.ccSession } : {}),
     ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
+    ...(opts.argsSummary !== undefined ? { argsSummary: opts.argsSummary } : {}),
     detection: {
       category: opts.category ?? 'tool_call_allowed',
       severity: opts.severity ?? 'low',
@@ -311,6 +312,14 @@ describe('toSlim', () => {
     expect(gw.ccSession).toBeUndefined();
     expect(gw.project).toBeUndefined();
   });
+
+  it('argsSummary (F2.4 commit 3): copied to the row when present, absent otherwise', () => {
+    const ts = new Date(NOW).toISOString();
+    const withSummary = toSlim(req('s1', ts, { argsSummary: 'git status' }));
+    expect(withSummary.argsSummary).toBe('git status');
+    const without = toSlim(req('s2', ts));
+    expect(without.argsSummary).toBeUndefined();
+  });
 });
 
 describe('tool + ccSession filters (F2.4)', () => {
@@ -416,18 +425,22 @@ describe('ccSession/cwd survive the REAL detection:page path — JSONL → store
     await writeFile(
       join(dir, 'a.jsonl'),
       `${reqJson('gw1', ts)}\n` +
-        `${reqJson('cc1', ts, { source: 'claude-code', ccSession: 'uuid-A', cwd: '/Users/user/proj-a' })}\n` +
+        `${reqJson('cc1', ts, { source: 'claude-code', ccSession: 'uuid-A', cwd: '/Users/user/proj-a', args: { q: 'consulta' } })}\n` +
         `${reqJson('cc2', ts, { source: 'claude-code', ccSession: 'uuid-B', cwd: '/Users/user/proj-b' })}\n`,
     );
 
-    // The slim cache must retain ccSession/cwd (the F1.3c scar: dropping them
-    // in slimEvent breaks silently — rows would lose the fields and the
-    // ccSession filter would return nothing).
+    // The slim cache must retain ccSession/cwd/argsSummary (the F1.3c scar:
+    // dropping them in slimEvent breaks silently — rows would lose the fields
+    // and the ccSession filter would return nothing).
     const all = await store.getPage({ filter: ALL, limit: 10, cursor: null });
     const byId = new Map(all.rows.map((r) => [r.id, r]));
     expect(byId.get('cc1')?.ccSession).toBe('uuid-A');
     expect(byId.get('cc1')?.project).toBe('proj-a');
+    // argsSummary derived at parse (summarizeArgs: first string value of
+    // arguments) and survives slim cache → page row.
+    expect(byId.get('cc1')?.argsSummary).toBe('consulta');
     expect(byId.get('cc2')?.project).toBe('proj-b');
+    expect(byId.get('cc2')?.argsSummary).toBeUndefined();
     expect(byId.get('gw1')?.ccSession).toBeUndefined();
     expect(byId.get('gw1')?.project).toBeUndefined();
 
