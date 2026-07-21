@@ -1,0 +1,53 @@
+/* Claude Code view — same visual grammar as Detections.module.css (tokens,
+   filter bar, column header). The .columnHeader grid must stay in sync with
+   ClaudeCodeRow.module.css's .row. */
+.filters {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+  background: var(--kraft-filter-bg);
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
+  height: 56px;
+  box-sizing: border-box;
+  align-items: center;
+}
+
+.timeFilterSpacer {
+  margin-left: auto;
+}
+
+.empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--kraft-ink-soft);
+  font-size: 14px;
+  font-family: var(--kraft-font-ui);
+  padding: 40px;
+  text-align: center;
+}
+
+.listContainer {
+  position: relative;
+}
+
+.columnHeader {
+  display: grid;
+  grid-template-columns: 90px 180px 1fr 130px;
+  align-items: center;
+  padding: 8px 16px;
+  gap: 20px;
+  background: var(--kraft-filter-bg);
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
+  box-sizing: border-box;
+}
+
+.columnHeaderCell {
+  font-family: var(--kraft-font-ui);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--kraft-ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}

@@ -20,7 +20,9 @@ import { TimeFilter, type TimeRange } from './TimeFilter.js';
 
 import styles from './Detections.module.css';
 
-const SEVERITY_OPTIONS: readonly Severity[] = ['low', 'medium', 'high', 'critical'];
+// Exported (like CATEGORY_OPTIONS below) so sibling views that fix a filter
+// axis (ClaudeCode) share the same "everything selected" definition.
+export const SEVERITY_OPTIONS: readonly Severity[] = ['low', 'medium', 'high', 'critical'];
 const SOURCE_OPTIONS: readonly SourceKind[] = ['gateway', 'claude-code'];
 // Exported so the default-filter membership is unit-testable. The filter is
 // server-side, so a category absent here is filtered OUT by default.

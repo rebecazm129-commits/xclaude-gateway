@@ -1,0 +1,64 @@
+/* Claude Code row — same visual grammar as DetectionRow.module.css (tokens,
+   heights, hover), different grid: [badge] · Tool · Context · When. Keep the
+   grid in sync with ClaudeCode.module.css's .columnHeader. */
+.row {
+  display: grid;
+  grid-template-columns: 90px 180px 1fr 130px;
+  align-items: center;
+  padding: 6px 16px;
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
+  font-family: var(--kraft-font-mono);
+  font-size: 13px;
+  color: var(--kraft-ink);
+  gap: 20px;
+  height: 40px;
+  box-sizing: border-box;
+  background: var(--kraft-bg);
+  cursor: pointer;
+  transition: background var(--kraft-transition-fast) ease;
+}
+
+.row:hover {
+  background: var(--kraft-filter-bg);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--kraft-accent);
+  outline-offset: -2px;
+}
+
+.rowSelected {
+  background: var(--kraft-filter-bg);
+}
+
+.rowSelected:hover {
+  background: var(--kraft-filter-bg);
+}
+
+.tool {
+  color: var(--kraft-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Enrichment label variant ([NER] / [content]) — soft ink like DetectionRow's
+   .ner cell. */
+.toolSoft {
+  color: var(--kraft-ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context {
+  color: var(--kraft-ink-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.when {
+  color: var(--kraft-ink-soft);
+  white-space: nowrap;
+}

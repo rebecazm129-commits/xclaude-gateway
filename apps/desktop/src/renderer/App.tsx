@@ -4,6 +4,7 @@ import type { ConnectResult, RemoveRemoteResult, StatusResult } from '@xcg/share
 
 import type { SourceKind } from '../shared/types.js';
 
+import { ClaudeCode } from './components/ClaudeCode.js';
 import { Detections } from './components/Detections.js';
 import { Setup } from './components/Setup.js';
 import { SettingsDrawer } from './components/SettingsDrawer.js';
@@ -24,11 +25,12 @@ import { usePolledConfigStatus } from './hooks/usePolledConfigStatus.js';
 
 import styles from './App.module.css';
 
-type TabId = 'setup' | 'detections';
+type TabId = 'setup' | 'detections' | 'claude-code';
 
 const TAB_OPTIONS: readonly TabOption<TabId>[] = [
   { id: 'setup', label: 'Sources' },
   { id: 'detections', label: 'Detections' },
+  { id: 'claude-code', label: 'Claude Code' },
 ];
 
 const LAST_TAB_STORAGE_KEY = 'xcg:lastTab';
@@ -36,7 +38,7 @@ const LAST_TAB_STORAGE_KEY = 'xcg:lastTab';
 function readLastTab(): TabId | null {
   try {
     const stored = window.localStorage.getItem(LAST_TAB_STORAGE_KEY);
-    if (stored === 'setup' || stored === 'detections') {
+    if (stored === 'setup' || stored === 'detections' || stored === 'claude-code') {
       return stored;
     }
     return null;
@@ -295,6 +297,8 @@ export function App(): JSX.Element {
           onRemove={handleRemove}
           onOpenSettings={() => setSettingsOpen(true)}
         />
+      ) : activeTab === 'claude-code' ? (
+        <ClaudeCode />
       ) : (
         <Detections
           mcpFilter={detectionsMcpFilter}
