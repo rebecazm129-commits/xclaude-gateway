@@ -1,4 +1,6 @@
-import type { Ref } from 'react';
+import type { ReactNode, Ref } from 'react';
+
+import { Tooltip } from './Tooltip.js';
 
 import styles from './FilterDropdown.module.css';
 
@@ -11,8 +13,14 @@ interface Props<T extends string> {
   onToggle: () => void;
   dropdownRef?: Ref<HTMLDivElement>;
   /** Human-readable label per option; defaults to the raw option value
-   *  (Severity/Category keep their current rendering untouched). */
-  formatOption?: (option: T) => string;
+   *  (Severity/Category keep their current rendering untouched). May return
+   *  rich content (F2.4: the CC Session chip renders a human label with the
+   *  short hash dimmed at the end). */
+  formatOption?: (option: T) => ReactNode;
+  /** Tooltip for the trigger button — the shared CSS Tooltip (commit 5l),
+   *  not the native title: the OS ~1s delay restarts on any mutation of the
+   *  hovered element, which live (n/m) chip labels do constantly. */
+  tooltip?: string;
 }
 
 export function FilterDropdown<T extends string>({
@@ -24,6 +32,7 @@ export function FilterDropdown<T extends string>({
   onToggle,
   dropdownRef,
   formatOption,
+  tooltip,
 }: Props<T>): JSX.Element {
   const selectedSet = new Set(selected);
 
@@ -37,15 +46,19 @@ export function FilterDropdown<T extends string>({
     onChange(options.filter((o) => next.has(o)));
   }
 
+  const trigger = (
+    <button
+      type="button"
+      className={styles['trigger']}
+      onClick={onToggle}
+    >
+      {label} ({selected.length}/{options.length}) {isOpen ? '▴' : '▾'}
+    </button>
+  );
+
   return (
     <div className={styles['dropdown']} ref={dropdownRef}>
-      <button
-        type="button"
-        className={styles['trigger']}
-        onClick={onToggle}
-      >
-        {label} ({selected.length}/{options.length}) {isOpen ? '▴' : '▾'}
-      </button>
+      {tooltip !== undefined ? <Tooltip text={tooltip}>{trigger}</Tooltip> : trigger}
       {isOpen && (
         <div className={styles['menu']}>
           {options.map((option) => (
@@ -55,7 +68,11 @@ export function FilterDropdown<T extends string>({
                 checked={selectedSet.has(option)}
                 onChange={() => toggle(option)}
               />
-              {formatOption !== undefined ? formatOption(option) : option}
+              {/* Single-line contract (commit 6): long values ellipsize
+                  instead of wrapping the option onto multiple lines. */}
+              <span className={styles['optionLabel']}>
+                {formatOption !== undefined ? formatOption(option) : option}
+              </span>
             </label>
           ))}
         </div>

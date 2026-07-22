@@ -10,29 +10,38 @@ import type {
 } from '../../shared/types.js';
 
 import { AuditFooter } from './AuditFooter.js';
-import { CATEGORY_OPTIONS, SEVERITY_OPTIONS } from './Detections.js';
+import { CATEGORY_OPTIONS, SEVERITY_OPTIONS, HEADER_AND_FILTERS_HEIGHT } from './Detections.js';
 import { ClaudeCodeRow } from './ClaudeCodeRow.js';
 import { DetailDrawer } from './DetailDrawer.js';
 import { formatTimestamp } from './detections-format.js';
 import { FilterDropdown } from './FilterDropdown.js';
 import { SeverityBreakdown } from './SeverityBreakdown.js';
 import { TimeFilter, type TimeRange } from './TimeFilter.js';
+import { Tooltip } from './Tooltip.js';
 
 import styles from './ClaudeCode.module.css';
+// The right-aligned time group still shares Detections' .timeFilterSpacer
+// (commit 5f anti-drift). The BAND itself is CC's own multi-row .toolbar
+// since incidencia B — same tokens, different geometry.
+import toolbarStyles from './Detections.module.css';
 
-// Claude Code view (F2.4). Commit 3: real Args column (argsSummary derived
-// server-side), filter chips (Flagged only · Severity · Tool · Session ·
-// Project), the clickable "N flagged" counter, and session separators in the
-// list. The error dot is OUT of F2.4 (conscious cut): nothing on the slim row
-// marks failure today — failures live on mcp.response lines, which never
-// enter the reader's event set, so it needs its own piece if it comes back.
+// Claude Code view (F2.4): the claude-code slice of the audit trail as its
+// own tab. Server-filtered list (severity/category/tool/session/project/
+// status/text/time incl. custom range), stable facet inventories, session
+// separators, severity cards, shared footer. The error dot rides the real
+// request↔response outcome correlation (delta final — the earlier cut came
+// back once the data existed).
 
 const ROW_HEIGHT = 40;
-// Chrome above/around the list: titlebar (42, mirrors --kraft-titlebar-height
-// in index.css) + header (84) + tabs (40) + severity cards (~86) + filter bar
-// (56, .filters) + column header (~33) + footer (~34) — Detections parity
-// since commit 4 (cards above, footer below).
-const CHROME_HEIGHT = 375;
+// List chrome height derives from Detections' HEADER_AND_FILTERS_HEIGHT
+// (commit 5h — a low estimate overflows 100vh and flex-shrink squeezes the
+// titlebar), PLUS the two-row toolbar's excess over Detections' single 56px
+// bar (incidencia B): padding 12×2 + row1 ~30 + gap 14 + row2 ~28 ≈ 108 →
+// +52 (gap bumped one step, delta de cierre n). The custom-range row adds
+// ~42 more only while visible (row + gap).
+const CC_TOOLBAR_EXTRA = 52;
+const CUSTOM_ROW_HEIGHT = 42;
+const CHROME_HEIGHT = HEADER_AND_FILTERS_HEIGHT + CC_TOOLBAR_EXTRA;
 // Rows from the end at which we prefetch the next page (same threshold as
 // Detections' infinite scroll).
 const LOAD_MORE_THRESHOLD = 20;
@@ -43,6 +52,16 @@ const LOAD_MORE_THRESHOLD = 20;
 export const FLAGGED_CATEGORIES: readonly Category[] = CATEGORY_OPTIONS.filter(
   (c) => c !== 'tool_call_allowed',
 );
+
+// Status facet (delta final): fixed axis — ok/error. Requests without a
+// matched response (outcome undefined) are neither: an active Status filter
+// excludes them, and the chip's (n/2) counts statuses, not rows.
+const STATUS_OPTIONS: readonly string[] = ['ok', 'error'];
+const STATUS_LABELS: Record<string, string> = { ok: 'OK', error: 'Error' };
+
+// Search debounce: fast enough to feel live, slow enough to not thrash the
+// 2s-polled IPC with every keystroke.
+const SEARCH_DEBOUNCE_MS = 250;
 
 // List items: real rows interleaved with synthetic session-separator items.
 // Same FixedSizeList, uniform ROW_HEIGHT — a separator is just another 40px
@@ -79,21 +98,28 @@ export function buildListItems(rows: readonly DetectionRowSlim[]): CcListItem[] 
   return items;
 }
 
-// Single-select semantics on top of the (multi-select) FilterDropdown, same
-// gesture Detections already uses for "click the only selected severity →
-// back to all": null filter renders as all-checked; checking an option
-// narrows to it; re-checking the active one clears back to null.
-function pickSingle(
-  current: string | null,
-  options: readonly string[],
+// Multi-select facet gesture (commit 6, Detections' Severity/Category
+// semantics): null = no filter, rendered as all-checked; toggling narrows to
+// the checked subset; all checked OR none checked collapses back to null.
+function facetChange(
   next: readonly string[],
-  set: (v: string | null) => void,
+  all: readonly string[],
+  set: (v: readonly string[] | null) => void,
 ): void {
-  const prev = current === null ? options : [current];
-  const prevSet = new Set(prev);
-  const toggled = options.find((o) => prevSet.has(o) !== next.includes(o));
-  if (toggled === undefined) return;
-  set(current === toggled ? null : toggled);
+  set(next.length === 0 || next.length === all.length ? null : [...next]);
+}
+
+// Facet options = the server's stable inventory (computed on the base
+// filter, so picking Bash never removes the other tools from the menu),
+// unioned with any active selection whose value slid out of the current
+// time window — it must stay visible to be un-checkable.
+function facetOptions(
+  inventory: readonly string[],
+  active: readonly string[] | null,
+): string[] {
+  if (active === null) return [...inventory];
+  const s = new Set([...inventory, ...active]);
+  return [...s].sort();
 }
 
 export function ClaudeCode(): JSX.Element {
@@ -102,11 +128,20 @@ export function ClaudeCode(): JSX.Element {
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [selectedSeverities, setSelectedSeverities] =
     useState<readonly Severity[]>(SEVERITY_OPTIONS);
-  const [toolFilter, setToolFilter] = useState<string | null>(null);
-  const [sessionFilter, setSessionFilter] = useState<string | null>(null);
-  const [projectFilter, setProjectFilter] = useState<string | null>(null);
+  // Facet selections (commit 6): null = no filter; otherwise the checked
+  // subset (multi-select, membership shipped to the server).
+  const [toolFilter, setToolFilter] = useState<readonly string[] | null>(null);
+  const [sessionFilter, setSessionFilter] = useState<readonly string[] | null>(null);
+  const [projectFilter, setProjectFilter] = useState<readonly string[] | null>(null);
+  const [statusFilter, setStatusFilter] = useState<readonly string[] | null>(null);
+  // Free-text search: raw input debounced into the shipped filter value.
+  const [searchInput, setSearchInput] = useState('');
+  const [textFilter, setTextFilter] = useState<string | null>(null);
+  // Custom date range (active when the time segment is 'custom').
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const [openDropdown, setOpenDropdown] = useState<
-    'severity' | 'tool' | 'session' | 'project' | null
+    'severity' | 'tool' | 'session' | 'project' | 'status' | null
   >(null);
   const [listHeight, setListHeight] = useState(
     window.innerHeight - CHROME_HEIGHT,
@@ -115,9 +150,19 @@ export function ClaudeCode(): JSX.Element {
   const barRef = useRef<HTMLDivElement>(null);
 
   // Source is FIXED: this view IS the claude-code slice — no Source chip.
-  // tool/ccSession ride the server-side filters from commit 1; project is
-  // client-side over the loaded page (no server field for it — own piece if
-  // dogfood asks). Default on open: everything visible.
+  // tool/ccSession/project are all server-side since commit 6 (project moved
+  // from client-side: with facets and multi-select on the server, it is the
+  // same pattern — and the counts stop lying under a project filter).
+  // Default on open: everything visible.
+  // Debounce the search box into the shipped text filter.
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      const trimmed = searchInput.trim();
+      setTextFilter(trimmed === '' ? null : trimmed);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
+
   const filter: DetectionFilter = useMemo(
     () => ({
       mcp: null,
@@ -125,69 +170,57 @@ export function ClaudeCode(): JSX.Element {
       categories: flaggedOnly ? [...FLAGGED_CATEGORIES] : [...CATEGORY_OPTIONS],
       severities: [...selectedSeverities],
       sources: ['claude-code'],
-      tool: toolFilter,
-      ccSession: sessionFilter,
+      tool: toolFilter === null ? null : [...toolFilter],
+      ccSession: sessionFilter === null ? null : [...sessionFilter],
+      project: projectFilter === null ? null : [...projectFilter],
+      status: statusFilter === null ? null : [...statusFilter],
+      text: textFilter,
+      customRange:
+        selectedTimeRange === 'custom' && customFrom !== '' && customTo !== ''
+          ? { from: customFrom, to: customTo }
+          : null,
     }),
-    [selectedTimeRange, flaggedOnly, selectedSeverities, toolFilter, sessionFilter],
+    [
+      selectedTimeRange, flaggedOnly, selectedSeverities, toolFilter,
+      sessionFilter, projectFilter, statusFilter, textFilter, customFrom, customTo,
+    ],
   );
 
   const page = useDetectionPage(filter);
   const { rows } = page;
 
-  // Second, flagged-pinned page subscription for the "N flagged" counter.
-  // Verified NOT derivable from the main response: severityCounts and
-  // categoryFilteredTotal aggregate the ACTIVE filter's category set by
-  // severity, with no per-category breakdown — with the toggle off, the
-  // baseline tool_call_allowed is mixed into both numbers and cannot be
-  // subtracted (and "baseline ≡ low" is false: pii_* flag at low too). The
-  // probe measures the flagged slice under the SAME other axes, independent
-  // of the toggle, so the counter never changes meaning when it flips. It
-  // rides the same 2s poll; the store coalesces the underlying refresh, so
-  // the extra cost is one paginate pass, not a disk read.
-  const flaggedProbeFilter: DetectionFilter = useMemo(
-    () => ({
-      mcp: null,
-      timeRange: selectedTimeRange,
-      categories: [...FLAGGED_CATEGORIES],
-      severities: [...selectedSeverities],
-      sources: ['claude-code'],
-      tool: toolFilter,
-      ccSession: sessionFilter,
-    }),
-    [selectedTimeRange, selectedSeverities, toolFilter, sessionFilter],
+  // Chip options: the server's STABLE facet inventories (commit 6) — computed
+  // over the base filter, so an active tool/session/project selection never
+  // removes the other values from its own menu.
+  const toolOptions = useMemo(
+    () => facetOptions(page.facets.tools, toolFilter),
+    [page.facets.tools, toolFilter],
   );
-  const flaggedProbe = useDetectionPage(flaggedProbeFilter);
-
-  // Chip options: distinct values over the loaded rows (page-local; an active
-  // filter keeps its own value present so it can be toggled back off).
-  const toolOptions = useMemo(() => {
-    const s = new Set<string>();
-    for (const r of rows) if (r.toolName !== undefined) s.add(r.toolName);
-    if (toolFilter !== null) s.add(toolFilter);
-    return [...s].sort();
-  }, [rows, toolFilter]);
+  // Session options: the facet's OWN order (recent-first, server-sorted) —
+  // no alphabetical re-sort; stray active selections append at the end.
   const sessionOptions = useMemo(() => {
-    const s = new Set<string>();
-    for (const r of rows) if (r.ccSession !== undefined) s.add(r.ccSession);
-    if (sessionFilter !== null) s.add(sessionFilter);
-    return [...s].sort();
-  }, [rows, sessionFilter]);
-  const projectOptions = useMemo(() => {
-    const s = new Set<string>();
-    for (const r of rows) if (r.project !== undefined) s.add(r.project);
-    if (projectFilter !== null) s.add(projectFilter);
-    return [...s].sort();
-  }, [rows, projectFilter]);
-
-  // Client-side project filter (see note above) → then session separators.
-  const displayRows = useMemo(
-    () =>
-      projectFilter === null
-        ? rows
-        : rows.filter((r) => r.project === projectFilter),
-    [rows, projectFilter],
+    const ids = page.facets.ccSessions.map((s) => s.id);
+    if (sessionFilter !== null) {
+      for (const id of sessionFilter) if (!ids.includes(id)) ids.push(id);
+    }
+    return ids;
+  }, [page.facets.ccSessions, sessionFilter]);
+  const projectOptions = useMemo(
+    () => facetOptions(page.facets.projects, projectFilter),
+    [page.facets.projects, projectFilter],
   );
-  const items = useMemo(() => buildListItems(displayRows), [displayRows]);
+
+  // Human labels for the Session menu — SERVER data since the final delta
+  // (facets.ccSessions carries started/where for EVERY session in the
+  // window, loaded page or not). The page-derived labelling died with it.
+  const sessionMeta = useMemo(
+    () => new Map(page.facets.ccSessions.map((s) => [s.id, s])),
+    [page.facets.ccSessions],
+  );
+
+  // Rows arrive fully server-filtered (project included, commit 6) → session
+  // separators directly over them.
+  const items = useMemo(() => buildListItems(rows), [rows]);
 
   useEffect(() => {
     function onResize(): void {
@@ -259,15 +292,35 @@ export function ClaudeCode(): JSX.Element {
         onSelectTotal={handleSelectTotal}
         onSelectSeverity={handleSelectSeverity}
       />
-      <div className={styles['filters']} ref={barRef}>
-        <button
-          type="button"
-          className={flaggedChipClass}
-          aria-pressed={flaggedOnly}
-          onClick={() => setFlaggedOnly((v) => !v)}
-        >
-          Flagged only
-        </button>
+      <div className={styles['toolbar']} ref={barRef}>
+        <div className={styles['toolbarRow']}>
+          <input
+            type="search"
+            className={styles['searchBox']}
+            placeholder="Search tool or details…"
+            aria-label="Search tool or details"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+          />
+          <div className={toolbarStyles['timeFilterSpacer']}>
+            <TimeFilter
+              value={selectedTimeRange}
+              onChange={setSelectedTimeRange}
+              allowCustom
+            />
+          </div>
+        </div>
+        <div className={`${styles['toolbarRow']} ${styles['chipsRow']}`}>
+        <Tooltip text="Show only calls that triggered a detection">
+          <button
+            type="button"
+            className={flaggedChipClass}
+            aria-pressed={flaggedOnly}
+            onClick={() => setFlaggedOnly((v) => !v)}
+          >
+            Flagged only
+          </button>
+        </Tooltip>
         <FilterDropdown
           label="Severity"
           options={SEVERITY_OPTIONS}
@@ -281,52 +334,88 @@ export function ClaudeCode(): JSX.Element {
         <FilterDropdown
           label="Tool"
           options={toolOptions}
-          selected={toolFilter === null ? toolOptions : [toolFilter]}
-          onChange={(next) => pickSingle(toolFilter, toolOptions, next, setToolFilter)}
+          selected={toolFilter ?? toolOptions}
+          onChange={(next) => facetChange(next, toolOptions, setToolFilter)}
           isOpen={openDropdown === 'tool'}
           onToggle={() => setOpenDropdown((v) => (v === 'tool' ? null : 'tool'))}
         />
         <FilterDropdown
           label="Session"
           options={sessionOptions}
-          selected={sessionFilter === null ? sessionOptions : [sessionFilter]}
-          onChange={(next) =>
-            pickSingle(sessionFilter, sessionOptions, next, setSessionFilter)
-          }
+          selected={sessionFilter ?? sessionOptions}
+          onChange={(next) => facetChange(next, sessionOptions, setSessionFilter)}
           isOpen={openDropdown === 'session'}
           onToggle={() =>
             setOpenDropdown((v) => (v === 'session' ? null : 'session'))
           }
-          formatOption={(o) => o.slice(0, 8)}
+          tooltip="Filter by Claude Code session"
+          formatOption={(o) => {
+            const m = sessionMeta.get(o);
+            if (m === undefined) return o.slice(0, 8);
+            // One line: human label ellipsizes, the dimmed hash keeps its
+            // slot on the right (commit 6 layout).
+            return (
+              <span className={styles['sessionOption']}>
+                <span className={styles['sessionOptionLabel']}>
+                  {`started ${startedStamp(m.started)} · ${m.where}`}
+                </span>
+                <span className={styles['sessionHash']}>{o.slice(0, 8)}</span>
+              </span>
+            );
+          }}
+        />
+        <FilterDropdown
+          label="Status"
+          options={STATUS_OPTIONS}
+          selected={statusFilter ?? STATUS_OPTIONS}
+          onChange={(next) => facetChange(next, STATUS_OPTIONS, setStatusFilter)}
+          isOpen={openDropdown === 'status'}
+          onToggle={() =>
+            setOpenDropdown((v) => (v === 'status' ? null : 'status'))
+          }
+          formatOption={(o) => STATUS_LABELS[o] ?? o}
         />
         {projectOptions.length > 0 && (
-          // Hidden until at least one loaded row carries a project — today
-          // every historical envelope lacks cwd, so the chip would offer an
-          // empty menu (commit-4 dogfood note).
+          // Hidden until the facet inventory carries at least one project —
+          // today every historical envelope lacks cwd, so the chip would
+          // offer an empty menu (commit-4 dogfood note).
           <FilterDropdown
             label="Project"
             options={projectOptions}
-            selected={projectFilter === null ? projectOptions : [projectFilter]}
-            onChange={(next) =>
-              pickSingle(projectFilter, projectOptions, next, setProjectFilter)
-            }
+            selected={projectFilter ?? projectOptions}
+            onChange={(next) => facetChange(next, projectOptions, setProjectFilter)}
             isOpen={openDropdown === 'project'}
             onToggle={() =>
               setOpenDropdown((v) => (v === 'project' ? null : 'project'))
             }
+            tooltip="Filter by the folder where Claude Code was running"
           />
         )}
-        <div className={styles['timeFilterSpacer']}>
-          <button
-            type="button"
-            className={flaggedOnly ? `${styles['flaggedCounter']} ${styles['flaggedCounterActive']}` : styles['flaggedCounter']}
-            onClick={() => setFlaggedOnly((v) => !v)}
-            title="Show only flagged events"
-          >
-            {flaggedProbe.totalMatching} flagged
-          </button>
-          <TimeFilter value={selectedTimeRange} onChange={setSelectedTimeRange} />
         </div>
+        {selectedTimeRange === 'custom' && (
+          // Native date inputs (delta final): the house has no datepicker —
+          // <input type="date"> is the simplest coherent pattern, tokens on
+          // top. Own ROW (incidencia B): never squeezes search or chips.
+          <div className={`${styles['toolbarRow']} ${styles['customRow']}`}>
+            <span className={styles['customRange']}>
+              <input
+                type="date"
+                className={styles['dateInput']}
+                aria-label="From date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+              />
+              <span className={styles['customRangeSep']}>–</span>
+              <input
+                type="date"
+                className={styles['dateInput']}
+                aria-label="To date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+              />
+            </span>
+          </div>
+        )}
       </div>
       {items.length === 0 ? (
         <div className={styles['empty']}>
@@ -343,7 +432,7 @@ export function ClaudeCode(): JSX.Element {
             <span className={styles['columnHeaderCell']}>Details</span>
           </div>
           <FixedSizeList
-            height={listHeight}
+            height={listHeight - (selectedTimeRange === 'custom' ? CUSTOM_ROW_HEIGHT : 0)}
             width="100%"
             itemSize={ROW_HEIGHT}
             itemCount={items.length}

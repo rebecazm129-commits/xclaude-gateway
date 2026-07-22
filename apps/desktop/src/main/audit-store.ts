@@ -29,6 +29,7 @@ import type {
 import {
   assembleAudit,
   deriveAuthAlerts,
+  outcomeKey,
   parseAuditContent,
   type AuthSignal,
   type ParsedFile,
@@ -131,6 +132,8 @@ function slimEvent(e: EnrichableEvent): EnrichableEvent {
     // argsSummary (F2.4): small derived string (≤100 chars) — kept, unlike
     // its heavy sibling argumentsJson, so the Args column survives the cache.
     if (e.argsSummary !== undefined) slim.argsSummary = e.argsSummary;
+    // outcome (delta final): tiny; the Status filter and the error dot read it.
+    if (e.outcome !== undefined) slim.outcome = e.outcome;
     return slim;
   }
   const slim: DetectionEnrichmentEvent = {
@@ -258,6 +261,19 @@ export function createAuditStore(
         const complete = combined.slice(0, lastNl + 1);
         entry.pendingTail = combined.slice(lastNl + 1);
         const parsed = parseAuditContent(complete);
+        // Outcome backfill (delta final): a long-running tool's response can
+        // land in a LATER chunk than its request — the request is already in
+        // the slim cache without outcome. Apply this chunk's outcome map to
+        // the cached requests of this file before appending the new events.
+        // O(cached events of one file) per append; safe to mutate — the file
+        // grew, so the early-exit signature already forces a re-assemble.
+        if (parsed.outcomes !== undefined && parsed.outcomes.size > 0) {
+          for (const ev of entry.events) {
+            if (ev.type !== 'mcp.request' || ev.outcome !== undefined) continue;
+            const outcome = parsed.outcomes.get(outcomeKey(ev.session, ev.rpcId));
+            if (outcome !== undefined) ev.outcome = outcome;
+          }
+        }
         // Store the LEAN form only — heavy fields are re-read on demand.
         for (const ev of parsed.events) entry.events.push(slimEvent(ev));
         if (parsed.authSignals.length > 0) {

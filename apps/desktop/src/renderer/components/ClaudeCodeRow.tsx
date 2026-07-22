@@ -3,6 +3,7 @@ import type { KeyboardEvent } from 'react';
 import type { DetectionRowSlim } from '../../shared/types.js';
 import { Badge } from './Badge.js';
 import { CATEGORY_LABELS, enrichmentToolLabel, formatTimestamp } from './detections-format.js';
+import { Tooltip } from './Tooltip.js';
 
 import styles from './ClaudeCodeRow.module.css';
 
@@ -54,7 +55,22 @@ export function ClaudeCodeRow({ row, selected, onClick }: ClaudeCodeRowProps): J
       <span className={styles['timestamp']}>{formatTimestamp(row.ts)}</span>
       <Badge severity={row.severity} />
       {row.type === 'mcp.request' ? (
-        <span className={styles['tool']}>{row.toolName ?? row.method}</span>
+        <span className={styles['tool']}>
+          {row.outcome === 'error' && (
+            // Discreet error dot (delta final): real outcome data from the
+            // request↔response correlation. Wrapped in the house Tooltip
+            // (delta de cierre m) so hover explains it; aria-label matches.
+            <Tooltip text="This call failed">
+              <span
+                className={styles['errorDot']}
+                role="img"
+                aria-label="This call failed"
+                data-testid="error-dot"
+              />
+            </Tooltip>
+          )}
+          {row.toolName ?? row.method}
+        </span>
       ) : (
         <span className={styles['toolSoft']}>{enrichmentToolLabel(row.category)}</span>
       )}

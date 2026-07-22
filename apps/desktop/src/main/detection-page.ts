@@ -6,17 +6,19 @@
 import { basename } from 'node:path';
 
 import type {
+  CcSessionFacet,
   DetectionCursor,
   DetectionDetail,
+  DetectionFacets,
   DetectionFilter,
   DetectionRowSlim,
   EnrichableEvent,
   Severity,
   TimeRange,
 } from '../shared/types.js';
-import { normalizeSource } from '../shared/types.js';
+import { DAY_MS, normalizeSource } from '../shared/types.js';
 
-const TIME_WINDOW_MS: Record<Exclude<TimeRange, 'all'>, number> = {
+const TIME_WINDOW_MS: Record<Exclude<TimeRange, 'all' | 'custom'>, number> = {
   '1h': 60 * 60 * 1000,
   '24h': 24 * 60 * 60 * 1000,
   '7d': 7 * 24 * 60 * 60 * 1000,
@@ -39,7 +41,19 @@ function withinTimeWindow(
 ): boolean {
   if (filter.timeRange === 'all') return true;
   const t = Date.parse(e.ts);
-  return !Number.isNaN(t) && t >= now - TIME_WINDOW_MS[filter.timeRange];
+  if (Number.isNaN(t)) return false;
+  // Custom range (delta final): explicit YYYY-MM-DD from/to, inclusive on
+  // both ends ([from 00:00, to 24:00)). Absent/null range → no restriction.
+  if (filter.timeRange === 'custom') {
+    const cr = filter.customRange;
+    if (cr === undefined || cr === null) return true;
+    const from = Date.parse(cr.from);
+    const to = Date.parse(cr.to);
+    if (!Number.isNaN(from) && t < from) return false;
+    if (!Number.isNaN(to) && t >= to + DAY_MS) return false;
+    return true;
+  }
+  return t >= now - TIME_WINDOW_MS[filter.timeRange];
 }
 
 // mcp + time + category (pre-severity). paginate uses this for the category-
@@ -51,20 +65,46 @@ export function matchesPreSeverity(
   now: number,
 ): boolean {
   if (filter.mcp !== null && e.mcp !== filter.mcp) return false;
-  // CC filters (F2.4): optional fields — absent ≡ null ≡ no filter. tool
-  // matches toolName, which only requests carry, so an active tool filter
-  // excludes enrichment rows; ccSession matches both kinds (CC enrichments
-  // carry it). Wrapper events (no ccSession) are excluded by an active
-  // ccSession filter.
-  if (filter.tool !== undefined && filter.tool !== null) {
-    if (e.type !== 'mcp.request' || e.toolName !== filter.tool) return false;
+  // CC filters (F2.4, multi-select since commit 6): absent ≡ null ≡ [] ≡ no
+  // filter; otherwise array membership. tool matches toolName (requests only
+  // — an active tool filter excludes enrichment rows); ccSession matches both
+  // kinds (CC enrichments carry it); project matches basename(cwd) (requests
+  // with cwd only). Wrapper/historical events lacking the field are excluded
+  // by an active filter on it.
+  if (filter.tool !== undefined && filter.tool !== null && filter.tool.length > 0) {
+    if (e.type !== 'mcp.request' || e.toolName === undefined || !filter.tool.includes(e.toolName)) {
+      return false;
+    }
   }
   if (
     filter.ccSession !== undefined &&
     filter.ccSession !== null &&
-    e.ccSession !== filter.ccSession
+    filter.ccSession.length > 0 &&
+    (e.ccSession === undefined || !filter.ccSession.includes(e.ccSession))
   ) {
     return false;
+  }
+  if (filter.project !== undefined && filter.project !== null && filter.project.length > 0) {
+    if (e.type !== 'mcp.request' || e.cwd === undefined || !filter.project.includes(basename(e.cwd))) {
+      return false;
+    }
+  }
+  // Free-text search (delta final): case-insensitive against toolName and
+  // argsSummary — requests only (enrichments carry neither).
+  if (filter.text !== undefined && filter.text !== null && filter.text !== '') {
+    if (e.type !== 'mcp.request') return false;
+    const q = filter.text.toLowerCase();
+    const hitTool = e.toolName !== undefined && e.toolName.toLowerCase().includes(q);
+    const hitArgs = e.argsSummary !== undefined && e.argsSummary.toLowerCase().includes(q);
+    if (!hitTool && !hitArgs) return false;
+  }
+  // Status filter (delta final): ok/error membership. Requests without a
+  // matched response (outcome undefined) are excluded by ANY active status
+  // filter — they are neither ok nor error.
+  if (filter.status !== undefined && filter.status !== null && filter.status.length > 0) {
+    if (e.type !== 'mcp.request' || e.outcome === undefined || !filter.status.includes(e.outcome)) {
+      return false;
+    }
   }
   if (!withinTimeWindow(e, filter, now)) return false;
   if (!filter.sources.includes(normalizeSource(e.source))) return false;
@@ -104,6 +144,7 @@ export function toSlim(e: EnrichableEvent): DetectionRowSlim {
     row.method = e.method;
     if (e.cwd !== undefined) row.project = basename(e.cwd);
     if (e.argsSummary !== undefined) row.argsSummary = e.argsSummary;
+    if (e.outcome !== undefined) row.outcome = e.outcome;
   }
   return row;
 }
@@ -138,6 +179,72 @@ export interface PageSlice {
   severityCounts: Record<Severity, number>;
   categoryFilteredTotal: number;
   nextCursor: DetectionCursor | null;
+  facets: DetectionFacets;
+}
+
+// computeFacets — stable inventories for the CC chips (commit 6): distinct
+// tool/ccSession/project over the BASE filter only (sources + timeRange) —
+// deliberately NOT mcp/categories/severities/tool/ccSession/project, so a
+// facet's own selection never shrinks its inventory. One O(n) pass with three
+// Sets over the already-cached slim events — same order of cost as paginate's
+// existing category pass (sub-ms at the golden-oracle scale, a few ms at 1M).
+function computeFacets(
+  events: readonly EnrichableEvent[],
+  filter: DetectionFilter,
+  now: number,
+): DetectionFacets {
+  const tools = new Set<string>();
+  const projects = new Set<string>();
+  // Per-session accumulator (delta final): started = min ts; where = the
+  // most recent project seen in the session, else the mcp of its newest
+  // event. Same single pass as the other facets.
+  interface SessionAcc {
+    started: string;
+    newestTs: string;
+    newestMcp: string;
+    proj?: string;
+    projTs?: string;
+  }
+  const sessions = new Map<string, SessionAcc>();
+  for (const e of events) {
+    if (!withinTimeWindow(e, filter, now)) continue;
+    if (!filter.sources.includes(normalizeSource(e.source))) continue;
+    const proj =
+      e.type === 'mcp.request' && e.cwd !== undefined ? basename(e.cwd) : undefined;
+    if (e.ccSession !== undefined) {
+      const s = sessions.get(e.ccSession);
+      if (s === undefined) {
+        sessions.set(e.ccSession, {
+          started: e.ts,
+          newestTs: e.ts,
+          newestMcp: e.mcp,
+          ...(proj !== undefined ? { proj, projTs: e.ts } : {}),
+        });
+      } else {
+        if (e.ts < s.started) s.started = e.ts;
+        if (e.ts > s.newestTs) {
+          s.newestTs = e.ts;
+          s.newestMcp = e.mcp;
+        }
+        if (proj !== undefined && (s.projTs === undefined || e.ts > s.projTs)) {
+          s.proj = proj;
+          s.projTs = e.ts;
+        }
+      }
+    }
+    if (e.type === 'mcp.request') {
+      if (e.toolName !== undefined) tools.add(e.toolName);
+      if (proj !== undefined) projects.add(proj);
+    }
+  }
+  const ccSessions: CcSessionFacet[] = [...sessions]
+    .map(([id, s]) => ({ id, started: s.started, where: s.proj ?? s.newestMcp }))
+    .sort((a, b) => b.started.localeCompare(a.started)); // recent-first
+  return {
+    tools: [...tools].sort(),
+    ccSessions,
+    projects: [...projects].sort(),
+  };
 }
 
 // Filters (mcp + time + category → then severity), computes the counts the UI
@@ -188,5 +295,7 @@ export function paginate(
       ? { ts: last.ts, id: last.id }
       : null;
 
-  return { rows, total, totalMatching, severityCounts, categoryFilteredTotal, nextCursor };
+  const facets = computeFacets(events, filter, now);
+
+  return { rows, total, totalMatching, severityCounts, categoryFilteredTotal, nextCursor, facets };
 }

@@ -100,9 +100,21 @@ export interface AuthSignal {
 // One file's parsed contribution: derived detection/enrichment events (in line
 // order, NOT deduped — dedup happens across files in assembleAudit) plus the
 // auth signals. Shared by readAudit (full read) and the incremental AuditStore.
+// outcomes (delta final): map (session,rpcId) → 'ok'|'error' from the
+// mcp.response lines seen in THIS parse — requests in the same pass get their
+// outcome attached directly; the AuditStore also uses the map to BACKFILL
+// requests cached from earlier chunks of the same file (a long-running tool's
+// response can land in a later incremental read).
 export interface ParsedFile {
   events: EnrichableEvent[];
   authSignals: AuthSignal[];
+  outcomes?: Map<string, 'ok' | 'error'>;
+}
+
+// Correlation key for outcome attachment/backfill. JSON.stringify escapes
+// everything → injective (same reasoning as assembleAudit's key).
+export function outcomeKey(session: string, rpcId: string | number | null): string {
+  return JSON.stringify([session, rpcId]);
 }
 
 // Pure per-file parse: JSONL text → events + auth signals. Same tolerance as the
@@ -125,15 +137,37 @@ function clipSummary(s: string): string {
   return `${oneLine.slice(0, ARGS_SUMMARY_MAX - 1)}…`;
 }
 
+// Claves cuyo valor ES una ruta (commit 5g): solo estas se recortan contra
+// cwd. Nunca command/query/text — una ruta DENTRO de un comando compuesto no
+// se toca (no hay sustitución de substrings, solo el caso "el resumen es la
+// ruta entera").
+function isPathKey(key: string): boolean {
+  return key === 'path' || key === 'file_path' || key.endsWith('_path');
+}
+
+// Si el valor de una clave-ruta empieza exactamente por el cwd del evento
+// (+ separador), se recorta a la parte relativa. Sin cwd (históricos) o
+// fuera del cwd → intacto.
+function maybeRelative(key: string, value: string, cwd: string | undefined): string {
+  if (cwd === undefined || !isPathKey(key)) return value;
+  const base = cwd.endsWith('/') ? cwd.slice(0, -1) : cwd;
+  if (value.startsWith(`${base}/`) && value.length > base.length + 1) {
+    return value.slice(base.length + 1);
+  }
+  return value;
+}
+
 // summarizeArgs — pure (exported for tests): the short one-line summary the
-// Claude Code view shows in its Args column. Input is the ALREADY-PERSISTED
+// Claude Code view shows in its Details column. Input is the ALREADY-PERSISTED
 // arguments object from the trail — credential masking happened at write
 // time, so this never touches a raw channel. Whitespace collapses to single
 // spaces; truncated at ARGS_SUMMARY_MAX. undefined when nothing string-valued
-// exists to summarize.
+// exists to summarize. cwd (commit 5g): path-valued winners are shortened to
+// their project-relative form when they live under it.
 export function summarizeArgs(
   toolName: string | undefined,
   args: unknown,
+  cwd?: string,
 ): string | undefined {
   if (typeof args !== 'object' || args === null || Array.isArray(args)) {
     return undefined;
@@ -147,10 +181,14 @@ export function summarizeArgs(
   candidates.push(...ARGS_SUMMARY_PRIORITY);
   for (const key of candidates) {
     const v = obj[key];
-    if (typeof v === 'string' && v.trim() !== '') return clipSummary(v);
+    if (typeof v === 'string' && v.trim() !== '') {
+      return clipSummary(maybeRelative(key, v, cwd));
+    }
   }
-  for (const v of Object.values(obj)) {
-    if (typeof v === 'string' && v.trim() !== '') return clipSummary(v);
+  for (const [key, v] of Object.entries(obj)) {
+    if (typeof v === 'string' && v.trim() !== '') {
+      return clipSummary(maybeRelative(key, v, cwd));
+    }
   }
   return undefined;
 }
@@ -158,6 +196,7 @@ export function summarizeArgs(
 export function parseAuditContent(content: string): ParsedFile {
   const events: EnrichableEvent[] = [];
   const authSignals: AuthSignal[] = [];
+  const outcomes = new Map<string, 'ok' | 'error'>();
   for (const line of content.split('\n')) {
     if (line.trim() === '') continue;
     let parsed: unknown;
@@ -204,6 +243,23 @@ export function parseAuditContent(content: string): ParsedFile {
         }
       }
     }
+    // Outcome extraction (delta final): every mcp.response line feeds the
+    // (session,rpcId) → ok/error map — 'error' when the response carries an
+    // `error` field or isInterrupt. Same single pass; responses still do NOT
+    // become events (only requests + enrichments do).
+    {
+      const obj = parsed as Record<string, unknown>;
+      if (obj['type'] === 'mcp.response' && typeof obj['session'] === 'string') {
+        const rpcId = obj['rpcId'];
+        if (typeof rpcId === 'string' || typeof rpcId === 'number' || rpcId === null) {
+          const isError = obj['error'] !== undefined || obj['isInterrupt'] === true;
+          outcomes.set(
+            outcomeKey(obj['session'] as string, rpcId as string | number | null),
+            isError ? 'error' : 'ok',
+          );
+        }
+      }
+    }
     if (isDetectionEvent(parsed)) {
       // Derivar toolName desde params.name solo cuando method === 'tools/call'
       // y name es string. Mantiene el renderer libre de maquinaria JSON-RPC.
@@ -226,8 +282,14 @@ export function parseAuditContent(content: string): ParsedFile {
         // argsSummary (F2.4): derivado AQUÍ (no en toSlim — la caché slim ya
         // dropeó params/argumentsJson cuando toSlim corre). Mismo patrón que
         // toolName; al reconstruirse del disco, los históricos también lo
-        // llevan. slimEvent lo retiene, toSlim lo copia a la fila.
-        const summary = summarizeArgs(parsed.toolName, raw.params?.arguments);
+        // llevan. slimEvent lo retiene, toSlim lo copia a la fila. El cwd del
+        // evento (si viaja, F2.4 forward-only) acorta las rutas a relativas.
+        const rawCwd = (parsed as unknown as { cwd?: unknown }).cwd;
+        const summary = summarizeArgs(
+          parsed.toolName,
+          raw.params?.arguments,
+          typeof rawCwd === 'string' ? rawCwd : undefined,
+        );
         if (summary !== undefined) parsed.argsSummary = summary;
       }
       // overheadUs si el JSONL lo trae. Aplica a TODOS los mcp.request.
@@ -240,7 +302,15 @@ export function parseAuditContent(content: string): ParsedFile {
       events.push(parsed);
     }
   }
-  return { events, authSignals };
+  // Attach outcomes to the requests of THIS pass (responses always follow
+  // their request in the trail, so the map is complete by now for any pair
+  // living in the same chunk).
+  for (const ev of events) {
+    if (ev.type !== 'mcp.request') continue;
+    const outcome = outcomes.get(outcomeKey(ev.session, ev.rpcId));
+    if (outcome !== undefined) ev.outcome = outcome;
+  }
+  return { events, authSignals, outcomes };
 }
 
 // deriveAuthAlerts — pure: derives connector auth alerts from the

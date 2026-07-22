@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ConnectorAuthAlert,
   DetectionCursor,
+  DetectionFacets,
   DetectionFilter,
   DetectionPageResult,
   DetectionRowSlim,
@@ -20,12 +21,15 @@ const EMPTY_COUNTS: Record<Severity, number> = {
   critical: 0,
 };
 
+const EMPTY_FACETS: DetectionFacets = { tools: [], ccSessions: [], projects: [] };
+
 export interface PolledPage {
   rows: DetectionRowSlim[];
   total: number;
   totalMatching: number;
   severityCounts: Record<Severity, number>;
   categoryFilteredTotal: number;
+  facets: DetectionFacets;
   authAlerts: ConnectorAuthAlert[];
   retention: RetentionBannerInfo | null;
   hasMore: boolean;
@@ -105,6 +109,7 @@ export function useDetectionPage(filter: DetectionFilter): PolledPage {
     totalMatching,
     severityCounts: head?.severityCounts ?? EMPTY_COUNTS,
     categoryFilteredTotal: head?.categoryFilteredTotal ?? 0,
+    facets: head?.facets ?? EMPTY_FACETS,
     authAlerts: head?.authAlerts ?? [],
     retention: head?.retention ?? null,
     hasMore,

@@ -12,6 +12,9 @@
   padding: 4px 10px;
   border-radius: var(--kraft-radius-pill);
   cursor: pointer;
+  /* A chip's text never wraps (incidencia B): narrow windows wrap WHOLE
+     chips to the next line, never split a label. */
+  white-space: nowrap;
   transition:
     background var(--kraft-transition-fast) ease,
     border-color var(--kraft-transition-fast) ease;
@@ -32,6 +35,9 @@
   border-radius: var(--kraft-radius-md);
   padding: 6px 0;
   min-width: 200px;
+  /* Single-line options (commit 6): wide enough for the Session human
+     labels, ellipsis beyond — never a 3-line wrap. */
+  max-width: 380px;
   z-index: 10;
   box-shadow:
     0 6px 20px color-mix(in srgb, var(--kraft-ink) 14%, transparent),
@@ -57,4 +63,15 @@
 .option input[type='checkbox'] {
   accent-color: var(--kraft-accent);
   cursor: pointer;
+  flex: none;
+}
+
+/* One line per option: the label cell ellipsizes long values (session human
+   labels, deep project/tool names) instead of wrapping. */
+.optionLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

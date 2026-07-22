@@ -71,3 +71,15 @@
   color: var(--kraft-ink);
   margin-right: 8px;
 }
+
+/* Discreet error dot before the tool name (delta final) — critical token,
+   small enough to scan without shouting. */
+.errorDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--kraft-critical-text);
+  margin-right: 6px;
+  vertical-align: middle;
+}

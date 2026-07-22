@@ -30,7 +30,7 @@ const ALL: DetectionFilter = {
 function req(
   id: string,
   ts: string,
-  opts: { mcp?: string; category?: Category; severity?: Severity; args?: unknown; source?: string; toolName?: string; ccSession?: string; cwd?: string; argsSummary?: string } = {},
+  opts: { mcp?: string; category?: Category; severity?: Severity; args?: unknown; source?: string; toolName?: string; ccSession?: string; cwd?: string; argsSummary?: string; outcome?: 'ok' | 'error' } = {},
 ): EnrichableEvent {
   const e = {
     id, ts, session: 's', mcp: opts.mcp ?? 'm', type: 'mcp.request' as const,
@@ -40,6 +40,7 @@ function req(
     ...(opts.ccSession !== undefined ? { ccSession: opts.ccSession } : {}),
     ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
     ...(opts.argsSummary !== undefined ? { argsSummary: opts.argsSummary } : {}),
+    ...(opts.outcome !== undefined ? { outcome: opts.outcome } : {}),
     detection: {
       category: opts.category ?? 'tool_call_allowed',
       severity: opts.severity ?? 'low',
@@ -64,7 +65,10 @@ const WINDOW: Record<'1h' | '24h' | '7d', number> = {
 function referenceIds(events: readonly EnrichableEvent[], filter: DetectionFilter, now: number): string[] {
   const catSet = new Set(filter.categories);
   const sevSet = new Set(filter.severities);
-  const cutoff = filter.timeRange === 'all' ? null : now - WINDOW[filter.timeRange];
+  const cutoff =
+    filter.timeRange === 'all' || filter.timeRange === 'custom'
+      ? null
+      : now - WINDOW[filter.timeRange];
   return events
     .filter((e) => {
       if (filter.mcp !== null && e.mcp !== filter.mcp) return false;
@@ -337,22 +341,26 @@ describe('tool + ccSession filters (F2.4)', () => {
   } as EnrichableEvent;
   const events = [echo, write, ccA, ccB, enrA];
 
-  it('tool filter matches toolName; null and absent mean no filter', () => {
-    const p = paginate(events, { ...ALL, tool: 'Write' }, 10, null, NOW);
+  it('tool filter is multi-select membership; null, absent and [] mean no filter', () => {
+    const p = paginate(events, { ...ALL, tool: ['Write'] }, 10, null, NOW);
     expect(p.rows.map((r) => r.id)).toEqual(['w1']);
     expect(p.totalMatching).toBe(1);
-    // null ≡ absent ≡ ALL (backward compatible).
-    expect(paginate(events, { ...ALL, tool: null }, 10, null, NOW).totalMatching)
-      .toBe(paginate(events, ALL, 10, null, NOW).totalMatching);
+    // Two tools checked → both match (commit 6 multi-select).
+    const multi = paginate(events, { ...ALL, tool: ['Write', 'Bash'] }, 10, null, NOW);
+    expect(multi.rows.map((r) => r.id).sort()).toEqual(['a1', 'b1', 'w1']);
+    // null ≡ absent ≡ [] ≡ ALL (backward compatible).
+    const base = paginate(events, ALL, 10, null, NOW).totalMatching;
+    expect(paginate(events, { ...ALL, tool: null }, 10, null, NOW).totalMatching).toBe(base);
+    expect(paginate(events, { ...ALL, tool: [] }, 10, null, NOW).totalMatching).toBe(base);
   });
 
   it('an active tool filter excludes enrichment rows (they carry no toolName)', () => {
-    const p = paginate(events, { ...ALL, tool: 'Bash' }, 10, null, NOW);
+    const p = paginate(events, { ...ALL, tool: ['Bash'] }, 10, null, NOW);
     expect(p.rows.map((r) => r.id).sort()).toEqual(['a1', 'b1']); // n1 excluded
   });
 
   it('ccSession filter matches requests AND enrichments; wrapper events excluded', () => {
-    const p = paginate(events, { ...ALL, ccSession: 'uuid-A' }, 10, null, NOW);
+    const p = paginate(events, { ...ALL, ccSession: ['uuid-A'] }, 10, null, NOW);
     expect(p.rows.map((r) => r.id).sort()).toEqual(['a1', 'n1']);
     expect(p.totalMatching).toBe(2);
     // null ≡ absent.
@@ -363,17 +371,65 @@ describe('tool + ccSession filters (F2.4)', () => {
   it('combines with sources: cc-only + ccSession picks exactly that session', () => {
     const p = paginate(
       events,
-      { ...ALL, sources: ['claude-code'], ccSession: 'uuid-B' },
+      { ...ALL, sources: ['claude-code'], ccSession: ['uuid-B'] },
       10, null, NOW,
     );
     expect(p.rows.map((r) => r.id)).toEqual(['b1']);
     // And with tool on top: cc-only + ccSession + tool narrows to the request.
     const q = paginate(
       events,
-      { ...ALL, sources: ['claude-code'], ccSession: 'uuid-A', tool: 'Bash' },
+      { ...ALL, sources: ['claude-code'], ccSession: ['uuid-A'], tool: ['Bash'] },
       10, null, NOW,
     );
     expect(q.rows.map((r) => r.id)).toEqual(['a1']);
+  });
+
+  it('project filter is server-side membership on basename(cwd) (commit 6)', () => {
+    const withProj = req('p1', ts, {
+      source: 'claude-code', ccSession: 'uuid-A', cwd: '/Users/user/proj-x', toolName: 'Read',
+    });
+    const p = paginate([...events, withProj], { ...ALL, project: ['proj-x'] }, 10, null, NOW);
+    expect(p.rows.map((r) => r.id)).toEqual(['p1']);
+    // null ≡ absent.
+    expect(paginate([...events, withProj], { ...ALL, project: null }, 10, null, NOW).totalMatching)
+      .toBe(paginate([...events, withProj], ALL, 10, null, NOW).totalMatching);
+  });
+});
+
+describe('facets — stable inventories (commit 6)', () => {
+  const ts = new Date(NOW).toISOString();
+  const echo = req('e1', ts);
+  const write = req('w1', ts, { toolName: 'Write' });
+  const ccA = req('a1', ts, {
+    source: 'claude-code', ccSession: 'uuid-A', toolName: 'Bash', cwd: '/Users/user/proj-a',
+  });
+  const ccB = req('b1', ts, { source: 'claude-code', ccSession: 'uuid-B', toolName: 'Bash' });
+  const events = [echo, write, ccA, ccB];
+
+  it("a facet's own selection never shrinks its inventory (the dogfood bug)", () => {
+    // Filter narrowed to Bash: rows shrink, facets.tools must NOT.
+    const p = paginate(events, { ...ALL, tool: ['Bash'] }, 10, null, NOW);
+    expect(p.rows.map((r) => r.id).sort()).toEqual(['a1', 'b1']);
+    expect(p.facets.tools).toEqual(['Bash', 'Write', 'echo']);
+    // Same for ccSession and project under their own filters.
+    const q = paginate(events, { ...ALL, ccSession: ['uuid-A'], project: ['proj-a'] }, 10, null, NOW);
+    expect(q.facets.ccSessions.map((c) => c.id).sort()).toEqual(['uuid-A', 'uuid-B']);
+    expect(q.facets.projects).toEqual(['proj-a']);
+  });
+
+  it('facets DO respect the base filter: sources and timeRange', () => {
+    // cc-only source → gateway tools (echo/Write) leave the inventory.
+    const p = paginate(events, { ...ALL, sources: ['claude-code'] }, 10, null, NOW);
+    expect(p.facets.tools).toEqual(['Bash']);
+    // Time window excludes everything (events are at NOW; window ends before).
+    const old = paginate(events, { ...ALL, timeRange: '1h' }, 10, null, NOW + 2 * 60 * 60 * 1000);
+    expect(old.facets.tools).toEqual([]);
+  });
+
+  it('facets ignore categories/severities (only sources+timeRange are the base)', () => {
+    const p = paginate(events, { ...ALL, severities: [], categories: [] }, 10, null, NOW);
+    expect(p.rows).toEqual([]);
+    expect(p.facets.tools).toEqual(['Bash', 'Write', 'echo']);
   });
 });
 
@@ -446,7 +502,7 @@ describe('ccSession/cwd survive the REAL detection:page path — JSONL → store
 
     // ccSession filter through the real store path.
     const onlyA = await store.getPage({
-      filter: { ...ALL, ccSession: 'uuid-A' },
+      filter: { ...ALL, ccSession: ['uuid-A'] },
       limit: 10,
       cursor: null,
     });
@@ -460,7 +516,7 @@ describe('ccSession/cwd survive the REAL detection:page path — JSONL → store
     );
     await utimes(join(dir, 'a.jsonl'), new Date(NOW + 5000), new Date(NOW + 5000));
     const second = await store.getPage({
-      filter: { ...ALL, ccSession: 'uuid-A' },
+      filter: { ...ALL, ccSession: ['uuid-A'] },
       limit: 10,
       cursor: null,
     });
@@ -492,5 +548,97 @@ describe('source filter (F1.3b)', () => {
     expect(toSlim(cc).source).toBe('claude-code');
     expect(toDetail(cc).source).toBe('claude-code');
     expect(toDetail(gw).source).toBe('gateway');
+  });
+});
+
+describe('delta final — text, status, custom range, session facet meta', () => {
+  const ts = new Date(NOW).toISOString();
+  const bash = req('t1', ts, { toolName: 'Bash', argsSummary: 'git push origin', outcome: 'ok' });
+  const read = req('t2', ts, { toolName: 'Read', argsSummary: 'apps/x.ts', outcome: 'error' });
+  const orphan = req('t3', ts, { toolName: 'Write' }); // no outcome
+  const events = [bash, read, orphan];
+
+  it('text: case-insensitive against toolName and argsSummary; export inherits via matchesFilter', () => {
+    expect(paginate(events, { ...ALL, text: 'PUSH' }, 10, null, NOW).rows.map((r) => r.id)).toEqual(['t1']);
+    expect(paginate(events, { ...ALL, text: 'bash' }, 10, null, NOW).rows.map((r) => r.id)).toEqual(['t1']);
+    expect(paginate(events, { ...ALL, text: 'x.ts' }, 10, null, NOW).rows.map((r) => r.id)).toEqual(['t2']);
+    expect(paginate(events, { ...ALL, text: 'nomatch' }, 10, null, NOW).rows).toEqual([]);
+    // matchesFilter IS the export predicate — text applies there too.
+    expect(matchesFilter(bash, { ...ALL, text: 'push' }, NOW)).toBe(true);
+    expect(matchesFilter(read, { ...ALL, text: 'push' }, NOW)).toBe(false);
+  });
+
+  it('status: ok/error membership; orphan requests match NO active status filter', () => {
+    expect(paginate(events, { ...ALL, status: ['ok'] }, 10, null, NOW).rows.map((r) => r.id)).toEqual(['t1']);
+    expect(paginate(events, { ...ALL, status: ['error'] }, 10, null, NOW).rows.map((r) => r.id)).toEqual(['t2']);
+    // Both statuses selected still excludes the orphan (it is neither).
+    expect(
+      paginate(events, { ...ALL, status: ['ok', 'error'] }, 10, null, NOW).rows.map((r) => r.id).sort(),
+    ).toEqual(['t1', 't2']);
+    // null ≡ absent ≡ [] → all three.
+    expect(paginate(events, { ...ALL, status: null }, 10, null, NOW).totalMatching).toBe(3);
+  });
+
+  it('outcome rides the slim row (error dot data)', () => {
+    const p = paginate(events, ALL, 10, null, NOW);
+    const byId = new Map(p.rows.map((r) => [r.id, r]));
+    expect(byId.get('t1')?.outcome).toBe('ok');
+    expect(byId.get('t2')?.outcome).toBe('error');
+    expect(byId.get('t3')?.outcome).toBeUndefined();
+  });
+
+  it('custom range: explicit from/to, inclusive both ends', () => {
+    const july1 = req('d1', '2026-07-01T10:00:00.000Z');
+    const july15 = req('d2', '2026-07-15T10:00:00.000Z');
+    const july20 = req('d3', '2026-07-20T23:30:00.000Z');
+    const all = [july1, july15, july20];
+    const p = paginate(
+      all,
+      { ...ALL, timeRange: 'custom', customRange: { from: '2026-07-10', to: '2026-07-20' } },
+      10, null, NOW,
+    );
+    expect(p.rows.map((r) => r.id).sort()).toEqual(['d2', 'd3']); // d3: same-day inclusive
+    // Missing range while timeRange=custom → no restriction (transitional UI state).
+    expect(
+      paginate(all, { ...ALL, timeRange: 'custom', customRange: null }, 10, null, NOW).totalMatching,
+    ).toBe(3);
+  });
+
+  it('session facet meta: started=min ts, where=most recent project (mcp fallback), recent-first', () => {
+    const sA1 = req('a1', '2026-07-02T10:00:00.000Z', { source: 'claude-code', ccSession: 'uuid-A', mcp: 'claude-code' });
+    const sA2 = req('a2', '2026-07-02T11:00:00.000Z', { source: 'claude-code', ccSession: 'uuid-A', cwd: '/Users/user/proj-a' });
+    const sB = req('b1', '2026-07-02T11:30:00.000Z', { source: 'claude-code', ccSession: 'uuid-B', mcp: 'xcg-toy' });
+    const p = paginate([sA1, sA2, sB], ALL, 10, null, NOW);
+    // Recent-first by started: B (11:30) then A (10:00).
+    expect(p.facets.ccSessions.map((c) => c.id)).toEqual(['uuid-B', 'uuid-A']);
+    const a = p.facets.ccSessions.find((c) => c.id === 'uuid-A')!;
+    expect(a.started).toBe('2026-07-02T10:00:00.000Z'); // min observed
+    expect(a.where).toBe('proj-a'); // project wins over mcp
+    const b = p.facets.ccSessions.find((c) => c.id === 'uuid-B')!;
+    expect(b.where).toBe('xcg-toy'); // mcp fallback (no cwd in session)
+  });
+});
+
+describe('outcome backfill through the store (delta final — long-running tool)', () => {
+  it('a response landing in a LATER chunk backfills the cached request', async () => {
+    const store = createAuditStore(dir, { minRefreshMs: 0, now: () => NOW });
+    const ts = new Date(NOW).toISOString();
+    // Chunk 1: request only (long-running tool still executing).
+    await writeFile(join(dir, 'a.jsonl'), reqJson('slow1', ts) + '\n');
+    const first = await store.getPage({ filter: ALL, limit: 10, cursor: null });
+    expect(first.rows[0]?.outcome).toBeUndefined();
+
+    // Chunk 2: the error response arrives in a later append.
+    const resp = JSON.stringify({
+      v: 1, id: 'resp1', ts: new Date(NOW + 30_000).toISOString(), session: 's', mcp: 'm',
+      type: 'mcp.response', direction: 'server_to_client', rpcId: 1, error: 'timeout',
+    });
+    await appendFile(join(dir, 'a.jsonl'), resp + '\n');
+    await utimes(join(dir, 'a.jsonl'), new Date(NOW + 31_000), new Date(NOW + 31_000));
+    const second = await store.getPage({ filter: ALL, limit: 10, cursor: null });
+    expect(second.rows.find((r) => r.id === 'slow1')?.outcome).toBe('error');
+    // And the status filter sees it through the real path.
+    const errs = await store.getPage({ filter: { ...ALL, status: ['error'] }, limit: 10, cursor: null });
+    expect(errs.rows.map((r) => r.id)).toEqual(['slow1']);
   });
 });

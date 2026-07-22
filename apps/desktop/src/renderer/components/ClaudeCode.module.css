@@ -1,23 +1,8 @@
 /* Claude Code view — same visual grammar as Detections.module.css (tokens,
-   filter bar, column header). The .columnHeader grid must stay in sync with
-   ClaudeCodeRow.module.css's .row. */
-.filters {
-  display: flex;
-  gap: 8px;
-  padding: 12px 20px;
-  background: var(--kraft-filter-bg);
-  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
-  height: 56px;
-  box-sizing: border-box;
-  align-items: center;
-}
-
-.timeFilterSpacer {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
+   column header). The toolbar band (.filters/.timeFilterSpacer) is NOT here:
+   ClaudeCode.tsx imports those classes from Detections.module.css directly
+   (commit 5f — one physical rule, zero drift). The .columnHeader grid must
+   stay in sync with ClaudeCodeRow.module.css's .row. */
 
 /* Flagged-only toggle chip — FilterDropdown trigger grammar (pill, hairline,
    same type scale) with an accent state when active. */
@@ -30,6 +15,7 @@
   padding: 4px 10px;
   border-radius: var(--kraft-radius-pill);
   cursor: pointer;
+  white-space: nowrap;
   transition:
     background var(--kraft-transition-fast) ease,
     border-color var(--kraft-transition-fast) ease;
@@ -45,25 +31,108 @@
   color: var(--kraft-accent);
 }
 
-/* "N flagged" counter — smartCounter type scale (Detections), clickable. */
-.flaggedCounter {
-  background: none;
-  border: none;
-  font-family: var(--kraft-font-mono);
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--kraft-ink-soft);
-  cursor: pointer;
-  padding: 4px 0;
+/* Toolbar band (incidencia B): CC's own MULTI-ROW band — same tokens as
+   Detections' .filters (beige, hairline, padding) but rows instead of one
+   fixed-height line. Row 1: search + time segment. Row 2: chips (whole-chip
+   wrap, never splitting a chip's text). Row 3 (only with Custom active):
+   the date inputs, right-aligned, on their own line. */
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  /* One step up the house spacing scale (delta de cierre n): rows breathe. */
+  gap: 14px;
+  padding: 12px 20px;
+  background: var(--kraft-filter-bg);
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
+  box-sizing: border-box;
 }
 
-.flaggedCounter:hover {
+.toolbarRow {
+  display: flex;
+  align-items: center;
+  /* One step up the house scale (delta de cierre n): chips breathe. */
+  gap: 12px;
+}
+
+/* Row 2: chips wrap as WHOLE units on narrow windows. */
+.chipsRow {
+  flex-wrap: wrap;
+}
+
+/* Row 3: custom range on its own line, right-aligned under the segment. */
+.customRow {
+  justify-content: flex-end;
+}
+
+/* Search box (delta final) — FilterDropdown trigger grammar in input form.
+   Row-1 resident (incidencia B): breathes (flex) up to a cap. */
+.searchBox {
+  background: var(--kraft-surface);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
   color: var(--kraft-ink);
-  text-decoration: underline;
+  font-family: var(--kraft-font-ui);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: var(--kraft-radius-pill);
+  flex: 1;
+  min-width: 160px;
+  max-width: 380px;
 }
 
-.flaggedCounterActive {
-  color: var(--kraft-accent);
+.searchBox:focus-visible {
+  outline: 2px solid var(--kraft-accent);
+  outline-offset: 1px;
+}
+
+.searchBox::placeholder {
+  color: var(--kraft-ink-soft);
+}
+
+/* Custom date range (delta final) — native date inputs, token skin. */
+.customRange {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dateInput {
+  background: var(--kraft-surface);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  color: var(--kraft-ink);
+  font-family: var(--kraft-font-ui);
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: var(--kraft-radius-sm);
+}
+
+.customRangeSep {
+  color: var(--kraft-ink-soft);
+  font-size: 12px;
+}
+
+/* Session menu option (commit 6): one line — human label ellipsizes, the
+   dimmed hash keeps a fixed slot on the right. */
+.sessionOption {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sessionOptionLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Dimmed short session hash: secondary detail, never the primary label. */
+.sessionHash {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--kraft-font-mono);
+  font-size: 10px;
+  color: var(--kraft-ink-disabled);
 }
 
 /* Session separator — commit-4 redesign: Setup's .groupTitle grammar (10px,

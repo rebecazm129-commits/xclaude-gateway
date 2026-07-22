@@ -59,14 +59,11 @@
 
 .timeFilterSpacer {
   margin-left: auto;
-}
-
-.smartCounter {
-  font-family: var(--kraft-font-mono);
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--kraft-ink-soft);
-  margin-right: 4px;
+  /* Flex so the CC view's custom-range date inputs sit beside the segmented
+     control (single-child in Detections — no visual change there). */
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .emptyFiltered {

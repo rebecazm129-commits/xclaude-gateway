@@ -57,7 +57,11 @@ const ROW_HEIGHT = 40;
 // row + hairline) which renders below the list. The footer was uncounted before
 // the titlebar landed too (328 had the same bug). The 42 mirrors
 // --kraft-titlebar-height in index.css (keep in sync — TS can't read the CSS var).
-const HEADER_AND_FILTERS_HEIGHT = 404;
+// Exported (commit 5h): ClaudeCode shares this constant — both views have the
+// identical chrome stack since commit 4 (cards + filters + column header +
+// footer). A view-local estimate drifting low overflows 100vh and flex-shrink
+// compresses the titlebar (the drag strip visibly narrows).
+export const HEADER_AND_FILTERS_HEIGHT = 404;
 // Height reclaimed from the list when the retention size banner is visible.
 // Mirrors .retentionBanner in Detections.module.css: padding 10×2 + hairline +
 // ~2 wrapped lines of 13px/1.5 text ≈ 60px. Erring generous (vs. a 1-line
@@ -184,9 +188,8 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
     selectedSources.length !== SOURCE_OPTIONS.length ||
     selectedTimeRange !== 'all';
 
-  const counterLabel = hasActiveFilters
-    ? `${page.totalMatching} of ${page.total}`
-    : `${page.total} events`;
+  // (The "N events" toolbar counter was removed in F2.4 commit 5i — the
+  // Total severity card already carries that number.)
 
   function handleRowClick(row: DetectionRowSlim): void {
     triggerRef.current = document.activeElement as HTMLElement | null;
@@ -269,7 +272,6 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
             </button>
           </span>
         )}
-        <span className={styles['smartCounter']}>{counterLabel}</span>
         <FilterDropdown
           label="Severity"
           options={SEVERITY_OPTIONS}

@@ -82,6 +82,11 @@ export interface DetectionEvent {
   // A diferencia de argumentsJson (heavy, solo drawer), este es pequeño y
   // sobrevive en la caché slim.
   argsSummary?: string;
+  // Derivado por el reader (delta final): resultado del tool call por
+  // correlación con su mcp.response ((session, rpcId), misma pasada del
+  // parse; la caché incremental backfillea cuando la response llega en un
+  // chunk posterior). 'error' si la response trae error o isInterrupt.
+  outcome?: 'ok' | 'error';
   // Microsegundos de overhead introducido por el proxy al procesar el
   // frame. Dato de presentacion para el bloque "Technical details" del
   // drawer (D.3.b.3.a). Opcional: JSONLs antiguos pueden no traerlo.
@@ -234,7 +239,8 @@ export interface RetentionBannerInfo {
 
 // Time window for the Detections view. Single source of truth (TimeFilter
 // re-exports it); crosses IPC inside DetectionFilter.
-export type TimeRange = '1h' | '24h' | '7d' | 'all';
+// 'custom' (F2.4 delta final): explicit {from,to} via DetectionFilter.customRange.
+export type TimeRange = '1h' | '24h' | '7d' | 'all' | 'custom';
 
 // Where an audit event came from: 'gateway' = a wrapper observed real MCP
 // traffic; 'claude-code' = synthesized from a Claude Code hook capture (F1.2,
@@ -258,11 +264,44 @@ export interface DetectionFilter {
   sources: SourceKind[];
   // Filtros CC (F2.4). OPCIONALES (no `| null` a secas) para que los
   // constructores existentes (renderer, export, tests) sigan compilando sin
-  // tocarlos: ausente ≡ null ≡ sin filtrar. tool matchea toolName (solo
-  // mcp.request — un filtro de tool activo excluye enrichments); ccSession
-  // matchea el campo ccSession (requests Y enrichments CC lo llevan).
-  tool?: string | null;
-  ccSession?: string | null;
+  // tocarlos: ausente ≡ null ≡ [] ≡ sin filtrar. Multi-select desde commit 6
+  // (mismo patrón que severities[]): pertenencia al array. tool matchea
+  // toolName (solo mcp.request — activo excluye enrichments); ccSession
+  // matchea el campo ccSession (requests Y enrichments CC); project matchea
+  // basename(cwd) (solo requests con cwd — server-side desde commit 6).
+  tool?: string[] | null;
+  ccSession?: string[] | null;
+  project?: string[] | null;
+  // Búsqueda libre (delta final): case-insensitive contra toolName y
+  // argsSummary (solo requests — un enrichment no tiene ninguno de los dos).
+  text?: string | null;
+  // Filtro por resultado del tool call (delta final): 'ok' | 'error'.
+  // Requests sin response casada (outcome undefined) quedan FUERA de
+  // cualquier filtro de status activo — no son ok ni error.
+  status?: string[] | null;
+  // Rango explícito cuando timeRange === 'custom'. Fechas YYYY-MM-DD
+  // (input type=date); semántica inclusiva: [from 00:00, to 24:00).
+  customRange?: { from: string; to: string } | null;
+}
+
+// Meta por sesión CC (delta final): el dropdown etiqueta TODAS las sesiones
+// server-side — started = ts mínimo observado en la ventana; where = project
+// (basename(cwd)) más reciente de la sesión, o el mcp del evento más nuevo.
+export interface CcSessionFacet {
+  id: string;
+  started: string;
+  where: string;
+}
+
+// Inventario estable de valores de facet (commit 6): calculado server-side
+// sobre el filtro BASE (sources + timeRange), SIN aplicar tool/ccSession/
+// project — el inventario de un facet no depende de sí mismo, así elegir
+// Bash no hace desaparecer las demás tools del dropdown. ccSessions con meta
+// y orden reciente-primero (started desc) desde el delta final.
+export interface DetectionFacets {
+  tools: string[];
+  ccSessions: CcSessionFacet[];
+  projects: string[];
 }
 
 // Compound cursor for stable pagination over a total (ts desc, id desc) order.
@@ -294,6 +333,10 @@ export interface DetectionRowSlim {
   // Resumen corto del argumento principal (F2.4, ver DetectionEvent). NO es
   // forward-only: se deriva del disco en cada parse, históricos incluidos.
   argsSummary?: string;
+  // Resultado del tool call (delta final): correlación request↔response por
+  // (session, rpcId) en el parse. undefined = sin response casada (huérfana
+  // transitoria o histórica).
+  outcome?: 'ok' | 'error';
 }
 
 // detection:page payload. Counts are server-computed so the renderer never needs
@@ -306,6 +349,8 @@ export interface DetectionPageResult {
   severityCounts: Record<Severity, number>; // over the category-filtered set (pre-severity)
   categoryFilteredTotal: number; // size of that category-filtered set
   nextCursor: DetectionCursor | null;
+  // Stable facet inventories (commit 6) — see DetectionFacets.
+  facets: DetectionFacets;
   authAlerts: ConnectorAuthAlert[];
   retention: RetentionBannerInfo | null;
 }

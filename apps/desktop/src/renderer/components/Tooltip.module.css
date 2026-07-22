@@ -1,0 +1,24 @@
+/* Tooltip (F2.4 commit 5l) — FilterDropdown menu grammar in miniature:
+   surface, hairline, soft shadow. pointer-events none so the tip never
+   steals the hover that opened it. */
+.wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.tip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: var(--kraft-surface);
+  border: 0.5px solid var(--kraft-border-strong);
+  border-radius: var(--kraft-radius-sm);
+  padding: 4px 8px;
+  font-family: var(--kraft-font-ui);
+  font-size: 11px;
+  color: var(--kraft-ink);
+  white-space: nowrap;
+  z-index: 20;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--kraft-ink) 10%, transparent);
+  pointer-events: none;
+}

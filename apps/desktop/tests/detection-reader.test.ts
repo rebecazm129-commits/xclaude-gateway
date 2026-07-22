@@ -498,6 +498,24 @@ describe('summarizeArgs (F2.4)', () => {
     expect(summarizeArgs('Bash', { command: '   ' })).toBeUndefined();
   });
 
+  it('trims path-valued winners to project-relative against cwd (commit 5g)', () => {
+    const cwd = '/Users/user/repo';
+    // Path key under cwd → relative.
+    expect(summarizeArgs('Edit', { file_path: '/Users/user/repo/apps/x.ts' }, cwd)).toBe('apps/x.ts');
+    // Generic *_path key trims too.
+    expect(summarizeArgs('NotebookEdit', { notebook_path: '/Users/user/repo/nb.ipynb' }, cwd)).toBe('nb.ipynb');
+    // Outside the cwd → intact.
+    expect(summarizeArgs('Read', { file_path: '/Users/user/other/x.ts' }, cwd)).toBe('/Users/user/other/x.ts');
+    // No cwd (historical envelopes) → intact.
+    expect(summarizeArgs('Edit', { file_path: '/Users/user/repo/apps/x.ts' })).toBe('/Users/user/repo/apps/x.ts');
+    // Compound Bash command → NEVER substring-substituted.
+    expect(summarizeArgs('Bash', { command: 'cat /Users/user/repo/apps/x.ts | wc -l' }, cwd)).toBe(
+      'cat /Users/user/repo/apps/x.ts | wc -l',
+    );
+    // Trailing-slash cwd normalizes.
+    expect(summarizeArgs('Read', { file_path: '/Users/user/repo/a.ts' }, '/Users/user/repo/')).toBe('a.ts');
+  });
+
   it('collapses whitespace and truncates at 100 chars with an ellipsis', () => {
     expect(summarizeArgs('Bash', { command: 'echo a\n  &&  echo b' })).toBe('echo a && echo b');
     const long = 'x'.repeat(150);
@@ -520,5 +538,65 @@ describe('summarizeArgs (F2.4)', () => {
     const result = await readDetections(dir);
     const ev = result[0] as unknown as { argsSummary?: string };
     expect(ev.argsSummary).toBe('git status');
+  });
+
+  it('parse trims path summaries against the line cwd (commit 5g, real path)', async () => {
+    const dir = join(tmpDir, 'args-summary-cwd');
+    await mkdir(dir, { recursive: true });
+    const line = JSON.stringify({
+      v: 1, id: 'as2', ts: '2025-05-14T12:00:00.000Z', session: 's', mcp: 'claude-code',
+      type: 'mcp.request', direction: 'client_to_server', rpcId: 'toolu_x',
+      method: 'tools/call', source: 'claude-code', cwd: '/Users/user/repo',
+      params: { name: 'Edit', arguments: { file_path: '/Users/user/repo/src/a.ts' } },
+      detection: { category: 'tool_call_allowed', severity: 'low', findings: [] },
+    });
+    await writeFile(join(dir, 's.jsonl'), line + '\n');
+    const result = await readDetections(dir);
+    const ev = result[0] as unknown as { argsSummary?: string };
+    expect(ev.argsSummary).toBe('src/a.ts');
+  });
+});
+
+describe('outcome correlation (delta final)', () => {
+  function reqLine(id: string, rpcId: number | string): string {
+    return JSON.stringify({
+      v: 1, id, ts: '2025-05-14T12:00:00.000Z', session: 'sess', mcp: 'm',
+      type: 'mcp.request', direction: 'client_to_server', rpcId,
+      method: 'tools/call', params: { name: 'Bash', arguments: { command: 'x' } },
+      detection: { category: 'tool_call_allowed', severity: 'low', findings: [] },
+    });
+  }
+  function respLine(rpcId: number | string, opts: { error?: string; isInterrupt?: boolean } = {}): string {
+    return JSON.stringify({
+      v: 1, id: `resp-${String(rpcId)}`, ts: '2025-05-14T12:00:01.000Z', session: 'sess',
+      mcp: 'm', type: 'mcp.response', direction: 'server_to_client', rpcId,
+      ...(opts.error !== undefined ? { error: opts.error } : { result: { content: [] } }),
+      ...(opts.isInterrupt !== undefined ? { isInterrupt: opts.isInterrupt } : {}),
+    });
+  }
+
+  it('request+response ok → outcome ok; error response → error; orphan → undefined', async () => {
+    const dir = join(tmpDir, 'outcomes');
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, 's.jsonl'),
+      [reqLine('ok1', 1), respLine(1), reqLine('err1', 2), respLine(2, { error: 'boom' }), reqLine('orphan1', 3)].join('\n') + '\n',
+    );
+    const result = await readDetections(dir);
+    const byId = new Map(result.map((e) => [e.id, e as unknown as { outcome?: string }]));
+    expect(byId.get('ok1')?.outcome).toBe('ok');
+    expect(byId.get('err1')?.outcome).toBe('error');
+    expect(byId.get('orphan1')?.outcome).toBeUndefined();
+  });
+
+  it('isInterrupt marks error even without an error field', async () => {
+    const dir = join(tmpDir, 'outcomes-interrupt');
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, 's.jsonl'),
+      [reqLine('int1', 7), respLine(7, { isInterrupt: true })].join('\n') + '\n',
+    );
+    const result = await readDetections(dir);
+    expect((result[0] as unknown as { outcome?: string }).outcome).toBe('error');
   });
 });

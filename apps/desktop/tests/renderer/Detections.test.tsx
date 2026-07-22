@@ -16,6 +16,7 @@ const EMPTY_PAGE: DetectionPageResult = {
   severityCounts: { low: 0, medium: 0, high: 0, critical: 0 },
   categoryFilteredTotal: 0,
   nextCursor: null,
+  facets: { tools: [], ccSessions: [], projects: [] },
   authAlerts: [],
   retention: null,
 };
@@ -60,5 +61,17 @@ describe('Detections — sources preset (F1.3c)', () => {
     await waitFor(() => expect(listDetectionPage).toHaveBeenCalled());
     const call = listDetectionPage.mock.calls[0]?.[0] as { filter: { sources: string[] } };
     expect(call.filter.sources.sort()).toEqual(['claude-code', 'gateway']);
+  });
+
+  it('the toolbar "N events" counter is gone (F2.4 commit 5i — the Total card owns it)', async () => {
+    stubXcg();
+    render(<Detections mcpFilter={null} onClearMcpFilter={() => {}} />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Source \(2\/2\)/ })).toBeDefined();
+    });
+    // Old label shapes: "0 events" (no filters) / "0 of 0" (filtered). The
+    // footer's "Export 0 events" button is a different, whole-element text.
+    expect(screen.queryByText(/^\d+ events$/)).toBeNull();
+    expect(screen.queryByText(/^\d+ of \d+$/)).toBeNull();
   });
 });
