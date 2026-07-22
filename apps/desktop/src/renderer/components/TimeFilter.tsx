@@ -14,9 +14,9 @@ const TIME_RANGE_OPTIONS: readonly { value: TimeRange; label: string }[] = [
 interface Props {
   value: TimeRange;
   onChange: (next: TimeRange) => void;
-  /** Opt-in 'Custom' segment (F2.4 delta final). Only the Claude Code view
-   *  passes it — Detections keeps its four presets untouched (extending it
-   *  there is a separate decision). */
+  /** Opt-in 'Custom' segment (F2.4 delta final). Both views pass it since the
+   *  Detections filter parity (22/07); the flag stays opt-in for any future
+   *  caller that wants only the four presets. */
   allowCustom?: boolean;
 }
 

@@ -20,6 +20,13 @@ import { SeverityBreakdown } from './SeverityBreakdown.js';
 import { TimeFilter, type TimeRange } from './TimeFilter.js';
 
 import styles from './Detections.module.css';
+// The whole toolbar band (toolbar/toolbarRow/chipsRow) plus the
+// search/date-input skins live in ClaudeCode.module.css — since the toolbar
+// parity (dogfood 22/07) Detections renders CC's exact multi-row band.
+// Commit 5f's anti-drift pattern in the opposite direction (one physical
+// rule, zero drift); CSS-module import only: no TSX cycle (ClaudeCode.tsx
+// imports constants from this file).
+import ccStyles from './ClaudeCode.module.css';
 
 // Exported (like CATEGORY_OPTIONS below) so sibling views that fix a filter
 // axis (ClaudeCode) share the same "everything selected" definition.
@@ -38,6 +45,11 @@ export const CATEGORY_OPTIONS: readonly Category[] = [
   'tool_manifest_changed',
 ];
 
+// Search debounce: fast enough to feel live, slow enough to not thrash the
+// 2s-polled IPC with every keystroke. Exported (filter parity 22/07): both
+// views share the same cadence, like the option inventories above.
+export const SEARCH_DEBOUNCE_MS = 250;
+
 // Human-readable byte size for the retention banner (1024-based).
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -53,21 +65,26 @@ function formatBytes(bytes: number): string {
 
 const ROW_HEIGHT = 40;
 // Chrome around the virtualized list: titlebar (42) + header (84) + tabs (40) +
-// filters bar, PLUS the bottom "Open audit folder" footer (~34px: padding 8×2 +
-// row + hairline) which renders below the list. The footer was uncounted before
-// the titlebar landed too (328 had the same bug). The 42 mirrors
-// --kraft-titlebar-height in index.css (keep in sync — TS can't read the CSS var).
+// the TWO-ROW toolbar (~92 MEASURED via CDP, dogfood 3ª ronda: padding 12×2 +
+// row1 29.5 + gap 14 + row2 23.5 = 91 — CC's band, shared since the toolbar
+// parity 22/07; the custom date inputs ride INSIDE row 2, no extra height),
+// PLUS the bottom "Open audit folder" footer (~34px: padding 8×2 + row +
+// hairline) which renders below the list. The 42 mirrors
+// --kraft-titlebar-height in index.css (keep in sync — TS can't read the CSS
+// var).
 // Exported (commit 5h): ClaudeCode shares this constant — both views have the
-// identical chrome stack since commit 4 (cards + filters + column header +
-// footer). A view-local estimate drifting low overflows 100vh and flex-shrink
-// compresses the titlebar (the drag strip visibly narrows).
-export const HEADER_AND_FILTERS_HEIGHT = 404;
+// IDENTICAL chrome stack, toolbar included since the parity. A view-local
+// estimate drifting low overflows 100vh and flex-shrink compresses the
+// titlebar (the drag strip visibly narrows).
+export const HEADER_AND_FILTERS_HEIGHT = 440;
 // Height reclaimed from the list when the retention size banner is visible.
 // Mirrors .retentionBanner in Detections.module.css: padding 10×2 + hairline +
 // ~2 wrapped lines of 13px/1.5 text ≈ 60px. Erring generous (vs. a 1-line
 // banner on a wide window) keeps the list from ever overflowing the footer;
 // worst case is a hair of empty space, never a row hidden below it.
 const RETENTION_BANNER_HEIGHT = 60;
+// (CUSTOM_ROW_HEIGHT died in dogfood 3ª ronda: the custom date inputs live
+// inside the chips row now, so the Custom segment adds no extra height.)
 // Rows from the end at which we prefetch the next page (infinite scroll).
 const LOAD_MORE_THRESHOLD = 20;
 
@@ -92,6 +109,13 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
   const [selectedRow, setSelectedRow] = useState<DetectionRowSlim | null>(null);
   const [openDropdown, setOpenDropdown] = useState<'severity' | 'category' | 'source' | null>(null);
   const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('all');
+  // Free-text search (filter parity 22/07 — ClaudeCode's exact pattern): raw
+  // input debounced into the shipped filter value.
+  const [searchInput, setSearchInput] = useState('');
+  const [textFilter, setTextFilter] = useState<string | null>(null);
+  // Custom date range (active when the time segment is 'custom').
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const severityRef = useRef<HTMLDivElement>(null);
   const categoryRef = useRef<HTMLDivElement>(null);
   const sourceRef = useRef<HTMLDivElement>(null);
@@ -103,6 +127,15 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
   const [scrollOffset, setScrollOffset] = useState(0);
   const [lastSeenTopId, setLastSeenTopId] = useState<string | null>(null);
 
+  // Debounce the search box into the shipped text filter.
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      const trimmed = searchInput.trim();
+      setTextFilter(trimmed === '' ? null : trimmed);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
+
   // The full filter is computed server-side; the renderer no longer filters.
   const filter: DetectionFilter = useMemo(
     () => ({
@@ -111,8 +144,16 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
       categories: [...selectedCategories],
       severities: [...selectedSeverities],
       sources: [...selectedSources],
+      text: textFilter,
+      customRange:
+        selectedTimeRange === 'custom' && customFrom !== '' && customTo !== ''
+          ? { from: customFrom, to: customTo }
+          : null,
     }),
-    [mcpFilter, selectedTimeRange, selectedCategories, selectedSeverities, selectedSources],
+    [
+      mcpFilter, selectedTimeRange, selectedCategories, selectedSeverities,
+      selectedSources, textFilter, customFrom, customTo,
+    ],
   );
 
   const page = useDetectionPage(filter);
@@ -171,7 +212,7 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
     setScrollOffset(0);
     // (The export-result reset on filter change lives in AuditFooter now.)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSeverities, selectedCategories, selectedSources, selectedTimeRange, mcpFilter]);
+  }, [selectedSeverities, selectedCategories, selectedSources, selectedTimeRange, mcpFilter, textFilter, customFrom, customTo]);
 
   const newCount = useMemo(() => {
     if (lastSeenTopId === null) return 0;
@@ -186,7 +227,9 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
     selectedSeverities.length !== SEVERITY_OPTIONS.length ||
     selectedCategories.length !== CATEGORY_OPTIONS.length ||
     selectedSources.length !== SOURCE_OPTIONS.length ||
-    selectedTimeRange !== 'all';
+    // 'custom' is covered here too — any non-default time segment is active.
+    selectedTimeRange !== 'all' ||
+    textFilter !== null;
 
   // (The "N events" toolbar counter was removed in F2.4 commit 5i — the
   // Total severity card already carries that number.)
@@ -228,6 +271,10 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
     setSelectedCategories(CATEGORY_OPTIONS);
     setSelectedSources(SOURCE_OPTIONS);
     setSelectedTimeRange('all');
+    setSearchInput('');
+    setTextFilter(null); // immediate — don't wait out the debounce
+    setCustomFrom('');
+    setCustomTo('');
     onClearMcpFilter();
   }
 
@@ -257,51 +304,89 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
         onSelectTotal={handleSelectTotal}
         onSelectSeverity={handleSelectSeverity}
       />
-      <div className={styles['filters']}>
-        {mcpFilter !== null && (
-          <span className={styles['connectorFilter']}>
-            <span className={styles['connectorFilterLabel']}>MCP</span>
-            {mcpFilter}
-            <button
-              type="button"
-              className={styles['connectorFilterClear']}
-              onClick={onClearMcpFilter}
-              aria-label={`Clear MCP filter: ${mcpFilter}`}
-            >
-              ✕
-            </button>
-          </span>
-        )}
-        <FilterDropdown
-          label="Severity"
-          options={SEVERITY_OPTIONS}
-          selected={selectedSeverities}
-          onChange={setSelectedSeverities}
-          isOpen={openDropdown === 'severity'}
-          onToggle={() => setOpenDropdown((prev) => (prev === 'severity' ? null : 'severity'))}
-          dropdownRef={severityRef}
-        />
-        <FilterDropdown
-          label="Category"
-          options={CATEGORY_OPTIONS}
-          selected={selectedCategories}
-          onChange={setSelectedCategories}
-          isOpen={openDropdown === 'category'}
-          onToggle={() => setOpenDropdown((prev) => (prev === 'category' ? null : 'category'))}
-          dropdownRef={categoryRef}
-        />
-        <FilterDropdown
-          label="Source"
-          options={SOURCE_OPTIONS}
-          selected={selectedSources}
-          onChange={setSelectedSources}
-          isOpen={openDropdown === 'source'}
-          onToggle={() => setOpenDropdown((prev) => (prev === 'source' ? null : 'source'))}
-          dropdownRef={sourceRef}
-          formatOption={(o) => SOURCE_LABELS[o]}
-        />
-        <div className={styles['timeFilterSpacer']}>
-          <TimeFilter value={selectedTimeRange} onChange={setSelectedTimeRange} />
+      <div className={ccStyles['toolbar']}>
+        <div className={ccStyles['toolbarRow']}>
+          <input
+            type="search"
+            className={ccStyles['searchBox']}
+            placeholder="Search tool or details…"
+            aria-label="Search tool or details"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+          />
+          <div className={styles['timeFilterSpacer']}>
+            <TimeFilter
+              value={selectedTimeRange}
+              onChange={setSelectedTimeRange}
+              allowCustom
+            />
+          </div>
+        </div>
+        <div className={`${ccStyles['toolbarRow']} ${ccStyles['chipsRow']}`}>
+          {mcpFilter !== null && (
+            <span className={styles['connectorFilter']}>
+              <span className={styles['connectorFilterLabel']}>MCP</span>
+              {mcpFilter}
+              <button
+                type="button"
+                className={styles['connectorFilterClear']}
+                onClick={onClearMcpFilter}
+                aria-label={`Clear MCP filter: ${mcpFilter}`}
+              >
+                ✕
+              </button>
+            </span>
+          )}
+          <FilterDropdown
+            label="Severity"
+            options={SEVERITY_OPTIONS}
+            selected={selectedSeverities}
+            onChange={setSelectedSeverities}
+            isOpen={openDropdown === 'severity'}
+            onToggle={() => setOpenDropdown((prev) => (prev === 'severity' ? null : 'severity'))}
+            dropdownRef={severityRef}
+          />
+          <FilterDropdown
+            label="Category"
+            options={CATEGORY_OPTIONS}
+            selected={selectedCategories}
+            onChange={setSelectedCategories}
+            isOpen={openDropdown === 'category'}
+            onToggle={() => setOpenDropdown((prev) => (prev === 'category' ? null : 'category'))}
+            dropdownRef={categoryRef}
+          />
+          <FilterDropdown
+            label="Source"
+            options={SOURCE_OPTIONS}
+            selected={selectedSources}
+            onChange={setSelectedSources}
+            isOpen={openDropdown === 'source'}
+            onToggle={() => setOpenDropdown((prev) => (prev === 'source' ? null : 'source'))}
+            dropdownRef={sourceRef}
+            formatOption={(o) => SOURCE_LABELS[o]}
+          />
+          {selectedTimeRange === 'custom' && (
+            // Native date inputs — CC's exact pattern: IN the chips row
+            // (dogfood 3ª ronda), right-aligned under the time segment; on a
+            // narrow window they wrap as a whole unit like any chip.
+            <span className={ccStyles['customRange']}>
+              <input
+                type="date"
+                className={ccStyles['dateInput']}
+                aria-label="From date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+              />
+              <span className={ccStyles['customRangeSep']}>–</span>
+              <input
+                type="date"
+                className={ccStyles['dateInput']}
+                aria-label="To date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+              />
+            </span>
+          )}
         </div>
       </div>
       {rows.length === 0 ? (

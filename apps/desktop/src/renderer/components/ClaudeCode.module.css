@@ -1,8 +1,10 @@
 /* Claude Code view — same visual grammar as Detections.module.css (tokens,
-   column header). The toolbar band (.filters/.timeFilterSpacer) is NOT here:
-   ClaudeCode.tsx imports those classes from Detections.module.css directly
-   (commit 5f — one physical rule, zero drift). The .columnHeader grid must
-   stay in sync with ClaudeCodeRow.module.css's .row. */
+   column header). The .timeFilterSpacer is NOT here: ClaudeCode.tsx imports
+   it from Detections.module.css directly (commit 5f — one physical rule,
+   zero drift). The multi-row toolbar band below flows the other way:
+   Detections.tsx imports it since the toolbar parity (22/07). The
+   .columnHeader grid must stay in sync with ClaudeCodeRow.module.css's
+   .row. */
 
 /* Flagged-only toggle chip — FilterDropdown trigger grammar (pill, hairline,
    same type scale) with an accent state when active. */
@@ -31,11 +33,11 @@
   color: var(--kraft-accent);
 }
 
-/* Toolbar band (incidencia B): CC's own MULTI-ROW band — same tokens as
-   Detections' .filters (beige, hairline, padding) but rows instead of one
-   fixed-height line. Row 1: search + time segment. Row 2: chips (whole-chip
-   wrap, never splitting a chip's text). Row 3 (only with Custom active):
-   the date inputs, right-aligned, on their own line. */
+/* Toolbar band (incidencia B): the MULTI-ROW band, shared by BOTH views
+   since the toolbar parity (22/07 — Detections' old single-row .filters is
+   gone). Row 1: search + time segment. Row 2: chips (whole-chip wrap, never
+   splitting a chip's text) + — only with Custom active — the date inputs,
+   right-aligned at the end of the same row (dogfood 3ª ronda). */
 .toolbar {
   display: flex;
   flex-direction: column;
@@ -52,16 +54,16 @@
   align-items: center;
   /* One step up the house scale (delta de cierre n): chips breathe. */
   gap: 12px;
+  /* Whole-unit wrap (dogfood 2ª ronda): the BrowserWindow has no minWidth,
+     and the time segment + the search box's 160px floor cannot shrink — on a
+     narrow window the segment must drop to its own line, never clip against
+     the window edge (body overflow:hidden eats anything past it). */
+  flex-wrap: wrap;
 }
 
 /* Row 2: chips wrap as WHOLE units on narrow windows. */
 .chipsRow {
   flex-wrap: wrap;
-}
-
-/* Row 3: custom range on its own line, right-aligned under the segment. */
-.customRow {
-  justify-content: flex-end;
 }
 
 /* Search box (delta final) — FilterDropdown trigger grammar in input form.
@@ -88,11 +90,15 @@
   color: var(--kraft-ink-soft);
 }
 
-/* Custom date range (delta final) — native date inputs, token skin. */
+/* Custom date range (delta final) — native date inputs, token skin. Lives at
+   the END of the chips row (dogfood 3ª ronda — the own-row band died):
+   margin-left auto pushes it right, under the time segment; the chips row's
+   whole-unit wrap covers narrow windows. */
 .customRange {
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-left: auto;
 }
 
 .dateInput {

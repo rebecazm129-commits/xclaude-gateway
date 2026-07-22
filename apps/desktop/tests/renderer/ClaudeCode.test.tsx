@@ -294,18 +294,19 @@ describe('ClaudeCode view (F2.4 commit 4)', () => {
     // apply stylesheets, so that part stays on visual verification.)
   });
 
-  it('Custom active: date inputs live on their OWN row, never in row 1 (incidencia B)', async () => {
+  it('Custom active: date inputs join the chips row, never row 1 (dogfood 3ª ronda)', async () => {
     stubXcgForView(PAGE_WITH_ROWS);
     const { container } = render(<ClaudeCode />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Custom' })).toBeDefined());
     fireEvent.click(screen.getByRole('button', { name: 'Custom' }));
     const from = screen.getByLabelText('From date');
-    const customRow = container.querySelector(`.${ccStyles['customRow']}`);
-    expect(customRow).not.toBeNull();
-    expect(customRow?.contains(from)).toBe(true);
-    // The custom row contains neither the search box nor any chip.
-    expect(customRow?.contains(screen.getByRole('searchbox', { name: 'Search tool or details' }))).toBe(false);
-    expect(customRow?.contains(screen.getByRole('button', { name: 'Flagged only' }))).toBe(false);
+    // The own-row band died: the date inputs live IN the chips row, next to
+    // the chips, and never in row 1 with the search box.
+    const chipsRow = container.querySelector(`.${ccStyles['chipsRow']}`);
+    expect(chipsRow).not.toBeNull();
+    expect(chipsRow?.contains(from)).toBe(true);
+    expect(chipsRow?.contains(screen.getByRole('button', { name: 'Flagged only' }))).toBe(true);
+    expect(chipsRow?.contains(screen.getByRole('searchbox', { name: 'Search tool or details' }))).toBe(false);
   });
 
   it('the 3 chips show the DOM tooltip on hover — rendered element, not an attribute', async () => {

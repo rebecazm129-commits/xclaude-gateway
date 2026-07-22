@@ -10,7 +10,7 @@ import type {
 } from '../../shared/types.js';
 
 import { AuditFooter } from './AuditFooter.js';
-import { CATEGORY_OPTIONS, SEVERITY_OPTIONS, HEADER_AND_FILTERS_HEIGHT } from './Detections.js';
+import { CATEGORY_OPTIONS, SEVERITY_OPTIONS, HEADER_AND_FILTERS_HEIGHT, SEARCH_DEBOUNCE_MS } from './Detections.js';
 import { ClaudeCodeRow } from './ClaudeCodeRow.js';
 import { DetailDrawer } from './DetailDrawer.js';
 import { formatTimestamp } from './detections-format.js';
@@ -21,8 +21,8 @@ import { Tooltip } from './Tooltip.js';
 
 import styles from './ClaudeCode.module.css';
 // The right-aligned time group still shares Detections' .timeFilterSpacer
-// (commit 5f anti-drift). The BAND itself is CC's own multi-row .toolbar
-// since incidencia B — same tokens, different geometry.
+// (commit 5f anti-drift). The multi-row .toolbar band lives HERE and is
+// shared back: Detections renders it too since the toolbar parity (22/07).
 import toolbarStyles from './Detections.module.css';
 
 // Claude Code view (F2.4): the claude-code slice of the audit trail as its
@@ -33,15 +33,12 @@ import toolbarStyles from './Detections.module.css';
 // back once the data existed).
 
 const ROW_HEIGHT = 40;
-// List chrome height derives from Detections' HEADER_AND_FILTERS_HEIGHT
-// (commit 5h — a low estimate overflows 100vh and flex-shrink squeezes the
-// titlebar), PLUS the two-row toolbar's excess over Detections' single 56px
-// bar (incidencia B): padding 12×2 + row1 ~30 + gap 14 + row2 ~28 ≈ 108 →
-// +52 (gap bumped one step, delta de cierre n). The custom-range row adds
-// ~42 more only while visible (row + gap).
-const CC_TOOLBAR_EXTRA = 52;
-const CUSTOM_ROW_HEIGHT = 42;
-const CHROME_HEIGHT = HEADER_AND_FILTERS_HEIGHT + CC_TOOLBAR_EXTRA;
+// List chrome height IS Detections' HEADER_AND_FILTERS_HEIGHT since the
+// toolbar parity (22/07): the two-row toolbar excess (the old
+// CC_TOOLBAR_EXTRA = 52) is folded into the shared constant — both views
+// render the identical band. The custom date inputs live INSIDE the chips
+// row (dogfood 3ª ronda), so Custom adds no extra height.
+const CHROME_HEIGHT = HEADER_AND_FILTERS_HEIGHT;
 // Rows from the end at which we prefetch the next page (same threshold as
 // Detections' infinite scroll).
 const LOAD_MORE_THRESHOLD = 20;
@@ -59,9 +56,8 @@ export const FLAGGED_CATEGORIES: readonly Category[] = CATEGORY_OPTIONS.filter(
 const STATUS_OPTIONS: readonly string[] = ['ok', 'error'];
 const STATUS_LABELS: Record<string, string> = { ok: 'OK', error: 'Error' };
 
-// Search debounce: fast enough to feel live, slow enough to not thrash the
-// 2s-polled IPC with every keystroke.
-const SEARCH_DEBOUNCE_MS = 250;
+// (SEARCH_DEBOUNCE_MS moved to Detections.js with the filter parity, 22/07 —
+// same import direction as the option inventories above.)
 
 // List items: real rows interleaved with synthetic session-separator items.
 // Same FixedSizeList, uniform ROW_HEIGHT — a separator is just another 40px
@@ -391,31 +387,31 @@ export function ClaudeCode(): JSX.Element {
             tooltip="Filter by the folder where Claude Code was running"
           />
         )}
-        </div>
         {selectedTimeRange === 'custom' && (
           // Native date inputs (delta final): the house has no datepicker —
           // <input type="date"> is the simplest coherent pattern, tokens on
-          // top. Own ROW (incidencia B): never squeezes search or chips.
-          <div className={`${styles['toolbarRow']} ${styles['customRow']}`}>
-            <span className={styles['customRange']}>
-              <input
-                type="date"
-                className={styles['dateInput']}
-                aria-label="From date"
-                value={customFrom}
-                onChange={(e) => setCustomFrom(e.target.value)}
-              />
-              <span className={styles['customRangeSep']}>–</span>
-              <input
-                type="date"
-                className={styles['dateInput']}
-                aria-label="To date"
-                value={customTo}
-                onChange={(e) => setCustomTo(e.target.value)}
-              />
-            </span>
-          </div>
+          // top. IN the chips row since dogfood 3ª ronda (the own-row band
+          // died): right-aligned at the end, under the time segment; on a
+          // narrow window it wraps as a whole unit like any chip.
+          <span className={styles['customRange']}>
+            <input
+              type="date"
+              className={styles['dateInput']}
+              aria-label="From date"
+              value={customFrom}
+              onChange={(e) => setCustomFrom(e.target.value)}
+            />
+            <span className={styles['customRangeSep']}>–</span>
+            <input
+              type="date"
+              className={styles['dateInput']}
+              aria-label="To date"
+              value={customTo}
+              onChange={(e) => setCustomTo(e.target.value)}
+            />
+          </span>
         )}
+        </div>
       </div>
       {items.length === 0 ? (
         <div className={styles['empty']}>
@@ -432,7 +428,7 @@ export function ClaudeCode(): JSX.Element {
             <span className={styles['columnHeaderCell']}>Details</span>
           </div>
           <FixedSizeList
-            height={listHeight - (selectedTimeRange === 'custom' ? CUSTOM_ROW_HEIGHT : 0)}
+            height={listHeight}
             width="100%"
             itemSize={ROW_HEIGHT}
             itemCount={items.length}

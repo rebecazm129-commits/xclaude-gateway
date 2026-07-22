@@ -1,13 +1,7 @@
-.filters {
-  display: flex;
-  gap: 8px;
-  padding: 12px 20px;
-  background: var(--kraft-filter-bg);
-  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
-  height: 56px;
-  box-sizing: border-box;
-  align-items: center;
-}
+/* (The old single-row .filters bar died with the toolbar parity, 22/07 —
+   Detections now renders CC's multi-row .toolbar band, imported from
+   ClaudeCode.module.css. Only .timeFilterSpacer below is still shared
+   in the commit-5f direction.) */
 
 /* "Audit log has grown" advisory banner — shown when the wrappers dir exceeds
    the configured sizeWarnBytes. Advisory only; it never limits auditing. */
