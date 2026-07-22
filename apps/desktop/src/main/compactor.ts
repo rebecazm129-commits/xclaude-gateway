@@ -13,6 +13,10 @@
 //   3. For each group: append the candidate lines verbatim to the day file
 //      (creating it if missing), fsync, then unlink each source only after
 //      a freshness re-stat confirms it did not grow during the append.
+//      Line-boundary guarantee (auditoría 22/07): every non-empty chunk is
+//      terminated with '\n' before the next is concatenated, and a day file
+//      whose tail is a partial line (cycle killed mid-append) gets a '\n'
+//      before the new content — a valid line never glues to a partial one.
 //   4. Idempotence: before appending, load the ids already present in the
 //      day file for this batch and skip any source line whose id matches.
 //      A crash between append and unlink leaves duplicates the reader
@@ -407,6 +411,19 @@ export function filterExistingIds(
   return { filtered, skipped };
 }
 
+// ensureTrailingNewline — pure: guarantees a non-empty chunk ends in
+// '\n' (line-boundary fix, auditoría 22/07). A source killed mid-write
+// (kill -9) can end in a partial line with no terminator; concatenating
+// the next candidate's content directly after it would GLUE the partial
+// to that candidate's first line — one valid line degraded to malformed,
+// and lost for good once the source is unlinked. Terminating the partial
+// is harmless: the reader already skipped it as malformed; now it is
+// malformed AND isolated. Empty chunk → unchanged (no lone '\n').
+export function ensureTrailingNewline(s: string): string {
+  if (s === '' || s.endsWith('\n')) return s;
+  return `${s}\n`;
+}
+
 // serializeGroup — pure: joins each candidate's content verbatim.
 // Each candidate's content is assumed to end with '\n' already (JSONL
 // invariant of the audit trail); we do NOT re-normalize or trim.
@@ -421,8 +438,12 @@ function serializeGroup(entries: readonly CandidateEntry[]): string {
 }
 
 // loadDayFileIds — reads the day file (if it exists) and returns the
-// set of ids already durable there. ENOENT → empty set (first
-// compaction for this day). Any other read error propagates.
+// set of ids already durable there PLUS whether its content ends in a
+// line boundary (line-boundary fix, auditoría 22/07: a cycle killed
+// mid-append leaves a partial tail line; the next append must isolate
+// it, not glue to it — the flag rides the read we already do, no
+// second pass over the file). ENOENT → empty set, clean boundary
+// (first compaction for this day). Any other read error propagates.
 //
 // NOTE (deferred): this parses the entire day file every cycle
 // (~15s cadence). At the projected steady-state N (600-2000 lines
@@ -432,15 +453,22 @@ function serializeGroup(entries: readonly CandidateEntry[]): string {
 // straightforward: invalidate when mtime changes, keep the Set
 // otherwise. Not optimized now: premature without benchmark evidence,
 // and cache invalidation carries its own hazards.
-async function loadDayFileIds(dayFilePath: string): Promise<Set<string>> {
+async function loadDayFileIds(
+  dayFilePath: string,
+): Promise<{ ids: Set<string>; endsWithNewline: boolean }> {
   let content: string;
   try {
     content = await readFile(dayFilePath, 'utf8');
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return new Set();
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { ids: new Set(), endsWithNewline: true };
+    }
     throw err;
   }
-  return extractIds(content);
+  return {
+    ids: extractIds(content),
+    endsWithNewline: content === '' || content.endsWith('\n'),
+  };
 }
 
 // fsyncDir — fsync the directory to make dirent changes (create,
@@ -550,19 +578,28 @@ export async function runCompactionCycle(
     const dayBasename = `${dayFileUlid(dayStart)}.jsonl`;
     const dayPath = join(wrappersDir, dayBasename);
 
-    const existingIds = await loadDayFileIds(dayPath);
+    const { ids: existingIds, endsWithNewline } = await loadDayFileIds(dayPath);
 
     let dataToAppend = '';
     for (const entry of entries) {
       const { filtered, skipped } = filterExistingIds(entry.content, existingIds);
-      dataToAppend += filtered;
+      // Line-boundary (a): a kill-9'd source can end in a partial line
+      // with no '\n' — terminate it so the NEXT candidate's first line
+      // never glues to it (see ensureTrailingNewline).
+      dataToAppend += ensureTrailingNewline(filtered);
       linesSkippedDuplicate += skipped;
     }
 
     dayFilesTouched.push(dayBasename);
 
     if (dataToAppend.length > 0) {
-      await appendVerbatimAndFsync(dayPath, wrappersDir, dataToAppend);
+      // Line-boundary (b): if a previous cycle died mid-append, the day
+      // file ends in a partial line — isolate it with a '\n' BEFORE the
+      // new content (same single append+fsync; no extra write). The
+      // guard byte is excluded from linesAppended below: it terminates
+      // a pre-existing partial, it is not a line of this batch.
+      const payload = endsWithNewline ? dataToAppend : `\n${dataToAppend}`;
+      await appendVerbatimAndFsync(dayPath, wrappersDir, payload);
       for (let i = 0; i < dataToAppend.length; i++) {
         if (dataToAppend.charCodeAt(i) === 0x0a) linesAppended++;
       }

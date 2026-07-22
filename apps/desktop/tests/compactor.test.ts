@@ -10,6 +10,7 @@ import {
   planCompaction,
   extractIds,
   filterExistingIds,
+  ensureTrailingNewline,
   runCompactionCycle,
   type CandidateEntry,
 } from '../src/main/compactor.js';
@@ -321,6 +322,20 @@ describe('filterExistingIds', () => {
   });
 });
 
+describe('ensureTrailingNewline', () => {
+  it('empty string → unchanged (no lone newline)', () => {
+    expect(ensureTrailingNewline('')).toBe('');
+  });
+
+  it('already terminated → byte-identical', () => {
+    expect(ensureTrailingNewline('{"id":"a"}\n')).toBe('{"id":"a"}\n');
+  });
+
+  it('partial tail without newline → terminated', () => {
+    expect(ensureTrailingNewline('{"id":"a"}\n{"id":"b')).toBe('{"id":"a"}\n{"id":"b\n');
+  });
+});
+
 describe('runCompactionCycle (integration, tmpdir)', () => {
   let dir: string;
 
@@ -493,5 +508,89 @@ describe('runCompactionCycle (integration, tmpdir)', () => {
     expect(out2.linesAppended).toBe(1);
     expect(out2.linesSkippedDuplicate).toBe(1);
     expect(out2.filesCompacted).toBe(1);
+  });
+});
+
+describe('runCompactionCycle — line-boundary guarantee (auditoría 22/07)', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'xcg-compactor-nl-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('fusion (a): candidate A ends in a partial line without newline → B\'s first line survives legible', async () => {
+    // A: terminal marker + a kill-9'd partial line, NO trailing '\n'.
+    const aTerminal =
+      '{"v":1,"id":"01AAA","ts":"2026-07-19T01:00:00Z","type":"proxy.shutdown"}';
+    const aPartial = '{"v":1,"id":"01CUT","ts":"2026-07-19T01:0';
+    const aContent = `${aTerminal}\n${aPartial}`;
+    const bContent =
+      '{"v":1,"id":"01BBB","ts":"2026-07-19T02:00:00Z","type":"proxy.shutdown"}\n';
+    const aBase = sessionUlidAt(NOW_2026 + 1 * HOUR_MS, 'A') + '.jsonl';
+    const bBase = sessionUlidAt(NOW_2026 + 2 * HOUR_MS, 'B') + '.jsonl';
+    await writeFile(join(dir, aBase), aContent, { encoding: 'utf8', mode: 0o600 });
+    await writeFile(join(dir, bBase), bContent, { encoding: 'utf8', mode: 0o600 });
+
+    const out = await runCompactionCycle(dir, NOW_2026 + 3 * HOUR_MS);
+
+    const dayContent = await readFile(join(dir, `${dayFileUlid(NOW_2026)}.jsonl`), 'utf8');
+    // A's partial got terminated; B starts on its own line.
+    expect(dayContent).toBe(`${aContent}\n${bContent}`);
+    // B's first line is legible: the id set of the day file contains it.
+    expect(extractIds(dayContent).has('01BBB')).toBe(true);
+    // And the partial stayed malformed-but-isolated (its own line).
+    expect(dayContent.split('\n')).toContain(aPartial);
+    expect(out.filesCompacted).toBe(2);
+  });
+
+  it('fusion (b): pre-existing day file ends in a partial line → new lines survive legible, partial isolated', async () => {
+    const dayBasename = `${dayFileUlid(NOW_2026)}.jsonl`;
+    // A previous cycle died mid-append: valid line + partial tail, no '\n'.
+    const dayPartialTail = '{"v":1,"id":"01TRU';
+    const dayInitial =
+      `{"v":1,"id":"01OLD","ts":"2026-07-19T00:30:00Z","type":"proxy.shutdown"}\n${dayPartialTail}`;
+    await writeFile(join(dir, dayBasename), dayInitial, { encoding: 'utf8', mode: 0o600 });
+
+    const cContent =
+      '{"v":1,"id":"01NEW","ts":"2026-07-19T01:00:00Z","type":"proxy.shutdown"}\n';
+    const cBase = sessionUlidAt(NOW_2026 + 1 * HOUR_MS, 'C') + '.jsonl';
+    await writeFile(join(dir, cBase), cContent, { encoding: 'utf8', mode: 0o600 });
+
+    const out = await runCompactionCycle(dir, NOW_2026 + 2 * HOUR_MS);
+
+    const dayContent = await readFile(join(dir, dayBasename), 'utf8');
+    // The guard '\n' isolates the partial; the new content follows intact.
+    expect(dayContent).toBe(`${dayInitial}\n${cContent}`);
+    expect(extractIds(dayContent).has('01NEW')).toBe(true);
+    expect(dayContent.split('\n')).toContain(dayPartialTail);
+    // The guard byte is NOT counted as an appended line — only C's line.
+    expect(out.linesAppended).toBe(1);
+    expect(out.filesCompacted).toBe(1);
+  });
+
+  it('happy path: well-terminated content → byte-identical output (zero change)', async () => {
+    const dayBasename = `${dayFileUlid(NOW_2026)}.jsonl`;
+    const dayInitial =
+      '{"v":1,"id":"01OLD","ts":"2026-07-19T00:30:00Z","type":"proxy.shutdown"}\n';
+    await writeFile(join(dir, dayBasename), dayInitial, { encoding: 'utf8', mode: 0o600 });
+
+    const s1Content =
+      '{"v":1,"id":"01AAA","ts":"2026-07-19T01:00:00Z","type":"proxy.shutdown"}\n';
+    const s2Content =
+      '{"v":1,"id":"01BBB","ts":"2026-07-19T02:00:00Z","type":"proxy.shutdown"}\n';
+    await writeFile(join(dir, sessionUlidAt(NOW_2026 + 1 * HOUR_MS, 'A') + '.jsonl'), s1Content, { encoding: 'utf8', mode: 0o600 });
+    await writeFile(join(dir, sessionUlidAt(NOW_2026 + 2 * HOUR_MS, 'B') + '.jsonl'), s2Content, { encoding: 'utf8', mode: 0o600 });
+
+    const out = await runCompactionCycle(dir, NOW_2026 + 3 * HOUR_MS);
+
+    const dayContent = await readFile(join(dir, dayBasename), 'utf8');
+    // Exact concatenation — no guard bytes, no extra terminators.
+    expect(dayContent).toBe(dayInitial + s1Content + s2Content);
+    expect(out.linesAppended).toBe(2);
+    expect(out.filesCompacted).toBe(2);
   });
 });
