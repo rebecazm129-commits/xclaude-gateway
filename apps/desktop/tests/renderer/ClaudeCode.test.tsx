@@ -520,6 +520,62 @@ describe('search end-to-end repro (incidencia A)', () => {
   });
 });
 
+describe('CC empty state (dogfood 22/07)', () => {
+  // Real-paginate e2e (the incidencia-A pattern): the fork under test is
+  // "server-filtered empty page + renderer filter state", so the stub must
+  // actually filter — a fixed page would assert nothing.
+  function evt(id: string, toolName: string, argsSummary: string): unknown {
+    return {
+      id, ts: new Date(Date.now() - 1000).toISOString(), session: 's', mcp: 'claude-code',
+      type: 'mcp.request', method: 'tools/call', rpcId: id, direction: 'client_to_server',
+      source: 'claude-code', ccSession: 'uuid-A', toolName, argsSummary,
+      detection: { category: 'tool_call_allowed', severity: 'low', findings: [] },
+    };
+  }
+
+  async function renderWithRealPaginate(events: unknown[]): Promise<void> {
+    const { paginate } = await import('../../src/main/detection-page.js');
+    const listDetectionPage = vi.fn(async (params: { filter: never }) => {
+      const slice = paginate(events as never[], params.filter, 200, null, Date.now());
+      return { ...slice, authAlerts: [], retention: null };
+    });
+    vi.stubGlobal('xcg', { listDetectionPage });
+    render(<ClaudeCode />);
+  }
+
+  it('no-match search → filtered empty state with Clear filters, NOT the onboarding message', async () => {
+    await renderWithRealPaginate([evt('m1', 'Bash', 'echo hola')]);
+    await waitFor(() => expect(screen.getByText('Bash')).toBeDefined());
+    fireEvent.change(
+      screen.getByRole('searchbox', { name: 'Search tool or details' }),
+      { target: { value: 'adsfas' } },
+    );
+    // The dogfood bug: this used to render the onboarding message.
+    const clear = await screen.findByRole('button', { name: 'Clear filters' });
+    expect(clear).toBeDefined();
+    expect(screen.getByText('No matches with current filters')).toBeDefined();
+    expect(screen.queryByText(/No Claude Code activity yet/)).toBeNull();
+  });
+
+  it('Clear filters restores the list and empties the search box', async () => {
+    await renderWithRealPaginate([evt('m1', 'Bash', 'echo hola')]);
+    await waitFor(() => expect(screen.getByText('Bash')).toBeDefined());
+    const box = screen.getByRole('searchbox', { name: 'Search tool or details' });
+    fireEvent.change(box, { target: { value: 'adsfas' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear filters' }));
+    await waitFor(() => expect(screen.getByText('Bash')).toBeDefined());
+    expect((box as HTMLInputElement).value).toBe('');
+  });
+
+  it('no activity and no filters → onboarding message intact, no Clear button', async () => {
+    await renderWithRealPaginate([]);
+    await waitFor(() => {
+      expect(screen.getByText(/No Claude Code activity yet/)).toBeDefined();
+    });
+    expect(screen.queryByRole('button', { name: 'Clear filters' })).toBeNull();
+  });
+});
+
 describe('error dot tooltip (delta de cierre m)', () => {
   it('hovering the dot shows "This call failed" via the house Tooltip', async () => {
     stubXcgForView(PAGE_WITH_ROWS);

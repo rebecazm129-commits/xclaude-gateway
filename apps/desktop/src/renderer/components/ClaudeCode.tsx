@@ -20,9 +20,11 @@ import { TimeFilter, type TimeRange } from './TimeFilter.js';
 import { Tooltip } from './Tooltip.js';
 
 import styles from './ClaudeCode.module.css';
-// The right-aligned time group still shares Detections' .timeFilterSpacer
-// (commit 5f anti-drift). The multi-row .toolbar band lives HERE and is
-// shared back: Detections renders it too since the toolbar parity (22/07).
+// The right-aligned time group still shares Detections' .timeFilterSpacer,
+// and the filtered-empty state (emptyFiltered/clearFiltersButton, dogfood
+// 22/07) shares its whole style family too (commit 5f anti-drift). The
+// multi-row .toolbar band lives HERE and is shared back: Detections
+// renders it too since the toolbar parity (22/07).
 import toolbarStyles from './Detections.module.css';
 
 // Claude Code view (F2.4): the claude-code slice of the audit trail as its
@@ -274,6 +276,35 @@ export function ClaudeCode(): JSX.Element {
     triggerRef.current = null;
   }
 
+  // Detections' exact pattern (dogfood 22/07): the empty-state fork needs
+  // RENDERER state — rows arrive server-filtered, so an empty page cannot
+  // distinguish "no CC activity" from "no matches" (and page.total is the
+  // whole store, both sources, so it is no signal either).
+  const hasActiveFilters =
+    flaggedOnly ||
+    selectedSeverities.length !== SEVERITY_OPTIONS.length ||
+    toolFilter !== null ||
+    sessionFilter !== null ||
+    projectFilter !== null ||
+    statusFilter !== null ||
+    textFilter !== null ||
+    // 'custom' is covered here too — any non-default time segment is active.
+    selectedTimeRange !== 'all';
+
+  function handleClearFilters(): void {
+    setFlaggedOnly(false);
+    setSelectedSeverities(SEVERITY_OPTIONS);
+    setToolFilter(null);
+    setSessionFilter(null);
+    setProjectFilter(null);
+    setStatusFilter(null);
+    setSearchInput('');
+    setTextFilter(null); // immediate — don't wait out the debounce
+    setSelectedTimeRange('all');
+    setCustomFrom('');
+    setCustomTo('');
+  }
+
   const flaggedChipClass = flaggedOnly
     ? `${styles['flaggedChip']} ${styles['flaggedChipActive']}`
     : styles['flaggedChip'];
@@ -414,11 +445,25 @@ export function ClaudeCode(): JSX.Element {
         </div>
       </div>
       {items.length === 0 ? (
-        <div className={styles['empty']}>
-          {rows.length === 0
-            ? 'No Claude Code activity yet. Install the Claude Code hook in Sources to start auditing.'
-            : 'No matches with current filters.'}
-        </div>
+        hasActiveFilters ? (
+          <div className={toolbarStyles['emptyFiltered']}>
+            <h2 className={toolbarStyles['emptyFilteredHeading']}>No matches with current filters</h2>
+            <p className={toolbarStyles['emptyFilteredSubhead']}>
+              Try widening the time range or turning off Flagged only.
+            </p>
+            <button
+              type="button"
+              className={toolbarStyles['clearFiltersButton']}
+              onClick={handleClearFilters}
+            >
+              Clear filters
+            </button>
+          </div>
+        ) : (
+          <div className={styles['empty']}>
+            No Claude Code activity yet. Install the Claude Code hook in Sources to start auditing.
+          </div>
+        )
       ) : (
         <div className={styles['listContainer']}>
           <div className={styles['columnHeader']}>
