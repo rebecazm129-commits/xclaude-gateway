@@ -19,6 +19,24 @@ import {
 import { parseAuditContent } from '../src/main/detection-reader.js';
 import { createAuditStore } from '../src/main/audit-store.js';
 
+// Compaction rides ingestCycle's finally (F2.2). The containment test
+// (hallazgo B, 22/07) needs the compactor to THROW while the drain
+// succeeds — after per-group containment landed, no filesystem fixture can
+// force that from outside, so the mock injects it. Flag down → delegates
+// to the real module: every other test sees the actual compactor.
+const compactorCtl = vi.hoisted(() => ({ throws: false }));
+vi.mock('../src/main/compactor.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/main/compactor.js')>();
+  const real = actual.runCompactionCycle;
+  return {
+    ...actual,
+    runCompactionCycle: (dir: string, now: number) =>
+      compactorCtl.throws
+        ? Promise.reject(new Error('injected compactor failure'))
+        : real(dir, now),
+  };
+});
+
 const FIXTURE_DIR = fileURLToPath(
   new URL('../../../packages/proxy/tests/fixtures/cchook/', import.meta.url),
 );
@@ -69,6 +87,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.restoreAllMocks();
+  compactorCtl.throws = false;
   for (const dir of allTemp.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -108,6 +127,22 @@ describe('runCchookIngestCycle', () => {
     expect(res).toEqual({ processed: 0, skippedUnreadable: 0, deletedStale: 1 });
     expect(readdirSync(d.spoolDir)).toEqual([]);
     expect(wrapperLines(d)).toHaveLength(0); // nothing appended
+  });
+
+  it('a compactor failure neither breaks the ingest result nor masks it (hallazgo B, 22/07)', async () => {
+    const d = makeDirs();
+    spoolWrite(d.spoolDir, 1_000, fixture('05-write.json'));
+    compactorCtl.throws = true;
+
+    const res = await runCchookIngestCycle(paths(d));
+
+    // The drain completed and its result survived the compactor throw.
+    expect(res.processed).toBe(1);
+    expect(readdirSync(d.spoolDir)).toEqual([]); // drained
+    // And the failure was logged with its context, not swallowed silently.
+    expect(
+      errSpy.mock.calls.some((c) => String(c[0]).includes('compaction cycle failed')),
+    ).toBe(true);
   });
 
   it('unreadable spool entry: console.error, skipped, NOT deleted; the rest proceeds', async () => {

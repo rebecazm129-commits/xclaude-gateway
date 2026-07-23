@@ -578,78 +578,89 @@ export async function runCompactionCycle(
     const dayBasename = `${dayFileUlid(dayStart)}.jsonl`;
     const dayPath = join(wrappersDir, dayBasename);
 
-    const { ids: existingIds, endsWithNewline } = await loadDayFileIds(dayPath);
+    // Per-group containment (hallazgo B, auditoría 22/07): a persistent
+    // error on ONE day file (EACCES/EIO on its read, append, or a source
+    // unlink) must not abort the remaining groups of the cycle. The
+    // failed group is skipped whole — its sources stay on disk and the
+    // next cycle retries them; counters keep whatever work completed
+    // before the throw (they report work done, not work planned).
+    try {
+      const { ids: existingIds, endsWithNewline } = await loadDayFileIds(dayPath);
 
-    let dataToAppend = '';
-    for (const entry of entries) {
-      const { filtered, skipped } = filterExistingIds(entry.content, existingIds);
-      // Line-boundary (a): a kill-9'd source can end in a partial line
-      // with no '\n' — terminate it so the NEXT candidate's first line
-      // never glues to it (see ensureTrailingNewline).
-      dataToAppend += ensureTrailingNewline(filtered);
-      linesSkippedDuplicate += skipped;
-    }
-
-    dayFilesTouched.push(dayBasename);
-
-    if (dataToAppend.length > 0) {
-      // Line-boundary (b): if a previous cycle died mid-append, the day
-      // file ends in a partial line — isolate it with a '\n' BEFORE the
-      // new content (same single append+fsync; no extra write). The
-      // guard byte is excluded from linesAppended below: it terminates
-      // a pre-existing partial, it is not a line of this batch.
-      const payload = endsWithNewline ? dataToAppend : `\n${dataToAppend}`;
-      await appendVerbatimAndFsync(dayPath, wrappersDir, payload);
-      for (let i = 0; i < dataToAppend.length; i++) {
-        if (dataToAppend.charCodeAt(i) === 0x0a) linesAppended++;
+      let dataToAppend = '';
+      for (const entry of entries) {
+        const { filtered, skipped } = filterExistingIds(entry.content, existingIds);
+        // Line-boundary (a): a kill-9'd source can end in a partial line
+        // with no '\n' — terminate it so the NEXT candidate's first line
+        // never glues to it (see ensureTrailingNewline).
+        dataToAppend += ensureTrailingNewline(filtered);
+        linesSkippedDuplicate += skipped;
       }
-    }
-    // Si todo era duplicado, skip del fsync post-append: nada nuevo
-    // que persistir. La idempotencia asegura el mismo day file tras
-    // ciclo 1 en adelante.
 
-    // Freshness re-stat con token de 4 patas + unlink condicional.
-    // Vanished (stat falla) → skip silencioso: nada que unlink,
-    //   ningún contador.
-    // Token no coincide (mtime, ctime, ino, o size distintos) →
-    //   filesSkippedFreshness++, no unlink.
-    // Token coincide → unlink; ENOENT del unlink cuenta como
-    //   compacted (trabajo hecho, estado equivalente); otros
-    //   errores propagan.
-    for (const entry of entries) {
-      let currentToken: FreshnessToken;
-      try {
-        const st = await stat(join(wrappersDir, entry.name), { bigint: true });
-        currentToken = {
-          mtimeNs: st.mtimeNs,
-          ctimeNs: st.ctimeNs,
-          ino: st.ino,
-          size: st.size,
-        };
-      } catch {
-        continue; // vanished — no counter change (documented in
-                  // cabecera; no unit test — scenario needs a
-                  // real race, deferred).
+      dayFilesTouched.push(dayBasename);
+
+      if (dataToAppend.length > 0) {
+        // Line-boundary (b): if a previous cycle died mid-append, the day
+        // file ends in a partial line — isolate it with a '\n' BEFORE the
+        // new content (same single append+fsync; no extra write). The
+        // guard byte is excluded from linesAppended below: it terminates
+        // a pre-existing partial, it is not a line of this batch.
+        const payload = endsWithNewline ? dataToAppend : `\n${dataToAppend}`;
+        await appendVerbatimAndFsync(dayPath, wrappersDir, payload);
+        for (let i = 0; i < dataToAppend.length; i++) {
+          if (dataToAppend.charCodeAt(i) === 0x0a) linesAppended++;
+        }
       }
-      if (!sameFreshness(currentToken, entry.freshness)) {
-        filesSkippedFreshness++;
-        continue;
-      }
-      try {
-        await unlink(join(wrappersDir, entry.name));
-        filesCompacted++;
-        anyUnlinked = true;
-      } catch (err) {
-        const code = (err as NodeJS.ErrnoException).code;
-        if (code === 'ENOENT') {
-          // Race between our re-stat and unlink: someone else
-          // removed it. Equivalent outcome — count as compacted.
-          filesCompacted++;
-          anyUnlinked = true;
+      // Si todo era duplicado, skip del fsync post-append: nada nuevo
+      // que persistir. La idempotencia asegura el mismo day file tras
+      // ciclo 1 en adelante.
+
+      // Freshness re-stat con token de 4 patas + unlink condicional.
+      // Vanished (stat falla) → skip silencioso: nada que unlink,
+      //   ningún contador.
+      // Token no coincide (mtime, ctime, ino, o size distintos) →
+      //   filesSkippedFreshness++, no unlink.
+      // Token coincide → unlink; ENOENT del unlink cuenta como
+      //   compacted (trabajo hecho, estado equivalente); otros
+      //   errores abortan el GRUPO (contención de arriba), no el ciclo.
+      for (const entry of entries) {
+        let currentToken: FreshnessToken;
+        try {
+          const st = await stat(join(wrappersDir, entry.name), { bigint: true });
+          currentToken = {
+            mtimeNs: st.mtimeNs,
+            ctimeNs: st.ctimeNs,
+            ino: st.ino,
+            size: st.size,
+          };
+        } catch {
+          continue; // vanished — no counter change (documented in
+                    // cabecera; no unit test — scenario needs a
+                    // real race, deferred).
+        }
+        if (!sameFreshness(currentToken, entry.freshness)) {
+          filesSkippedFreshness++;
           continue;
         }
-        throw err;
+        try {
+          await unlink(join(wrappersDir, entry.name));
+          filesCompacted++;
+          anyUnlinked = true;
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException).code;
+          if (code === 'ENOENT') {
+            // Race between our re-stat and unlink: someone else
+            // removed it. Equivalent outcome — count as compacted.
+            filesCompacted++;
+            anyUnlinked = true;
+            continue;
+          }
+          throw err;
+        }
       }
+    } catch (err) {
+      console.error(`compaction: group ${dayBasename} failed, skipping:`, err);
+      continue;
     }
   }
 

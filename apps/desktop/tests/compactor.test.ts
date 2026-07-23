@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -592,5 +592,49 @@ describe('runCompactionCycle — line-boundary guarantee (auditoría 22/07)', ()
     expect(dayContent).toBe(dayInitial + s1Content + s2Content);
     expect(out.linesAppended).toBe(2);
     expect(out.filesCompacted).toBe(2);
+  });
+});
+
+describe('runCompactionCycle — per-group containment (hallazgo B, 22/07)', () => {
+  let dir: string;
+  let errSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'xcg-compactor-grp-'));
+    errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('an unreadable day file fails ITS group only — other days still compact in the same cycle', async () => {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const day1 = NOW_2026;
+    const day2 = NOW_2026 + DAY_MS;
+    // day1's day file exists but is unreadable → loadDayFileIds EACCES.
+    const day1Basename = `${dayFileUlid(day1)}.jsonl`;
+    await writeFile(join(dir, day1Basename), '', { encoding: 'utf8', mode: 0o000 });
+    const s1Base = sessionUlidAt(day1 + HOUR_MS, 'A') + '.jsonl';
+    const s2Base = sessionUlidAt(day2 + HOUR_MS, 'B') + '.jsonl';
+    const s1 = '{"v":1,"id":"01AAA","ts":"d1","type":"proxy.shutdown"}\n';
+    const s2 = '{"v":1,"id":"01BBB","ts":"d2","type":"proxy.shutdown"}\n';
+    await writeFile(join(dir, s1Base), s1, { encoding: 'utf8', mode: 0o600 });
+    await writeFile(join(dir, s2Base), s2, { encoding: 'utf8', mode: 0o600 });
+
+    const out = await runCompactionCycle(dir, day2 + 2 * HOUR_MS);
+
+    // day2's group compacted normally in the SAME cycle...
+    const day2Basename = `${dayFileUlid(day2)}.jsonl`;
+    expect(await readFile(join(dir, day2Basename), 'utf8')).toBe(s2);
+    expect(out.filesCompacted).toBe(1);
+    expect(out.dayFilesTouched).toEqual([day2Basename]);
+    // ...day1's source survives for the next cycle, and the skip is logged
+    // with the affected day file.
+    expect(await readdir(dir)).toContain(s1Base);
+    expect(
+      errSpy.mock.calls.some((c) => String(c[0]).includes(day1Basename)),
+    ).toBe(true);
   });
 });

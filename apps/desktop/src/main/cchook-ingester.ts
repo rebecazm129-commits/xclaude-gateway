@@ -289,7 +289,14 @@ async function ingestCycle(
   } finally {
     // F2.2: compact terminated session files each ingest tick
     // (independent of spool activity — wrapper-only trails need
-    // compaction too).
-    await runCompactionCycle(wrappersDir, Date.now());
+    // compaction too). Contained (hallazgo B, auditoría 22/07): a throw
+    // here would MASK a drainSpool error in flight (a finally that
+    // throws replaces the original exception) and would abort the
+    // ingest result — compaction failures are logged, never fatal.
+    try {
+      await runCompactionCycle(wrappersDir, Date.now());
+    } catch (err) {
+      console.error('compaction cycle failed:', err);
+    }
   }
 }
