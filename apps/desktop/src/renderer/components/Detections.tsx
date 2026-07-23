@@ -365,6 +365,18 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
             dropdownRef={sourceRef}
             formatOption={(o) => SOURCE_LABELS[o]}
           />
+          {hasActiveFilters && (
+            // Always-reachable reset (producto 22/07): same handler as the
+            // filtered-empty state's button, which stays — this one is the
+            // discovery-level affordance while results are still visible.
+            <button
+              type="button"
+              className={ccStyles['clearInline']}
+              onClick={handleClearFilters}
+            >
+              Clear filters
+            </button>
+          )}
           {selectedTimeRange === 'custom' && (
             // Native date inputs — CC's exact pattern: IN the chips row
             // (dogfood 3ª ronda), right-aligned under the time segment; on a

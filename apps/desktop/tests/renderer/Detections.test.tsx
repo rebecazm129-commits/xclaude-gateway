@@ -4,12 +4,15 @@
 // applies it to its own Source pill and acknowledges consumption.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { Detections } from '../../src/renderer/components/Detections.js';
 // The toolbar band classes live in ClaudeCode.module.css (shared band since
 // the toolbar parity 22/07) — the structural contract matches against them.
+// detStyles: the filtered-empty state family, for scoping when the inline
+// Clear (producto 22/07) coexists with the empty state's button.
 import ccStyles from '../../src/renderer/components/ClaudeCode.module.css';
+import detStyles from '../../src/renderer/components/Detections.module.css';
 import type { DetectionPageResult } from '../../src/shared/types.js';
 
 const EMPTY_PAGE: DetectionPageResult = {
@@ -143,16 +146,40 @@ describe('Detections — filter parity: search + custom range (22/07)', () => {
   });
 
   it('Clear filters resets search + custom range and restores the list', async () => {
-    await renderWithRealPaginate([
+    const { container } = await renderWithRealPaginate([
       evt('g1', new Date(Date.now() - 1000).toISOString(), 'notion-fetch', 'id 123abc'),
     ]);
     await waitFor(() => expect(screen.getByText('notion-fetch')).toBeDefined());
     const box = screen.getByRole('searchbox', { name: 'Search tool or details' });
     fireEvent.change(box, { target: { value: 'zzz-no-match' } });
-    // No-match search → the filtered empty state with its Clear button.
-    const clear = await screen.findByRole('button', { name: 'Clear filters' });
-    fireEvent.click(clear);
+    // No-match search → the filtered empty state. Its button coexists with
+    // the inline one in the chips row (producto 22/07) — scope by container.
+    const emptyState = await waitFor(() => {
+      const el = container.querySelector(`.${detStyles['emptyFiltered']}`);
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    fireEvent.click(within(emptyState).getByRole('button', { name: 'Clear filters' }));
     await waitFor(() => expect(screen.getByText('notion-fetch')).toBeDefined());
     expect((box as HTMLInputElement).value).toBe('');
+  });
+
+  it('inline Clear filters (producto 22/07): absent without filters, appears with one and restores everything', async () => {
+    await renderWithRealPaginate([
+      evt('g1', new Date(Date.now() - 1000).toISOString(), 'notion-fetch', 'id 123abc'),
+    ]);
+    await waitFor(() => expect(screen.getByText('notion-fetch')).toBeDefined());
+    // Default state: no reset control anywhere.
+    expect(screen.queryByRole('button', { name: 'Clear filters' })).toBeNull();
+    // Activate ONE filter that keeps the (recent) row visible: the list
+    // stays, so the inline control is the only Clear button in the DOM.
+    fireEvent.click(screen.getByRole('button', { name: '24h' }));
+    const clear = await screen.findByRole('button', { name: 'Clear filters' });
+    fireEvent.click(clear);
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Clear filters' })).toBeNull(),
+    );
+    expect(screen.getByRole('button', { name: 'All' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('notion-fetch')).toBeDefined();
   });
 });

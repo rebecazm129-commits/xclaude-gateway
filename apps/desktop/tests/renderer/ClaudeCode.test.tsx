@@ -7,11 +7,15 @@
 // separators (no hash), and ships the CC filter (fixed sources) to export.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { App } from '../../src/renderer/App.js';
 import { ClaudeCode, buildListItems, FLAGGED_CATEGORIES } from '../../src/renderer/components/ClaudeCode.js';
 import ccStyles from '../../src/renderer/components/ClaudeCode.module.css';
+// The filtered-empty state family lives in Detections.module.css (shared in
+// the commit-5f direction) — needed to scope Clear-button queries now that
+// the inline control (producto 22/07) can coexist with the empty state's.
+import detStyles from '../../src/renderer/components/Detections.module.css';
 import type { DetectionFilter, DetectionPageResult, DetectionRowSlim } from '../../src/shared/types.js';
 
 const EMPTY_PAGE: DetectionPageResult = {
@@ -533,14 +537,16 @@ describe('CC empty state (dogfood 22/07)', () => {
     };
   }
 
-  async function renderWithRealPaginate(events: unknown[]): Promise<void> {
+  async function renderWithRealPaginate(
+    events: unknown[],
+  ): Promise<ReturnType<typeof render>> {
     const { paginate } = await import('../../src/main/detection-page.js');
     const listDetectionPage = vi.fn(async (params: { filter: never }) => {
       const slice = paginate(events as never[], params.filter, 200, null, Date.now());
       return { ...slice, authAlerts: [], retention: null };
     });
     vi.stubGlobal('xcg', { listDetectionPage });
-    render(<ClaudeCode />);
+    return render(<ClaudeCode />);
   }
 
   it('no-match search → filtered empty state with Clear filters, NOT the onboarding message', async () => {
@@ -550,19 +556,30 @@ describe('CC empty state (dogfood 22/07)', () => {
       screen.getByRole('searchbox', { name: 'Search tool or details' }),
       { target: { value: 'adsfas' } },
     );
-    // The dogfood bug: this used to render the onboarding message.
-    const clear = await screen.findByRole('button', { name: 'Clear filters' });
-    expect(clear).toBeDefined();
+    // The dogfood bug: this used to render the onboarding message. TWO
+    // Clear buttons now (producto 22/07): empty state's + the inline one.
+    // waitFor, not findAllByRole: the inline button lands a tick BEFORE the
+    // empty state (filter state flips first, the empty page arrives on the
+    // next IPC round-trip) — findAllByRole resolves at the first match.
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Clear filters' })).toHaveLength(2);
+    });
     expect(screen.getByText('No matches with current filters')).toBeDefined();
     expect(screen.queryByText(/No Claude Code activity yet/)).toBeNull();
   });
 
   it('Clear filters restores the list and empties the search box', async () => {
-    await renderWithRealPaginate([evt('m1', 'Bash', 'echo hola')]);
+    const { container } = await renderWithRealPaginate([evt('m1', 'Bash', 'echo hola')]);
     await waitFor(() => expect(screen.getByText('Bash')).toBeDefined());
     const box = screen.getByRole('searchbox', { name: 'Search tool or details' });
     fireEvent.change(box, { target: { value: 'adsfas' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Clear filters' }));
+    // Scope to the empty state's button (the inline one coexists).
+    const emptyState = await waitFor(() => {
+      const el = container.querySelector(`.${detStyles['emptyFiltered']}`);
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    fireEvent.click(within(emptyState).getByRole('button', { name: 'Clear filters' }));
     await waitFor(() => expect(screen.getByText('Bash')).toBeDefined());
     expect((box as HTMLInputElement).value).toBe('');
   });
@@ -573,6 +590,23 @@ describe('CC empty state (dogfood 22/07)', () => {
       expect(screen.getByText(/No Claude Code activity yet/)).toBeDefined();
     });
     expect(screen.queryByRole('button', { name: 'Clear filters' })).toBeNull();
+  });
+
+  it('inline Clear filters (producto 22/07): absent without filters, appears with one and restores everything', async () => {
+    await renderWithRealPaginate([evt('m1', 'Bash', 'echo hola')]);
+    await waitFor(() => expect(screen.getByText('Bash')).toBeDefined());
+    // Default state: no reset control anywhere.
+    expect(screen.queryByRole('button', { name: 'Clear filters' })).toBeNull();
+    // Activate ONE filter that keeps the (recent) row visible: the list
+    // stays, so the inline control is the only Clear button in the DOM.
+    fireEvent.click(screen.getByRole('button', { name: '24h' }));
+    const clear = await screen.findByRole('button', { name: 'Clear filters' });
+    fireEvent.click(clear);
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Clear filters' })).toBeNull(),
+    );
+    expect(screen.getByRole('button', { name: 'All' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('Bash')).toBeDefined();
   });
 });
 

@@ -418,6 +418,18 @@ export function ClaudeCode(): JSX.Element {
             tooltip="Filter by the folder where Claude Code was running"
           />
         )}
+        {hasActiveFilters && (
+          // Always-reachable reset (producto 22/07): same handler as the
+          // filtered-empty state's button, which stays — this one is the
+          // discovery-level affordance while results are still visible.
+          <button
+            type="button"
+            className={styles['clearInline']}
+            onClick={handleClearFilters}
+          >
+            Clear filters
+          </button>
+        )}
         {selectedTimeRange === 'custom' && (
           // Native date inputs (delta final): the house has no datepicker —
           // <input type="date"> is the simplest coherent pattern, tokens on

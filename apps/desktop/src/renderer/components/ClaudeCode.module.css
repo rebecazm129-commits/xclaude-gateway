@@ -66,6 +66,35 @@
   flex-wrap: wrap;
 }
 
+/* Inline "Clear filters" (producto 22/07) — quiet text control at the end
+   of the chips row, BOTH views, rendered only while a filter is active.
+   Deliberately lighter than the chips (no pill, no hairline): it undoes
+   state rather than adding any. One physical rule here, shared in the
+   band direction (Detections imports it via ccStyles). */
+.clearInline {
+  background: transparent;
+  border: none;
+  padding: 4px 2px;
+  font-family: var(--kraft-font-ui);
+  font-size: 12px;
+  color: var(--kraft-ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--kraft-transition-fast) ease;
+}
+
+.clearInline:hover {
+  color: var(--kraft-accent);
+}
+
+.clearInline:focus-visible {
+  outline: 2px solid var(--kraft-accent);
+  outline-offset: 1px;
+  border-radius: var(--kraft-radius-sm);
+}
+
 /* Search box (delta final) — FilterDropdown trigger grammar in input form.
    Row-1 resident (incidencia B): breathes (flex) up to a cap. */
 .searchBox {
