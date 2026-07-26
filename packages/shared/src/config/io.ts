@@ -16,6 +16,7 @@ import {
   openSync,
   renameSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
@@ -55,6 +56,9 @@ export function writeAtomic(
   newContent: unknown,
   opts: WriteAtomicOptions = {},
 ): WriteAtomicResult {
+  // Hoisted so the catch can clean up an orphaned tmpfile (hallazgo 1,
+  // auditoría frente 2): undefined until the path is actually minted.
+  let tmpPath: string | undefined;
   try {
     const dir = dirname(configPath);
     const bakPath = `${configPath}.bak`;
@@ -72,7 +76,7 @@ export function writeAtomic(
     const origMode = statSync(configPath).mode & 0o777;
 
     // Write new content to tmpfile in same dir.
-    const tmpPath = join(dir, `${basename(configPath)}.tmp.${process.pid}`);
+    tmpPath = join(dir, `${basename(configPath)}.tmp.${process.pid}`);
     const nl = (opts.trailingNewline ?? true) ? '\n' : '';
     const serialized = `${JSON.stringify(newContent, null, 2)}${nl}`;
     writeFileSync(tmpPath, serialized, { mode: origMode });
@@ -92,6 +96,20 @@ export function writeAtomic(
 
     return { ok: true };
   } catch (err) {
+    // Orphan-tmp cleanup (hallazgo 1): a failure after writeFileSync but
+    // before/at the rename leaves <basename>.tmp.<pid> behind — harmless
+    // in ~/Library, but config-cc writes INSIDE the user's repo, where an
+    // orphan is visible, committable garbage. Best-effort unlink: the
+    // ORIGINAL error below is what matters, so the unlink's own failure
+    // (including ENOENT when the rename already consumed the tmp and a
+    // later fsync threw) is deliberately swallowed.
+    if (tmpPath !== undefined) {
+      try {
+        unlinkSync(tmpPath);
+      } catch {
+        // best-effort only — never mask the original error
+      }
+    }
     const detail = (err as Error).message ?? String(err);
     const code = (err as NodeJS.ErrnoException).code;
     if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') {
