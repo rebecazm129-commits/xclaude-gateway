@@ -75,6 +75,20 @@ export function isAlreadyWrapped(command: string, args: readonly string[]): bool
   );
 }
 
+// A wrapped entry in the HTTP form — xcg-proxy http --url <u> --name <n>,
+// the shape the Desktop path writes for remote connectors. It has NO
+// original command to restore (its "original" is a URL), so unwrapEntry's
+// stdio/legacy offsets would silently corrupt it (command: '--url').
+// Recognized separately so unwrap paths can SKIP it explicitly (hallazgo 4,
+// auditoría frente 2): only reachable via a hand-copied Desktop remote
+// entry in a .mcp.json — the CC wrap path never produces this form.
+// Deliberately LOOSER than isAlreadyWrapped's http branch (no arg-shape
+// check beyond args[0]): for a skip gate the fail-safe direction is to keep
+// anything http-shaped away from unwrapEntry, even a mangled one.
+export function isHttpWrapped(command: string, args: readonly string[]): boolean {
+  return basename(command) === 'xcg-proxy' && args[0] === 'http';
+}
+
 // --- Classify one mcpServers entry (descriptive, no mutation) ---
 
 function classifyEntry(name: string, raw: unknown): WrapPlanEntry {

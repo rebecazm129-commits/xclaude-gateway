@@ -26,7 +26,7 @@
 // module receives it, never resolves it. Like the skip reasons, 'rehome' is
 // stable API for the F2.4 UI.
 
-import { isAlreadyWrapped } from '../config/parser.js';
+import { isAlreadyWrapped, isHttpWrapped } from '../config/parser.js';
 import type { CcClassifiedEntry, CcServerEntry } from './types.js';
 
 export type CcIntent = 'wrap' | 'unwrap';
@@ -34,12 +34,19 @@ export type CcIntent = 'wrap' | 'unwrap';
 // Why an entry is skipped. disabled/pending/unsupported mirror the
 // classification statuses; already-wrapped / not-wrapped mean "already in
 // the desired state" for the wrap / unwrap intent respectively.
+// wrapped-http (hallazgo 4, auditoría frente 2): an entry wrapped in the
+// HTTP form (a Desktop remote entry hand-copied into .mcp.json) under the
+// unwrap intent — there is no original command to restore (its "original"
+// is a URL), and unwrapEntry's stdio/legacy offsets would silently corrupt
+// it (command: '--url'). Skipped explicitly instead; stable API for the
+// F2.4 UI like every other reason.
 export type CcSkipReason =
   | 'disabled'
   | 'pending'
   | 'unsupported'
   | 'already-wrapped'
-  | 'not-wrapped';
+  | 'not-wrapped'
+  | 'wrapped-http';
 
 // One action per entry, discriminated by `action`. `entry` is carried for
 // inspection (F2.4 UI shows what each action touches); ./apply.ts transforms
@@ -87,7 +94,14 @@ export function computePlan(
     // unwrap intent: restoring the user's original is always safe, so the
     // gating status (enabled/disabled/pending) does not block it — the only
     // gate is being wrapped at all.
-    if (isWrapped(entry)) return { action: 'unwrap', name, entry };
+    if (isWrapped(entry)) {
+      // ...except the http-wrapped form (hallazgo 4): nothing to restore,
+      // unwrapEntry would corrupt it — see CcSkipReason's comment.
+      if (isHttpWrapped(entry.command ?? '', entry.args ?? [])) {
+        return { action: 'skip', name, reason: 'wrapped-http', entry };
+      }
+      return { action: 'unwrap', name, entry };
+    }
     return { action: 'skip', name, reason: 'not-wrapped', entry };
   });
   return { intent, actions };

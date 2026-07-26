@@ -168,4 +168,34 @@ describe('computePlan × spike 3 fixtures (F2.1b)', () => {
     expect(action.action).not.toBe('unwrap');
     expect(action).toMatchObject({ action: 'skip', reason: 'not-wrapped' });
   });
+
+  it('http-wrapped entry under unwrap intent: skip wrapped-http, byte-identical after applyPlan (hallazgo 4)', () => {
+    // A Desktop remote entry hand-copied into .mcp.json: command xcg-proxy +
+    // http-form args. isAlreadyWrapped recognizes it, but there is no
+    // original command to restore — unwrapEntry's stdio/legacy offsets would
+    // corrupt it to command '--url'. The plan must skip it explicitly.
+    const httpWrapped = JSON.stringify(
+      {
+        mcpServers: {
+          'notion-remote': {
+            command: '/x/xcg-proxy',
+            args: ['http', '--url', 'https://mcp.example.com/mcp', '--name', 'notion-remote'],
+          },
+        },
+      },
+      null,
+      2,
+    );
+    const plan = planFor('unwrap', { mcpContent: httpWrapped });
+    expect(actionOf(plan, 'notion-remote')).toMatchObject({
+      action: 'skip',
+      reason: 'wrapped-http',
+    });
+    // And the applied file is byte-identical to what is on disk.
+    const files = resolveScopeFiles({ scope: 'project', projectDir });
+    const mcp = readMcpJson(files.entriesPath);
+    if (!mcp.ok) throw new Error('unreachable');
+    const applied = applyPlan(mcp.raw, plan, XCG_PATH);
+    expect(JSON.stringify(applied, null, 2)).toBe(httpWrapped);
+  });
 });

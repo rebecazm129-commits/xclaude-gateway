@@ -206,6 +206,24 @@ describe('applyPlan × spike 3 fixtures (F2.1b)', () => {
     expect(applied['toy-stdio']).toBe(pristine);
   });
 
+  it('defends against a rogue hand-built plan: unwrap on an http-wrapped entry is a no-op (hallazgo 4)', () => {
+    // isAlreadyWrapped DOES recognize the http form, so the generic
+    // wrapped re-check alone would let it through into unwrapEntry's
+    // stdio/legacy offsets (corrupting command to '--url'). The dedicated
+    // isHttpWrapped re-check must pass it through BY REFERENCE.
+    const httpEntry = {
+      command: '/x/xcg-proxy',
+      args: ['http', '--url', 'https://mcp.example.com/mcp', '--name', 'notion-remote'],
+    };
+    const raw = { mcpServers: { 'notion-remote': httpEntry } };
+    const rogue: CcPlan = {
+      intent: 'unwrap',
+      actions: [{ action: 'unwrap', name: 'notion-remote', entry: { raw: httpEntry } }],
+    };
+    const applied = serversOf(applyPlan(raw, rogue, XCG_PATH));
+    expect(applied['notion-remote']).toBe(httpEntry);
+  });
+
   it('shape guards: non-object raw and non-object mcpServers return the input untouched', () => {
     const plan: CcPlan = { intent: 'wrap', actions: [] };
     expect(applyPlan(undefined, plan, XCG_PATH)).toBeUndefined();

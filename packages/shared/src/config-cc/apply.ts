@@ -15,7 +15,7 @@
 // in the wrapped entry's key order therefore restores the original, keeping
 // the wrap→unwrap round-trip byte-identical (F2.1b dictate).
 
-import { isAlreadyWrapped } from '../config/parser.js';
+import { isAlreadyWrapped, isHttpWrapped } from '../config/parser.js';
 import { unwrapEntry, wrapEntry } from '../config/transform.js';
 import type { CcPlan } from './plan.js';
 
@@ -71,7 +71,14 @@ export function applyPlan(raw: unknown, plan: CcPlan, xcgPath: string): unknown 
     if (action.action === 'wrap') {
       newMcp[name] = wrapped ? entry : wrapEntry(name, entry, xcgPath);
     } else if (action.action === 'unwrap') {
-      newMcp[name] = wrapped ? inKeyOrderOf(entry, unwrapEntry(entry)) : entry;
+      // http-wrapped re-check (hallazgo 4): mirror of computePlan's gate —
+      // a stale/rogue plan carrying unwrap for an http-wrapped entry must
+      // pass it through untouched, never into unwrapEntry's stdio/legacy
+      // offsets (which would corrupt it to command: '--url').
+      newMcp[name] =
+        wrapped && !isHttpWrapped(cmd, args)
+          ? inKeyOrderOf(entry, unwrapEntry(entry))
+          : entry;
     } else {
       // rehome (F2.2): rewrite ONLY command, exactly like transform.ts
       // applyWrap's re-homing branch — the spread keeps key order, args, env
