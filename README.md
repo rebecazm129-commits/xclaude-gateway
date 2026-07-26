@@ -110,17 +110,31 @@ What's audited is Claude Desktop's MCP JSON-RPC traffic — nothing else on your
 
 - **Claude Desktop** with **local MCP servers** that are wrapped via the app's **Install** action (or manually in `claude_desktop_config.json` by pointing them to `xcg-proxy`).
 - **Remote MCP servers connected through xCLAUDE** (Notion, Linear, Atlassian, GitHub, Stripe, Apollo, Slack, Gmail, Google Calendar and Google Drive today; more on the way). You connect them from the Connectors tab (+ Add connector), which signs you in and bridges the traffic through your machine for auditing.
+- **Claude Code** (the CLI), on two levels. Claude Code's activity — the tool calls in a session, native tools and MCP tools alike — is audited natively via a session hook, with its own view in the app. Detection and credential masking run on this stream just as they do on wrapped traffic, keyed by the same salt. Additionally, Claude Code's local MCP servers can be wrapped by the proxy (see "Wrapping Claude Code's MCP servers" below).
 
 ### What is NOT covered
 
 - **Claude Desktop's native Connectors** (the ones you enable with one click in Settings). xCLAUDE cannot audit those: they are brokered through Anthropic's servers, so their traffic never reaches your machine — intercepting it would require breaking TLS, which this project will not do. **What xCLAUDE offers instead is its own audited path to the same services:** connect a remote MCP server *through* xCLAUDE (see "Remote connectors" below) and its traffic is bridged via your machine, where xCLAUDE can observe it. To audit a service this way, connect it through xCLAUDE rather than as a native Connector.
-- **Claude Code** (the CLI). It is a separate MCP client with its own configuration. The wrapper itself might work technically if pointed there, but this has not been tested or documented.
-- **Cowork.** Same reasoning as Claude Code: separate client, separate configuration, not currently tested.
+- **Cowork.** Separate client, separate configuration, not currently tested.
 - **Anthropic's API directly** (any SDK integration). No MCP client model applies; out of scope by design.
 - **Skills** (markdown files used by the model as context). They are not JSON-RPC traffic; they are not interceptable by a stdio proxy. The proxy does capture any tool calls a skill ends up making, but not the skill content itself.
 - **Claude's native tools** (web search, computer use, code execution, etc.). These are internal model tools, not MCP servers. They never traverse the proxy.
 
-If you're using Claude Desktop with local MCP servers, or you connect a remote service through xCLAUDE, you're in scope. If your main use is anything else, this tool will not give you what you expect today.
+If you're using Claude Desktop with local MCP servers, if you connect a remote service through xCLAUDE, or if you work in Claude Code, you're in scope. If your main use is anything else, this tool will not give you what you expect today.
+
+### Wrapping Claude Code's MCP servers
+
+The native Claude Code audit already records MCP tool calls and their results. Wrapping a server adds what only the protocol level can show: the server's tool manifest (`tools/list`, which feeds `tool_manifest_changed` — the rug-pull detector), the server's stderr, and server-initiated traffic such as `roots/list` requests.
+
+Setup is manual for now (there is no Install button for Claude Code yet). Register the wrapped server with `claude mcp add-json` — don't edit Claude Code's config files by hand:
+
+```
+claude mcp add-json <name> '{"type":"stdio","command":"/Users/<you>/Library/Application Support/xCLAUDE Gateway/bin/xcg-proxy","args":["stdio","--wrap","<original-command>","--name","<name>","--","<original-args...>"],"env":{}}'
+```
+
+Replace `/Users/<you>` with your actual home directory — the quoted JSON will not expand `~` or `$HOME`. Then start a new Claude Code session. The `bin/xcg-proxy` path is a stable symlink the app maintains; it runs on the app's own runtime, so no Node installation is required. This registers the server for the current project; add `--scope user` to wrap it across all your projects. To revert, `claude mcp remove <name>` and re-add the server with its original command.
+
+Notes: only local stdio servers can be wrapped — Claude Code's claude.ai-managed connectors are brokered remotely and never reach your machine, same as Claude Desktop's native Connectors. With both the wrapper and the native Claude Code audit active, each call on a wrapped server is recorded by both sources; the two events are correlated by Claude Code's tool-use ID and currently appear as two rows in Detections.
 
 ## Remote connectors
 
