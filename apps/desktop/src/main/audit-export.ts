@@ -47,9 +47,18 @@ function csvEscape(field: string): string {
   return /[",\r\n]/.test(field) ? `"${field.replace(/"/g, '""')}"` : field;
 }
 
-export function csvRow(e: EnrichableEvent, ccToolUseId = '', pairedSource = ''): string {
+export function csvRow(
+  e: EnrichableEvent,
+  ccToolUseId = '',
+  pairedSource = '',
+  inheritedToolName = '',
+): string {
   const method = e.type === 'mcp.request' ? e.method : '';
-  const tool = e.type === 'mcp.request' ? e.toolName ?? '' : '';
+  // Filas enrichment sin toolName propio usan el heredado por (session, rpcId)
+  // — paridad con la herencia de presentación del reader (4c7f859). Requests
+  // y huérfanas reales quedan como hoy.
+  const tool =
+    e.type === 'mcp.request' ? e.toolName ?? '' : e.toolName ?? inheritedToolName;
   const cols = [
     e.ts,
     e.mcp,
@@ -75,6 +84,7 @@ interface CorrTuple {
   type: EnrichableEvent['type'];
   ccToolUseId?: string;
   source?: string;
+  toolName?: string;
 }
 
 const rpcKey = (session: string, rpcId: EnrichableEvent['rpcId']): string =>
@@ -104,6 +114,7 @@ async function* renderLines(
   matched: readonly MatchedLine[],
   toolUseByRpc: ReadonlyMap<string, string>,
   sourcesByToolUse: ReadonlyMap<string, ReadonlySet<'wrapper' | 'cc-hook'>>,
+  toolNameByRpc: ReadonlyMap<string, string>,
 ): AsyncGenerator<string> {
   if (format === 'csv') {
     yield `${CSV_HEADER}\n`;
@@ -117,7 +128,13 @@ async function* renderLines(
             ? 'wrapper'
             : 'cc-hook'
           : '';
-      yield `${csvRow(m.event, key ?? '', paired)}\n`;
+      // Herencia de toolName para la columna tool — paridad con la herencia
+      // de presentación del reader (4c7f859); el JSONL raw sigue intacto.
+      const inheritedTool =
+        m.event.type === 'mcp.detection_enrichment' && m.event.toolName === undefined
+          ? toolNameByRpc.get(rpcKey(m.event.session, m.event.rpcId)) ?? ''
+          : '';
+      yield `${csvRow(m.event, key ?? '', paired, inheritedTool)}\n`;
     }
   } else {
     // El JSONL raw NO cambia: línea original intacta, sin columnas nuevas.
@@ -154,6 +171,7 @@ export async function exportAudit(opts: AuditExportOptions): Promise<AuditExport
         type: event.type,
         ...(event.ccToolUseId !== undefined ? { ccToolUseId: event.ccToolUseId } : {}),
         ...(event.source !== undefined ? { source: event.source } : {}),
+        ...(event.toolName !== undefined ? { toolName: event.toolName } : {}),
       });
       if (!matchesFilter(event, opts.filter, now)) continue;
       matched.push({ ts: event.ts, id: event.id, rawLine, event });
@@ -183,11 +201,22 @@ export async function exportAudit(opts: AuditExportOptions): Promise<AuditExport
     }
     set.add(src);
   }
+  // toolName por (session, rpcId), desde requests — PRE-filtro, misma razón
+  // que los mapas de arriba: la herencia de la columna tool no depende de que
+  // la request pase el filtro.
+  const toolNameByRpc = new Map<string, string>();
+  for (const t of tuples) {
+    if (t.type === 'mcp.request' && t.toolName !== undefined) {
+      toolNameByRpc.set(rpcKey(t.session, t.rpcId), t.toolName);
+    }
+  }
 
   const tmpPath = `${opts.destPath}.xcg-export.${process.pid}.tmp`;
   try {
     await pipeline(
-      Readable.from(renderLines(opts.format, matched, toolUseByRpc, sourcesByToolUse)),
+      Readable.from(
+        renderLines(opts.format, matched, toolUseByRpc, sourcesByToolUse, toolNameByRpc),
+      ),
       createWriteStream(tmpPath, { mode: 0o600 }),
     );
     await rename(tmpPath, opts.destPath);

@@ -159,7 +159,9 @@ describe('exportAudit — CSV', () => {
     expect(rows[1]).toBe(
       `${iso(1000)},"no,tion",mcp.request,tools/call,"weird""tool",credential_detected,critical,0,,`,
     );
-    expect(rows[2]).toBe(`${iso(2000)},notion,mcp.detection_enrichment,,,pii_detected,medium,2,,`);
+    // El enrichment comparte (session, rpcId) con la request 'a' → hereda su
+    // toolName en la columna tool (frente 3, cierre).
+    expect(rows[2]).toBe(`${iso(2000)},notion,mcp.detection_enrichment,,"weird""tool",pii_detected,medium,2,,`);
   });
 
   it('sources filter: claude-code-only exports only synthesized lines (via shared matchesFilter)', async () => {
@@ -260,6 +262,32 @@ describe('exportAudit — CSV correlation columns (frente 3)', () => {
     const rows = readFileSync(dest, 'utf8').trimEnd().split('\n');
     expect(rows[1]!.endsWith(',0,,')).toBe(true);
     expect(rows[2]!.endsWith(',1,,')).toBe(true);
+  });
+
+  it('(tool-a) enrichment with a matched request → tool column filled by inheritance', async () => {
+    // Pure Desktop case: no _meta, no CC — the request still lends its tool.
+    await writeSession('01A.jsonl', wrapReqLine('w', iso(1000)), wrapEnrLine('e', iso(2000)));
+    const dest = join(root, 'tool-inherit.csv');
+    await exportAudit({ dir, destPath: dest, filter: ALL, format: 'csv', now: NOW });
+    const rows = readFileSync(dest, 'utf8').trimEnd().split('\n');
+    expect(rows[2]).toContain(',mcp.detection_enrichment,,echo,pii_detected,');
+  });
+
+  it('(tool-b) real orphan enrichment → tool column empty', async () => {
+    await writeSession('01A.jsonl', wrapEnrLine('e', iso(1000)));
+    const dest = join(root, 'tool-orphan.csv');
+    await exportAudit({ dir, destPath: dest, filter: ALL, format: 'csv', now: NOW });
+    const rows = readFileSync(dest, 'utf8').trimEnd().split('\n');
+    expect(rows[1]).toContain(',mcp.detection_enrichment,,,pii_detected,');
+  });
+
+  it('(tool-c) JSONL output stays byte-identical with the inheritance pair', async () => {
+    const w = wrapReqLine('w', iso(1000));
+    const e = wrapEnrLine('e', iso(2000));
+    await writeSession('01A.jsonl', w, e);
+    const dest = join(root, 'tool-raw.jsonl');
+    await exportAudit({ dir, destPath: dest, filter: ALL, format: 'jsonl', now: NOW });
+    expect(readFileSync(dest, 'utf8')).toBe(`${w}\n${e}\n`);
   });
 
   it('(e) JSONL output stays byte-identical — raw lines untouched by the new columns', async () => {
