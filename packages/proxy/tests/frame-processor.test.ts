@@ -198,6 +198,35 @@ describe('createFrameProcessor — Slice 1: credential in tools/call result cont
     expect(events.map((e) => e.type)).toEqual(['mcp.response']);
   });
 
+  it('identical text in content[].text and structuredContent → ONE finding, not two (Drive ×2 lesson)', () => {
+    // The mirrored-result MCP shape: content[].text is the JSON.stringify of
+    // structuredContent, so both parts are byte-identical after extraction.
+    const sc = { note: `key=${FAKE_KEY}` };
+    const events = runReqThenResp({
+      content: [{ type: 'text', text: JSON.stringify(sc) }],
+      structuredContent: sc,
+    });
+    expect(events.map((e) => e.type)).toEqual(['mcp.response', 'mcp.detection_enrichment']);
+    const enr = events[1];
+    if (enr?.type !== 'mcp.detection_enrichment') throw new Error('expected enrichment');
+    expect(
+      enr.detection.findings.filter((f) => f.type === 'anthropic_api_key'),
+    ).toHaveLength(1);
+  });
+
+  it('DISTINCT parts each carrying a key → two findings (no over-dedupe)', () => {
+    const events = runReqThenResp({
+      content: [{ type: 'text', text: `first: ${FAKE_KEY}` }],
+      structuredContent: { note: `second=${FAKE_KEY}` },
+    });
+    expect(events.map((e) => e.type)).toEqual(['mcp.response', 'mcp.detection_enrichment']);
+    const enr = events[1];
+    if (enr?.type !== 'mcp.detection_enrichment') throw new Error('expected enrichment');
+    expect(
+      enr.detection.findings.filter((f) => f.type === 'anthropic_api_key'),
+    ).toHaveLength(2);
+  });
+
   it('H2.4: response with no request previously seen (reqMethod undefined) → not scanned, no crash', () => {
     const processFrame = createFrameProcessor(makeDeps());
     // No request was tracked for id 7 (e.g. the proxy started mid-session and

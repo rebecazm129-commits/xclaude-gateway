@@ -44,6 +44,15 @@ export type FrameProcessor = (
 // Slice 1: extract ONLY the textual content of a tools/call result —
 // result.content[].text (type === 'text') + JSON.stringify(structuredContent).
 // This is the surface scanned for credentials, not the whole result.
+//
+// Lección Drive ×2 (07/07) portada del hook (F1.2): escanear el mismo texto
+// dos veces duplica findings — partes vacías y duplicadas exactas se saltan
+// antes del join. Réplica local del dedupeJoin de cchook-ingest, NO import
+// (mismo criterio de desacoplamiento que FreshnessToken en el compactador).
+// NOTA: cubre solo partes IDÉNTICAS; si content y structuredContent llevan el
+// mismo secreto en envolturas distintas (texto plano vs JSON), el doble
+// finding persiste — dedupe de findings por (type, fingerprint) es la capa 2,
+// decisión de producto pendiente (26/07).
 function extractResultText(result: unknown): string {
   if (typeof result !== 'object' || result === null) return '';
   const parts: string[] = [];
@@ -58,7 +67,14 @@ function extractResultText(result: unknown): string {
   }
   const sc = (result as Record<string, unknown>)['structuredContent'];
   if (sc !== undefined) parts.push(JSON.stringify(sc));
-  return parts.join('\n');
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const p of parts) {
+    if (p.length === 0 || seen.has(p)) continue;
+    seen.add(p);
+    out.push(p);
+  }
+  return out.join('\n');
 }
 
 // Content detectors that run inline over the extracted tools/call result text.
