@@ -157,9 +157,9 @@ describe('exportAudit — CSV', () => {
     expect(rows[0]).toBe(CSV_HEADER);
     // ts asc: a(1000) then e(2000). mcp quoted (comma), tool quoted (inner quote doubled).
     expect(rows[1]).toBe(
-      `${iso(1000)},"no,tion",mcp.request,tools/call,"weird""tool",credential_detected,critical,0`,
+      `${iso(1000)},"no,tion",mcp.request,tools/call,"weird""tool",credential_detected,critical,0,,`,
     );
-    expect(rows[2]).toBe(`${iso(2000)},notion,mcp.detection_enrichment,,,pii_detected,medium,2`);
+    expect(rows[2]).toBe(`${iso(2000)},notion,mcp.detection_enrichment,,,pii_detected,medium,2,,`);
   });
 
   it('sources filter: claude-code-only exports only synthesized lines (via shared matchesFilter)', async () => {
@@ -192,6 +192,87 @@ describe('exportAudit — CSV', () => {
   });
 });
 
+describe('exportAudit — CSV correlation columns (frente 3)', () => {
+  const T = 'toolu_EXPORT01';
+  function wrapReqLine(id: string, ts: string, toolUseId?: string): string {
+    return JSON.stringify({
+      v: 1, id, ts, session: 'wrap-sess', mcp: 'm', type: 'mcp.request',
+      direction: 'client_to_server', rpcId: 1, method: 'tools/call',
+      params: {
+        name: 'echo', arguments: { text: 'x' },
+        ...(toolUseId !== undefined ? { _meta: { 'claudecode/toolUseId': toolUseId } } : {}),
+      },
+      detection: { category: 'tool_call_allowed', severity: 'low', findings: [] },
+    });
+  }
+  function ccReqLine(id: string, ts: string, toolUseId: string): string {
+    return JSON.stringify({
+      v: 1, id, ts, session: 'cc-sess', mcp: 'claude-code', type: 'mcp.request',
+      direction: 'client_to_server', rpcId: toolUseId, method: 'tools/call',
+      source: 'claude-code',
+      params: { name: 'Bash', arguments: { command: 'x' } },
+      detection: { category: 'tool_call_allowed', severity: 'low', findings: [] },
+    });
+  }
+  function wrapEnrLine(id: string, ts: string): string {
+    return JSON.stringify({
+      v: 1, id, ts, session: 'wrap-sess', mcp: 'm', type: 'mcp.detection_enrichment',
+      rpcId: 1, direction: 'server_to_client',
+      detection: { category: 'pii_detected', severity: 'medium', findings: [{ type: 'email', location: 'result' }] },
+    });
+  }
+
+  it('(a) full pair → both rows share cc_tool_use_id, paired_source crossed', async () => {
+    await writeSession('01A.jsonl', wrapReqLine('w', iso(1000), T), ccReqLine('c', iso(2000), T));
+    const dest = join(root, 'pair.csv');
+    await exportAudit({ dir, destPath: dest, filter: ALL, format: 'csv', now: NOW });
+    const rows = readFileSync(dest, 'utf8').trimEnd().split('\n');
+    expect(rows).toHaveLength(3);
+    // ts asc: wrapper row first, then the cc row.
+    expect(rows[1]!.endsWith(`,${T},cc-hook`)).toBe(true);
+    expect(rows[2]!.endsWith(`,${T},wrapper`)).toBe(true);
+  });
+
+  it('(b) filter excluding one half → the exported row KEEPS its paired_source', async () => {
+    await writeSession('01A.jsonl', wrapReqLine('w', iso(1000), T), ccReqLine('c', iso(2000), T));
+    const filter: DetectionFilter = { ...ALL, sources: ['claude-code'] };
+    const dest = join(root, 'half.csv');
+    await exportAudit({ dir, destPath: dest, filter, format: 'csv', now: NOW });
+    const rows = readFileSync(dest, 'utf8').trimEnd().split('\n');
+    expect(rows).toHaveLength(2); // header + the cc row only
+    expect(rows[1]!.endsWith(`,${T},wrapper`)).toBe(true);
+  });
+
+  it('(c) wrapper enrichment without key inherits cc_tool_use_id by (session, rpcId)', async () => {
+    await writeSession('01A.jsonl', wrapReqLine('w', iso(1000), T), wrapEnrLine('e', iso(2000)));
+    const dest = join(root, 'inherit.csv');
+    await exportAudit({ dir, destPath: dest, filter: ALL, format: 'csv', now: NOW });
+    const rows = readFileSync(dest, 'utf8').trimEnd().split('\n');
+    // The enrichment row inherits the key; both rows are wrapper-side, so no
+    // pair → paired_source empty.
+    expect(rows[2]!.endsWith(`,${T},`)).toBe(true);
+  });
+
+  it('(d) historic lines without key → both cells empty', async () => {
+    await writeSession('01A.jsonl', reqLine('a', iso(1000)), enrLine('e', iso(2000)));
+    const dest = join(root, 'historic.csv');
+    await exportAudit({ dir, destPath: dest, filter: ALL, format: 'csv', now: NOW });
+    const rows = readFileSync(dest, 'utf8').trimEnd().split('\n');
+    expect(rows[1]!.endsWith(',0,,')).toBe(true);
+    expect(rows[2]!.endsWith(',1,,')).toBe(true);
+  });
+
+  it('(e) JSONL output stays byte-identical — raw lines untouched by the new columns', async () => {
+    const w = wrapReqLine('w', iso(1000), T);
+    const c = ccReqLine('c', iso(2000), T);
+    const e = wrapEnrLine('e', iso(3000));
+    await writeSession('01A.jsonl', w, c, e);
+    const dest = join(root, 'raw.jsonl');
+    await exportAudit({ dir, destPath: dest, filter: ALL, format: 'jsonl', now: NOW });
+    expect(readFileSync(dest, 'utf8')).toBe(`${w}\n${c}\n${e}\n`);
+  });
+});
+
 describe('csvRow — RFC 4180 escaping', () => {
   function reqEvent(over: Partial<EnrichableEvent> = {}): EnrichableEvent {
     return {
@@ -202,7 +283,7 @@ describe('csvRow — RFC 4180 escaping', () => {
     } as EnrichableEvent;
   }
   it('quotes a comma field', () => {
-    expect(csvRow(reqEvent({ mcp: 'a,b' }))).toBe('t,"a,b",mcp.request,tools/call,echo,tool_call_allowed,low,0');
+    expect(csvRow(reqEvent({ mcp: 'a,b' }))).toBe('t,"a,b",mcp.request,tools/call,echo,tool_call_allowed,low,0,,');
   });
   it('doubles inner quotes', () => {
     expect(csvRow(reqEvent({ toolName: 'we"ird' }))).toContain('"we""ird"');
