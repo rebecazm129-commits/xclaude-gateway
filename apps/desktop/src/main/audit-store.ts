@@ -129,6 +129,11 @@ function slimEvent(e: EnrichableEvent): EnrichableEvent {
     // Dropping these here would silently break the filter (the F1.3c scar).
     if (e.ccSession !== undefined) slim.ccSession = e.ccSession;
     if (e.cwd !== undefined) slim.cwd = e.cwd;
+    // Clave de correlación cross-source (frente 3); dropearla aquí rompería
+    // pairedSource en silencio solo en el camino del store (la cicatriz
+    // F1.3c) — el golden-oracle lo cazaría. pairedSource NO se retiene: se
+    // computa en assemble sobre la lista, no viaja en la caché.
+    if (e.ccToolUseId !== undefined) slim.ccToolUseId = e.ccToolUseId;
     // argsSummary (F2.4): small derived string (≤100 chars) — kept, unlike
     // its heavy sibling argumentsJson, so the Args column survives the cache.
     if (e.argsSummary !== undefined) slim.argsSummary = e.argsSummary;
@@ -149,6 +154,9 @@ function slimEvent(e: EnrichableEvent): EnrichableEvent {
   if (e.source !== undefined) slim.source = e.source;
   // CC enrichments carry ccSession too (F2.4) — kept for the ccSession filter.
   if (e.ccSession !== undefined) slim.ccSession = e.ccSession;
+  // Cross-source correlation key (frente 3) — same F1.3c-scar rationale as in
+  // the request branch. pairedSource is NOT kept (computed in assemble).
+  if (e.ccToolUseId !== undefined) slim.ccToolUseId = e.ccToolUseId;
   return slim;
 }
 

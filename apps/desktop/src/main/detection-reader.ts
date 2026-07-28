@@ -297,8 +297,31 @@ export function parseAuditContent(content: string): ParsedFile {
       if (typeof rawOverhead.overheadUs === 'number') {
         parsed.overheadUs = rawOverhead.overheadUs;
       }
+      // ccToolUseId (frente 3): derivado AQUÍ, en parse — históricos cubiertos
+      // al reconstruir del disco, mismo patrón que toolName/argsSummary.
+      if (parsed.source === 'claude-code' && typeof parsed.rpcId === 'string') {
+        // Contrato del ingester (cchook-ingest: rpcId = toolUseId ?? null);
+        // en el stream CC cualquier rpcId string ES el toolUseId.
+        parsed.ccToolUseId = parsed.rpcId;
+      } else if (parsed.method === 'tools/call') {
+        // Eventos del wrapper cuando el cliente es Claude Code (spike 2,
+        // 17/07): el toolUseId viaja en params._meta['claudecode/toolUseId'].
+        const rawMeta = parsed as unknown as {
+          params?: { _meta?: Record<string, unknown> };
+        };
+        const metaId = rawMeta.params?._meta?.['claudecode/toolUseId'];
+        if (typeof metaId === 'string') {
+          parsed.ccToolUseId = metaId;
+        }
+      }
       events.push(parsed);
     } else if (isDetectionEnrichmentEvent(parsed)) {
+      // ccToolUseId: misma regla del stream CC que en requests. Los
+      // enrichments del wrapper NO se derivan aquí — heredan de su request
+      // por (session, rpcId) en assemble.
+      if (parsed.source === 'claude-code' && typeof parsed.rpcId === 'string') {
+        parsed.ccToolUseId = parsed.rpcId;
+      }
       events.push(parsed);
     }
   }
@@ -405,6 +428,17 @@ export function assembleAudit(
   for (const enr of enrichments) {
     enrichmentByKey.set(key(enr.session, enr.rpcId, enr.direction), enr);
   }
+  // Herencia de ccToolUseId para enrichments del wrapper (frente 3): mapa
+  // (session, rpcId) → ccToolUseId, poblado SOLO con requests que lo tengan.
+  const requestToolUseByRpc = new Map<string, string>();
+  for (const req of requests) {
+    if (req.ccToolUseId !== undefined) {
+      requestToolUseByRpc.set(
+        JSON.stringify([req.session, req.rpcId]),
+        req.ccToolUseId,
+      );
+    }
+  }
   const matchedEnrichmentIds = new Set<string>();
   // Output rows are COPIES: the caller's cached events are never mutated.
   const outRequests: DetectionEvent[] = requests.map((req) => {
@@ -418,9 +452,43 @@ export function assembleAudit(
   // Enrichment huerfano: se mantiene como fila propia (copia).
   const orphanEnrichments = enrichments
     .filter((enr) => !matchedEnrichmentIds.has(enr.id))
-    .map((enr) => ({ ...enr }));
+    .map((enr) => {
+      const copy = { ...enr };
+      // Lookup sin dirección — misma limitación aceptada que el backfill de
+      // outcome (colisión teórica con requests server-initiated del mismo
+      // rpcId; en la práctica solo entran al mapa requests del cliente con
+      // toolUseId).
+      if (copy.ccToolUseId === undefined) {
+        const inherited = requestToolUseByRpc.get(
+          JSON.stringify([copy.session, copy.rpcId]),
+        );
+        if (inherited !== undefined) copy.ccToolUseId = inherited;
+      }
+      return copy;
+    });
   const events: EnrichableEvent[] = [...outRequests, ...orphanEnrichments];
   events.sort((a, b) => b.ts.localeCompare(a.ts));
+  // pairedSource: best-effort, computado en assemble porque solo aquí hay
+  // visión de la lista completa; el drawer (getDetail) no puede computarlo.
+  // Se asigna sobre las copias de arriba, nunca sobre los originales cacheados.
+  const sourcesByToolUse = new Map<string, Set<'wrapper' | 'cc-hook'>>();
+  for (const ev of events) {
+    if (ev.ccToolUseId === undefined) continue;
+    const src = ev.source === 'claude-code' ? 'cc-hook' : 'wrapper';
+    let set = sourcesByToolUse.get(ev.ccToolUseId);
+    if (!set) {
+      set = new Set();
+      sourcesByToolUse.set(ev.ccToolUseId, set);
+    }
+    set.add(src);
+  }
+  for (const ev of events) {
+    if (ev.ccToolUseId === undefined) continue;
+    const set = sourcesByToolUse.get(ev.ccToolUseId);
+    if (set !== undefined && set.has('wrapper') && set.has('cc-hook')) {
+      ev.pairedSource = ev.source === 'claude-code' ? 'wrapper' : 'cc-hook';
+    }
+  }
   const authAlerts = deriveAuthAlerts(files, now);
   return { events, authAlerts };
 }

@@ -59,6 +59,18 @@ export interface DetectionEvent {
   // desde F2.4, los envelopes históricos y los de wrapper no lo llevan).
   ccSession?: string;
   cwd?: string;
+  // Clave de correlación cross-source (frente 3). En eventos del stream CC
+  // (source claude-code) es el rpcId string tal cual (contrato del ingester:
+  // rpcId = toolUseId). En eventos del wrapper viaja en
+  // params._meta['claudecode/toolUseId'] y el reader la deriva en parse.
+  // Como rpcId/direction: maquinaria de correlación, NO presentación
+  // (Decisión 1 del contrato).
+  ccToolUseId?: string;
+  // Computado en assemble cuando existe evento de la OTRA fuente con el mismo
+  // ccToolUseId. 'wrapper' = este evento es del hook y existe registro wire;
+  // 'cc-hook' = viceversa. Best-effort: ausente ≠ sin pareja garantizada
+  // (históricos parciales).
+  pairedSource?: 'wrapper' | 'cc-hook';
   // Opcion (b) acumular: si un mcp.detection_enrichment correlaciona con
   // este request por la terna (session, rpcId, direction), su DetectionBlock
   // se adjunta aqui SIN reemplazar `detection` (la regex original se
@@ -114,6 +126,12 @@ export interface DetectionEnrichmentEvent {
   // Mismo ccSession condicional que DetectionEvent (los enrichments CC lo
   // llevan). cwd NO viaja en enrichments — solo en el par request/response.
   ccSession?: string;
+  // Misma semántica que en DetectionEvent; en enrichments del wrapper se
+  // hereda de su request por (session, rpcId) en assemble — lookup sin
+  // dirección, misma limitación aceptada que el backfill de outcome.
+  ccToolUseId?: string;
+  // Misma semántica que en DetectionEvent.
+  pairedSource?: 'wrapper' | 'cc-hook';
 }
 
 // Unión que el reader devuelve y el dashboard consume. Discriminada por `type`.

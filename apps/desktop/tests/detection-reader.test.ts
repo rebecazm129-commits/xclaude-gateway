@@ -600,3 +600,98 @@ describe('outcome correlation (delta final)', () => {
     expect((result[0] as unknown as { outcome?: string }).outcome).toBe('error');
   });
 });
+
+describe('ccToolUseId + pairedSource (frente 3)', () => {
+  function wrapperReq(id: string, rpcId: number, toolUseId?: string): string {
+    return JSON.stringify({
+      v: 1, id, ts: '2026-07-20T10:00:00.000Z', session: 'wrap-sess', mcp: 'm',
+      type: 'mcp.request', direction: 'client_to_server', rpcId,
+      method: 'tools/call',
+      params: {
+        name: 'echo',
+        arguments: { text: 'x' },
+        ...(toolUseId !== undefined
+          ? { _meta: { 'claudecode/toolUseId': toolUseId } }
+          : {}),
+      },
+      detection: { category: 'tool_call_allowed', severity: 'low', findings: [] },
+    });
+  }
+  function ccReq(id: string, toolUseId: string): string {
+    return JSON.stringify({
+      v: 1, id, ts: '2026-07-20T10:00:01.000Z', session: 'cc-sess',
+      mcp: 'claude-code', type: 'mcp.request', direction: 'client_to_server',
+      rpcId: toolUseId, method: 'tools/call', source: 'claude-code',
+      params: { name: 'Bash', arguments: { command: 'x' } },
+      detection: { category: 'tool_call_allowed', severity: 'low', findings: [] },
+    });
+  }
+  function wrapperEnrichment(id: string, rpcId: number, direction: string): string {
+    return JSON.stringify({
+      v: 1, id, ts: '2026-07-20T10:00:02.000Z', session: 'wrap-sess', mcp: 'm',
+      type: 'mcp.detection_enrichment', rpcId, direction,
+      detection: { category: 'pii_detected', severity: 'medium', findings: [] },
+    });
+  }
+  type CorrFields = { ccToolUseId?: string; pairedSource?: string };
+
+  it('(a) wrapper request with _meta + CC request with same toolUseId → both carry ccToolUseId and crossed pairedSource', async () => {
+    const dir = join(tmpDir, 'cc-pair');
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, 's.jsonl'),
+      [wrapperReq('w1', 1, 'toolu_A'), ccReq('c1', 'toolu_A')].join('\n') + '\n',
+    );
+    const result = await readDetections(dir);
+    const byId = new Map(result.map((e) => [e.id, e as unknown as CorrFields]));
+    expect(byId.get('w1')?.ccToolUseId).toBe('toolu_A');
+    expect(byId.get('c1')?.ccToolUseId).toBe('toolu_A');
+    expect(byId.get('w1')?.pairedSource).toBe('cc-hook');
+    expect(byId.get('c1')?.pairedSource).toBe('wrapper');
+  });
+
+  it('(b) orphan wrapper enrichment inherits ccToolUseId from its request by (session, rpcId)', async () => {
+    const dir = join(tmpDir, 'cc-inherit');
+    await mkdir(dir, { recursive: true });
+    // Direction distinta a la del request → el enrichment queda huérfano
+    // (el join usa la terna con dirección), pero hereda por (session, rpcId).
+    await writeFile(
+      join(dir, 's.jsonl'),
+      [
+        wrapperReq('w2', 5, 'toolu_B'),
+        wrapperEnrichment('enr2', 5, 'server_to_client'),
+      ].join('\n') + '\n',
+    );
+    const result = await readDetections(dir);
+    const byId = new Map(result.map((e) => [e.id, e as unknown as CorrFields]));
+    expect(byId.get('enr2')?.ccToolUseId).toBe('toolu_B');
+  });
+
+  it('(c) event with ccToolUseId but no counterpart → pairedSource absent', async () => {
+    const dir = join(tmpDir, 'cc-unpaired');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 's.jsonl'), ccReq('c3', 'toolu_C') + '\n');
+    const result = await readDetections(dir);
+    const ev = result[0] as unknown as CorrFields;
+    expect(ev.ccToolUseId).toBe('toolu_C');
+    expect(ev.pairedSource).toBeUndefined();
+  });
+
+  it('(d) events without ccToolUseId → both fields absent (historic intact)', async () => {
+    const dir = join(tmpDir, 'cc-historic');
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, 's.jsonl'),
+      [
+        wrapperReq('w4', 9),
+        wrapperEnrichment('enr4', 99, 'client_to_server'),
+      ].join('\n') + '\n',
+    );
+    const result = await readDetections(dir);
+    const byId = new Map(result.map((e) => [e.id, e as unknown as CorrFields]));
+    expect(byId.get('w4')?.ccToolUseId).toBeUndefined();
+    expect(byId.get('w4')?.pairedSource).toBeUndefined();
+    expect(byId.get('enr4')?.ccToolUseId).toBeUndefined();
+    expect(byId.get('enr4')?.pairedSource).toBeUndefined();
+  });
+});
