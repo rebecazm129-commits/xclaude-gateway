@@ -134,7 +134,7 @@ claude mcp add-json <name> '{"type":"stdio","command":"/Users/<you>/Library/Appl
 
 Replace `/Users/<you>` with your actual home directory — the quoted JSON will not expand `~` or `$HOME`. Then start a new Claude Code session. The `bin/xcg-proxy` path is a stable symlink the app maintains; it runs on the app's own runtime, so no Node installation is required. This registers the server for the current project; add `--scope user` to wrap it across all your projects. To revert, `claude mcp remove <name>` and re-add the server with its original command.
 
-Notes: only local stdio servers can be wrapped — Claude Code's claude.ai-managed connectors are brokered remotely and never reach your machine, same as Claude Desktop's native Connectors. With both the wrapper and the native Claude Code audit active, each call on a wrapped server is recorded by both sources; the two events are correlated by Claude Code's tool-use ID and currently appear as two rows in Detections.
+Notes: only local stdio servers can be wrapped — Claude Code's claude.ai-managed connectors are brokered remotely and never reach your machine, same as Claude Desktop's native Connectors. With both the wrapper and the native Claude Code audit active, each call on a wrapped server is recorded by both sources; the two records are correlated by Claude Code's tool-use ID: paired rows carry a link indicator in Detections, and the event detail names the other source.
 
 ## Remote connectors
 
