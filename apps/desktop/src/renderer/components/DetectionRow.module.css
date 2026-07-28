@@ -57,6 +57,17 @@
   letter-spacing: 0.04em;
 }
 
+/* Paired-badge (frente 3): sibling of sourceBadgeCc, same visual treatment. */
+.pairedBadge {
+  margin-left: 6px;
+  color: var(--kraft-ink-soft);
+  background: var(--kraft-filter-bg);
+  border-radius: var(--kraft-radius-sm);
+  padding: 1px 5px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
 .method {
   color: var(--kraft-ink);
   overflow: hidden;

@@ -6,6 +6,14 @@ export const SOURCE_LABELS: Record<SourceKind, string> = {
   'claude-code': 'Claude Code',
 };
 
+// Shared by the paired-badge tooltip (DetectionRow) and the DetailDrawer
+// correlation line. Keyed by pairedSource: the value names the OTHER source
+// that also recorded the same tool-use (frente 3).
+export const PAIRED_SOURCE_LABELS: Record<'wrapper' | 'cc-hook', string> = {
+  'cc-hook': 'Also recorded by the Claude Code hook',
+  wrapper: 'Also recorded by the wrapper',
+};
+
 // Tool-column contract: show the closest thing to the wire we can NAME —
 // real tool > real method > synthetic label only when nothing real exists.
 // Requests have a tool/method; tool_manifest_changed enrichments ride the

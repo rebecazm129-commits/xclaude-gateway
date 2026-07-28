@@ -348,6 +348,12 @@ export interface DetectionRowSlim {
   // Forward-only: filas de envelopes históricos no llevan project.
   ccSession?: string;
   project?: string;
+  // Correlación cross-source (frente 3): presente solo cuando existe registro
+  // de la OTRA fuente para el mismo tool-use (computado en assemble, viaja a
+  // la fila vía toSlim). 'cc-hook' = esta fila es del wrapper y existe
+  // registro del hook; 'wrapper' = viceversa. Aplica a ambos kinds (requests
+  // y enrichments — ambos se duplican).
+  pairedSource?: 'wrapper' | 'cc-hook';
   // Resumen corto del argumento principal (F2.4, ver DetectionEvent). NO es
   // forward-only: se deriva del disco en cada parse, históricos incluidos.
   argsSummary?: string;

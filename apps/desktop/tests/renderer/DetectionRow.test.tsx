@@ -115,6 +115,33 @@ describe('DetectionRow — source badge (F1.3b)', () => {
   });
 });
 
+describe('DetectionRow — paired badge (frente 3)', () => {
+  it('shows the pill with the hook title on a paired wrapper row (no CC badge needed)', () => {
+    render(
+      <DetectionRow
+        row={row({
+          type: 'mcp.request',
+          category: 'tool_call_allowed',
+          toolName: 'echo',
+          method: 'tools/call',
+          pairedSource: 'cc-hook',
+        })}
+        selected={false}
+        onClick={() => {}}
+      />,
+    );
+    const pill = screen.getByTestId('paired-badge');
+    expect(pill.getAttribute('title')).toBe('Also recorded by the Claude Code hook');
+    // Paired wrapper row: the pill shows WITHOUT the CC badge.
+    expect(screen.queryByTestId('source-badge-cc')).toBeNull();
+  });
+
+  it('no pill on rows without pairedSource', () => {
+    render(<DetectionRow row={row()} selected={false} onClick={() => {}} />);
+    expect(screen.queryByTestId('paired-badge')).toBeNull();
+  });
+});
+
 describe('Detections CATEGORY_OPTIONS', () => {
   it('includes tool_manifest_changed so it is filtered-in by default', () => {
     expect(CATEGORY_OPTIONS).toContain('tool_manifest_changed');

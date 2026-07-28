@@ -5,7 +5,7 @@
 // window.xcg.detectionDetail is stubbed per test.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 import { DetailDrawer, groupFindings } from '../../src/renderer/components/DetailDrawer.js';
 import type { DetectionDetail, DetectionRowSlim } from '../../src/shared/types.js';
@@ -80,6 +80,26 @@ describe('DetailDrawer — findings grouping', () => {
     render(<DetailDrawer row={ROW} onClose={vi.fn()} />);
     expect(await screen.findByText('×2')).toBeTruthy();
     expect(screen.getAllByText('email')).toHaveLength(2);
+  });
+});
+
+describe('DetailDrawer — correlation line (frente 3)', () => {
+  it('shows the Correlation line under Technical details when row.pairedSource is set', async () => {
+    stubDetail(detail([]));
+    render(
+      <DetailDrawer row={{ ...ROW, pairedSource: 'cc-hook' }} onClose={vi.fn()} />,
+    );
+    // The kv list lives in the collapsed Technical details section.
+    fireEvent.click(await screen.findByText('Technical details'));
+    expect(screen.getByText('correlation:')).toBeTruthy();
+    expect(screen.getByText('Also recorded by the Claude Code hook')).toBeTruthy();
+  });
+
+  it('no Correlation line without pairedSource', async () => {
+    stubDetail(detail([]));
+    render(<DetailDrawer row={ROW} onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByText('Technical details'));
+    expect(screen.queryByText('correlation:')).toBeNull();
   });
 });
 

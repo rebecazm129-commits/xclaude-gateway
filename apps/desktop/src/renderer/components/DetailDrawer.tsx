@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { Category, DetectionDetail, DetectionFinding, DetectionRowSlim } from '../../shared/types.js';
 import { Badge } from './Badge.js';
-import { SOURCE_LABELS } from './detections-format.js';
+import { PAIRED_SOURCE_LABELS, SOURCE_LABELS } from './detections-format.js';
 
 import styles from './DetailDrawer.module.css';
 
@@ -260,6 +260,17 @@ export function DetailDrawer({ row, onClose }: DetailDrawerProps): JSX.Element {
                     <span className={styles['kvKey']}>source:</span>
                     <span className={styles['kvValue']}>{SOURCE_LABELS[detail.source]}</span>
                   </div>
+                  {row.pairedSource !== undefined && (
+                    // Cross-source correlation (frente 3): rides on the slim
+                    // row, not the detail — assemble computes it over the full
+                    // list, which getDetail can't see.
+                    <div className={styles['kvRow']}>
+                      <span className={styles['kvKey']}>correlation:</span>
+                      <span className={styles['kvValue']}>
+                        {PAIRED_SOURCE_LABELS[row.pairedSource]}
+                      </span>
+                    </div>
+                  )}
                   {overheadUs !== undefined && (
                     <div className={styles['kvRow']}>
                       <span className={styles['kvKey']}>overheadUs:</span>

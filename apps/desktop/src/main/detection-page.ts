@@ -139,6 +139,9 @@ export function toSlim(e: EnrichableEvent): DetectionRowSlim {
   // project only on requests (cwd doesn't travel in enrichments). The row
   // ships basename(cwd) — the short name the UI renders — not the full path.
   if (e.ccSession !== undefined) row.ccSession = e.ccSession;
+  // pairedSource (frente 3): before the request-only block — applies to both
+  // kinds (requests and enrichments are both duplicated across sources).
+  if (e.pairedSource !== undefined) row.pairedSource = e.pairedSource;
   if (e.type === 'mcp.request') {
     if (e.toolName !== undefined) row.toolName = e.toolName;
     row.method = e.method;

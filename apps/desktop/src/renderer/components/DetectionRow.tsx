@@ -2,7 +2,7 @@ import type { KeyboardEvent } from 'react';
 
 import type { DetectionRowSlim } from '../../shared/types.js';
 import { Badge } from './Badge.js';
-import { CATEGORY_LABELS, enrichmentToolLabel, formatTimestamp } from './detections-format.js';
+import { CATEGORY_LABELS, PAIRED_SOURCE_LABELS, enrichmentToolLabel, formatTimestamp } from './detections-format.js';
 
 import styles from './DetectionRow.module.css';
 
@@ -44,6 +44,18 @@ export function DetectionRow({ row, selected, onClick }: DetectionRowProps): JSX
           // sixth column — Claude Code rows stay scannable in the MCP cell.
           <span className={styles['sourceBadgeCc']} data-testid="source-badge-cc" title="Claude Code">
             CC
+          </span>
+        ) : null}
+        {row.pairedSource !== undefined ? (
+          // Paired-badge (frente 3): the same tool-use exists in the OTHER
+          // source's record. Independent of the CC badge — a paired wrapper
+          // row carries this pill without carrying CC.
+          <span
+            className={styles['pairedBadge']}
+            data-testid="paired-badge"
+            title={PAIRED_SOURCE_LABELS[row.pairedSource]}
+          >
+            ⧉
           </span>
         ) : null}
       </span>
