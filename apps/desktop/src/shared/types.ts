@@ -132,6 +132,10 @@ export interface DetectionEnrichmentEvent {
   ccToolUseId?: string;
   // Misma semántica que en DetectionEvent.
   pairedSource?: 'wrapper' | 'cc-hook';
+  // Heredados de su request en assemble (frente 3, cierre); ausentes en
+  // huérfanas reales sin request en el trail.
+  toolName?: string;
+  cwd?: string;
 }
 
 // Unión que el reader devuelve y el dashboard consume. Discriminada por `type`.

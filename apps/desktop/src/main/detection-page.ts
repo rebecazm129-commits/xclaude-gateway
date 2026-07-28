@@ -66,13 +66,13 @@ export function matchesPreSeverity(
 ): boolean {
   if (filter.mcp !== null && e.mcp !== filter.mcp) return false;
   // CC filters (F2.4, multi-select since commit 6): absent ≡ null ≡ [] ≡ no
-  // filter; otherwise array membership. tool matches toolName (requests only
-  // — an active tool filter excludes enrichment rows); ccSession matches both
-  // kinds (CC enrichments carry it); project matches basename(cwd) (requests
-  // with cwd only). Wrapper/historical events lacking the field are excluded
-  // by an active filter on it.
+  // filter; otherwise array membership. tool matches toolName y project
+  // matches basename(cwd) en AMBOS kinds (frente 3, cierre: los enrichments
+  // heredan ambos campos de su request en assemble); ccSession matches both
+  // kinds (CC enrichments carry it). Campo ausente bajo filtro activo sigue
+  // excluyendo (huérfanas reales, históricos, eventos wrapper sin el campo).
   if (filter.tool !== undefined && filter.tool !== null && filter.tool.length > 0) {
-    if (e.type !== 'mcp.request' || e.toolName === undefined || !filter.tool.includes(e.toolName)) {
+    if (e.toolName === undefined || !filter.tool.includes(e.toolName)) {
       return false;
     }
   }
@@ -85,17 +85,20 @@ export function matchesPreSeverity(
     return false;
   }
   if (filter.project !== undefined && filter.project !== null && filter.project.length > 0) {
-    if (e.type !== 'mcp.request' || e.cwd === undefined || !filter.project.includes(basename(e.cwd))) {
+    if (e.cwd === undefined || !filter.project.includes(basename(e.cwd))) {
       return false;
     }
   }
   // Free-text search (delta final): case-insensitive against toolName and
-  // argsSummary — requests only (enrichments carry neither).
+  // argsSummary. Campo ausente = no-match; los enrichments no llevan
+  // argsSummary — deliberado, los args pertenecen a la request.
   if (filter.text !== undefined && filter.text !== null && filter.text !== '') {
-    if (e.type !== 'mcp.request') return false;
     const q = filter.text.toLowerCase();
     const hitTool = e.toolName !== undefined && e.toolName.toLowerCase().includes(q);
-    const hitArgs = e.argsSummary !== undefined && e.argsSummary.toLowerCase().includes(q);
+    const hitArgs =
+      e.type === 'mcp.request' &&
+      e.argsSummary !== undefined &&
+      e.argsSummary.toLowerCase().includes(q);
     if (!hitTool && !hitArgs) return false;
   }
   // Status filter (delta final): ok/error membership. Requests without a
@@ -135,17 +138,19 @@ export function toSlim(e: EnrichableEvent): DetectionRowSlim {
     severity: e.detection.severity,
     source: normalizeSource(e.source),
   };
-  // CC provenance (F2.4): ccSession on both kinds (CC enrichments carry it);
-  // project only on requests (cwd doesn't travel in enrichments). The row
-  // ships basename(cwd) — the short name the UI renders — not the full path.
+  // CC provenance (F2.4): ccSession on both kinds (CC enrichments carry it).
+  // The row ships basename(cwd) — the short name the UI renders — not the
+  // full path.
   if (e.ccSession !== undefined) row.ccSession = e.ccSession;
   // pairedSource (frente 3): before the request-only block — applies to both
   // kinds (requests and enrichments are both duplicated across sources).
   if (e.pairedSource !== undefined) row.pairedSource = e.pairedSource;
+  // toolName/project on both kinds too (frente 3, cierre): enrichment rows
+  // inherit them from their request in assemble.
+  if (e.toolName !== undefined) row.toolName = e.toolName;
+  if (e.cwd !== undefined) row.project = basename(e.cwd);
   if (e.type === 'mcp.request') {
-    if (e.toolName !== undefined) row.toolName = e.toolName;
     row.method = e.method;
-    if (e.cwd !== undefined) row.project = basename(e.cwd);
     if (e.argsSummary !== undefined) row.argsSummary = e.argsSummary;
     if (e.outcome !== undefined) row.outcome = e.outcome;
   }

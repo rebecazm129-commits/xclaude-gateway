@@ -677,6 +677,29 @@ describe('ccToolUseId + pairedSource (frente 3)', () => {
     expect(ev.pairedSource).toBeUndefined();
   });
 
+  it('(a-cierre) orphan enrichment inherits toolName and cwd from its request (presentation)', async () => {
+    const dir = join(tmpDir, 'cc-presentation');
+    await mkdir(dir, { recursive: true });
+    const reqWithCwd = JSON.stringify({
+      v: 1, id: 'w5', ts: '2026-07-20T10:00:00.000Z', session: 'wrap-sess',
+      mcp: 'm', type: 'mcp.request', direction: 'client_to_server', rpcId: 5,
+      method: 'tools/call', cwd: '/Users/u/proj-z',
+      params: { name: 'Bash', arguments: { command: 'x' } },
+      detection: { category: 'tool_call_allowed', severity: 'low', findings: [] },
+    });
+    await writeFile(
+      join(dir, 's.jsonl'),
+      [reqWithCwd, wrapperEnrichment('enr5', 5, 'server_to_client')].join('\n') + '\n',
+    );
+    const result = await readDetections(dir);
+    const enr = result.find((e) => e.id === 'enr5') as unknown as {
+      toolName?: string;
+      cwd?: string;
+    };
+    expect(enr.toolName).toBe('Bash');
+    expect(enr.cwd).toBe('/Users/u/proj-z');
+  });
+
   it('(d) events without ccToolUseId → both fields absent (historic intact)', async () => {
     const dir = join(tmpDir, 'cc-historic');
     await mkdir(dir, { recursive: true });

@@ -439,6 +439,24 @@ export function assembleAudit(
       );
     }
   }
+  // Herencia de PRESENTACIÓN (no correlación) — frente 3, cierre: toolName y
+  // cwd de la request se prestan a su enrichment para que los filtros
+  // Tool/Project/búsqueda incluyan las alertas de la llamada filtrada. Se
+  // puebla desde TODAS las requests con al menos un campo, no solo las que
+  // tienen ccToolUseId — un evento Desktop puro también presta su tool a su
+  // enrichment. Misma limitación de lookup sin dirección ya aceptada.
+  const requestPresentationByRpc = new Map<
+    string,
+    { toolName?: string; cwd?: string }
+  >();
+  for (const req of requests) {
+    if (req.toolName !== undefined || req.cwd !== undefined) {
+      requestPresentationByRpc.set(JSON.stringify([req.session, req.rpcId]), {
+        ...(req.toolName !== undefined ? { toolName: req.toolName } : {}),
+        ...(req.cwd !== undefined ? { cwd: req.cwd } : {}),
+      });
+    }
+  }
   const matchedEnrichmentIds = new Set<string>();
   // Output rows are COPIES: the caller's cached events are never mutated.
   const outRequests: DetectionEvent[] = requests.map((req) => {
@@ -463,6 +481,22 @@ export function assembleAudit(
           JSON.stringify([copy.session, copy.rpcId]),
         );
         if (inherited !== undefined) copy.ccToolUseId = inherited;
+      }
+      // Herencia de PRESENTACIÓN (no correlación): permite que los filtros
+      // Tool/Project/búsqueda incluyan las alertas de la llamada filtrada;
+      // misma limitación de lookup sin dirección ya aceptada.
+      if (copy.toolName === undefined || copy.cwd === undefined) {
+        const pres = requestPresentationByRpc.get(
+          JSON.stringify([copy.session, copy.rpcId]),
+        );
+        if (pres !== undefined) {
+          if (copy.toolName === undefined && pres.toolName !== undefined) {
+            copy.toolName = pres.toolName;
+          }
+          if (copy.cwd === undefined && pres.cwd !== undefined) {
+            copy.cwd = pres.cwd;
+          }
+        }
       }
       return copy;
     });

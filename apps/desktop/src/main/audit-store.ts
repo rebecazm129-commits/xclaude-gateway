@@ -157,6 +157,11 @@ function slimEvent(e: EnrichableEvent): EnrichableEvent {
   // Cross-source correlation key (frente 3) — same F1.3c-scar rationale as in
   // the request branch. pairedSource is NOT kept (computed in assemble).
   if (e.ccToolUseId !== undefined) slim.ccToolUseId = e.ccToolUseId;
+  // Inherited presentation (frente 3, cierre) — F1.3c-scar pattern, third
+  // application: dropping these here would silently break the Tool/Project
+  // filters on cached enrichment rows.
+  if (e.toolName !== undefined) slim.toolName = e.toolName;
+  if (e.cwd !== undefined) slim.cwd = e.cwd;
   return slim;
 }
 

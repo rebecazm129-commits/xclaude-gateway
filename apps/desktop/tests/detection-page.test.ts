@@ -332,7 +332,8 @@ describe('tool + ccSession filters (F2.4)', () => {
   const write = req('w1', ts, { toolName: 'Write' });
   const ccA = req('a1', ts, { source: 'claude-code', ccSession: 'uuid-A', toolName: 'Bash' });
   const ccB = req('b1', ts, { source: 'claude-code', ccSession: 'uuid-B', toolName: 'Bash' });
-  // CC enrichment carrying ccSession (no toolName — enrichments never have one).
+  // CC enrichment carrying ccSession, sin toolName: los casados lo heredan en
+  // assemble (frente 3, cierre) — este fixture ejercita la huérfana real.
   const enrA = {
     id: 'n1', ts, session: 's', mcp: 'm', type: 'mcp.detection_enrichment' as const,
     rpcId: 1, direction: 'client_to_server' as const,
@@ -354,7 +355,7 @@ describe('tool + ccSession filters (F2.4)', () => {
     expect(paginate(events, { ...ALL, tool: [] }, 10, null, NOW).totalMatching).toBe(base);
   });
 
-  it('an active tool filter excludes enrichment rows (they carry no toolName)', () => {
+  it('an active tool filter excludes fieldless enrichment rows (real orphans / historics)', () => {
     const p = paginate(events, { ...ALL, tool: ['Bash'] }, 10, null, NOW);
     expect(p.rows.map((r) => r.id).sort()).toEqual(['a1', 'b1']); // n1 excluded
   });
@@ -393,6 +394,50 @@ describe('tool + ccSession filters (F2.4)', () => {
     // null ≡ absent.
     expect(paginate([...events, withProj], { ...ALL, project: null }, 10, null, NOW).totalMatching)
       .toBe(paginate([...events, withProj], ALL, 10, null, NOW).totalMatching);
+  });
+});
+
+describe('inherited presentation on enrichment rows (frente 3, cierre)', () => {
+  const ts = new Date(NOW).toISOString();
+  function enrEv(
+    id: string,
+    opts: { toolName?: string; cwd?: string } = {},
+  ): EnrichableEvent {
+    return {
+      id, ts, session: 's', mcp: 'm', type: 'mcp.detection_enrichment' as const,
+      rpcId: 1, direction: 'server_to_client' as const,
+      ...(opts.toolName !== undefined ? { toolName: opts.toolName } : {}),
+      ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
+      detection: { category: 'pii_detected' as Category, severity: 'medium' as Severity, findings: [] },
+    } as EnrichableEvent;
+  }
+  const bashReq = req('r1', ts, { toolName: 'Bash' });
+  const inherited = enrEv('n2', { toolName: 'Bash', cwd: '/Users/u/proj-x' });
+  const realOrphan = enrEv('n3'); // sin campos: huérfana real / histórico
+
+  it('(b) an active tool filter INCLUDES the enrichment of that tool and still excludes fieldless orphans', () => {
+    const p = paginate([bashReq, inherited, realOrphan], { ...ALL, tool: ['Bash'] }, 10, null, NOW);
+    expect(p.rows.map((r) => r.id).sort()).toEqual(['n2', 'r1']); // n3 excluded
+  });
+
+  it('(c) free-text search by tool name finds the enrichment row', () => {
+    const p = paginate([bashReq, inherited, realOrphan], { ...ALL, text: 'bash' }, 10, null, NOW);
+    expect(p.rows.map((r) => r.id).sort()).toEqual(['n2', 'r1']);
+  });
+
+  it('(d) project filter includes the inherited enrichment', () => {
+    const p = paginate([bashReq, inherited, realOrphan], { ...ALL, project: ['proj-x'] }, 10, null, NOW);
+    expect(p.rows.map((r) => r.id)).toEqual(['n2']);
+  });
+
+  it('(e) toSlim populates toolName/project on an enrichment row', () => {
+    const slim = toSlim(inherited);
+    expect(slim.toolName).toBe('Bash');
+    expect(slim.project).toBe('proj-x'); // basename(cwd)
+    // Request-only fields stay request-only.
+    expect(slim.method).toBeUndefined();
+    expect(slim.argsSummary).toBeUndefined();
+    expect(slim.outcome).toBeUndefined();
   });
 });
 
