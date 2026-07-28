@@ -173,6 +173,26 @@ describe('ClaudeCode view (F2.4 commit 4)', () => {
     expect(screen.getByText('PII detected')).toBeDefined();
   });
 
+  it('enrichment with inherited toolName: Tool cell shows the real tool, Details keeps the category label', async () => {
+    stubXcgForView({
+      ...PAGE_WITH_ROWS,
+      rows: [
+        {
+          id: 'r5', ts: '2026-07-17T19:13:21.000Z', mcp: 'xcg-toy',
+          type: 'mcp.detection_enrichment',
+          category: 'pii_detected', severity: 'medium', source: 'claude-code',
+          ccSession: 'uuid-B', toolName: 'toy_ping',
+        },
+      ],
+    });
+    render(<ClaudeCode />);
+    await waitFor(() => {
+      expect(screen.getByText('toy_ping')).toBeDefined();
+    });
+    expect(screen.queryByText('[NER]')).toBeNull();
+    expect(screen.getByText('PII detected')).toBeDefined();
+  });
+
   it('source filter is fixed: no Source chip, every page call pins claude-code', async () => {
     const { listDetectionPage } = stubXcgForView(EMPTY_PAGE);
     render(<ClaudeCode />);

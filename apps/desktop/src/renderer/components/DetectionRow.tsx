@@ -63,13 +63,20 @@ export function DetectionRow({ row, selected, onClick }: DetectionRowProps): JSX
         <span className={styles['method']}>
           {row.toolName ?? row.method}
         </span>
+      ) : row.toolName !== undefined ? (
+        // Orden DELIBERADO (contrato: real tool > real method > synthetic):
+        // desde 4c7f859 los enrichments casados heredan el toolName real de
+        // su request. El manifest-change nunca hereda toolName — tools/list
+        // no lo tiene — así que su rama sigue efectiva.
+        <span className={styles['method']}>{row.toolName}</span>
       ) : row.category === 'tool_manifest_changed' ? (
         // Manifest-change enrichment: it rides on the tools/list response, not
         // the async NER path, so label the source method, not [NER].
         <span className={styles['method']}>tools/list</span>
       ) : (
-        // Other enrichments: honest per-producer label ([NER] / [content]),
-        // bracket style. See enrichmentToolLabel for the column contract.
+        // Huérfanas reales (sin request en el trail): honest per-producer
+        // label ([NER] / [content]), bracket style. See enrichmentToolLabel
+        // for the column contract.
         <span className={styles['ner']}>{enrichmentToolLabel(row.category)}</span>
       )}
     </div>

@@ -43,6 +43,22 @@ describe('DetectionRow — tool column', () => {
     expect(screen.queryByText('[NER]')).toBeNull();
   });
 
+  it('shows the inherited toolName on an enrichment row — real tool beats the synthetic label (frente 3, cierre)', () => {
+    render(
+      <DetectionRow
+        row={row({
+          type: 'mcp.detection_enrichment',
+          category: 'pii_detected',
+          toolName: 'echo',
+        })}
+        selected={false}
+        onClick={() => {}}
+      />,
+    );
+    expect(screen.getByText('echo')).toBeTruthy();
+    expect(screen.queryByText('[NER]')).toBeNull();
+  });
+
   it('shows [NER] for a NER (pii_detected) enrichment row — the one place it was true', () => {
     render(
       <DetectionRow

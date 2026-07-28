@@ -21,8 +21,9 @@ import styles from './ClaudeCodeRow.module.css';
 //   cell absorbs it as context for the payload. Baseline rows show nothing.
 // - enrichments: the category label IS the Details (an enrichment has no
 //   args/project; "[content] · claude-code" said nothing). The Tool cell
-//   keeps enrichmentToolLabel — the producer ([NER] vs [content]) is still
-//   signal in an all-CC view.
+//   shows the inherited real toolName when present (4c7f859) — la señal del
+//   productor ([NER]/[content]) cede ante el tool real y sobrevive solo en
+//   huérfanas reales sin request en el trail.
 
 interface ClaudeCodeRowProps {
   row: DetectionRowSlim;
@@ -71,6 +72,10 @@ export function ClaudeCodeRow({ row, selected, onClick }: ClaudeCodeRowProps): J
           )}
           {row.toolName ?? row.method}
         </span>
+      ) : row.toolName !== undefined ? (
+        // Tool real heredado de la request (4c7f859) — gana a la etiqueta
+        // sintética del productor.
+        <span className={styles['tool']}>{row.toolName}</span>
       ) : (
         <span className={styles['toolSoft']}>{enrichmentToolLabel(row.category)}</span>
       )}
