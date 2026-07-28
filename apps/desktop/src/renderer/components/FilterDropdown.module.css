@@ -25,15 +25,18 @@
   border-color: var(--kraft-ink-soft);
 }
 
+/* Restyling (mockup 28/07): padding lateral también — el menú respira; sin el
+   border-top accent. Fondo: --kraft-surface se mantiene — es EL token de
+   superficie elevada; los cálidos (bg/titlebar/filter-bg) son fondos de
+   página/controles, no superficies flotantes. */
 .menu {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
   background: var(--kraft-surface);
   border: 0.5px solid var(--kraft-border-strong);
-  border-top: 2px solid var(--kraft-accent);
   border-radius: var(--kraft-radius-md);
-  padding: 6px 0;
+  padding: 8px;
   min-width: 200px;
   /* Single-line options (commit 6): wide enough for the Session human
      labels, ellipsis beyond — never a 3-line wrap. */
@@ -45,25 +48,67 @@
   overflow: hidden;
 }
 
+/* El padding lateral del menú da el margen que hace visible el relleno
+   redondeado de la fila (mockup). */
 .option {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
   font-family: var(--kraft-font-ui);
   font-size: 12px;
   color: var(--kraft-ink);
   cursor: pointer;
 }
 
+/* Aire entre filas: cada relleno redondeado lee como píldora independiente
+   (mockup). */
+.option + .option {
+  margin-top: 5px;
+}
+
+/* Hover de NO seleccionada: mix suave de ink sobre surface — neutro, se
+   distingue del beige de seleccionada sin tokens nuevos (patrón color-mix ya
+   usado en el box-shadow del menú). */
 .option:hover {
+  background: color-mix(in srgb, var(--kraft-ink) 4%, var(--kraft-surface));
+}
+
+/* Fila seleccionada: beige existente. Sin regla de hover propia — la
+   seleccionada queda plana al pasar el ratón (esta regla gana al hover por
+   especificidad: :has(input:checked) aporta más que :hover), que es lo
+   limpio: el beige ya la marca y no hay salto de tono. */
+.option:has(input:checked) {
   background: var(--kraft-filter-bg);
 }
 
+/* Checkbox custom accesible sin tocar el DOM (mockup 28/07). */
 .option input[type='checkbox'] {
-  accent-color: var(--kraft-accent);
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border-radius: 5px;
+  border: 1.5px solid var(--kraft-border-strong);
+  background: var(--kraft-surface);
   cursor: pointer;
   flex: none;
+}
+
+.option input[type='checkbox']:checked {
+  background: var(--kraft-accent);
+  border-color: var(--kraft-accent);
+  /* ✓ dibujado inline (trazo blanco sobre accent; no hay token para él). */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+/* Accesibilidad: el foco de teclado nunca se pierde con appearance: none. */
+.option input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--kraft-accent);
+  outline-offset: 2px;
 }
 
 /* One line per option: the label cell ellipsizes long values (session human
@@ -74,4 +119,54 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Pie All/None (mockup 28/07): All a la izquierda, None a la derecha.
+   Separador con --kraft-border-strong: el --kraft-border (#e8e1d4) a hairline
+   sobre surface blanco apenas se percibe; el strong sí lee como en el mockup. */
+.menuFooter {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding: 10px 12px 2px;
+  border-top: var(--kraft-hairline) solid var(--kraft-border-strong);
+}
+
+.footerAll,
+.footerNone {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--kraft-font-ui);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.footerAll {
+  color: var(--kraft-accent);
+}
+
+.footerAll:hover {
+  color: var(--kraft-accent-hover);
+}
+
+.footerNone {
+  color: var(--kraft-ink-soft);
+}
+
+.footerNone:hover {
+  color: var(--kraft-ink);
+}
+
+/* Sin recuadro de focus tras click de ratón: outline SOLO en :focus-visible
+   (teclado), nunca en :focus a secas. */
+.footerAll:focus,
+.footerNone:focus {
+  outline: none;
+}
+
+.footerAll:focus-visible,
+.footerNone:focus-visible {
+  outline: 2px solid var(--kraft-accent);
+  outline-offset: 2px;
 }

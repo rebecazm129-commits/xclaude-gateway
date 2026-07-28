@@ -75,6 +75,25 @@ export function FilterDropdown<T extends string>({
               </span>
             </label>
           ))}
+          {/* Pie All/None (mockup 28/07): atajos de selección total/vacía. */}
+          <div className={styles['menuFooter']}>
+            <button
+              type="button"
+              className={styles['footerAll']}
+              data-testid="filter-all"
+              onClick={() => onChange(options)}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              className={styles['footerNone']}
+              data-testid="filter-none"
+              onClick={() => onChange([])}
+            >
+              None
+            </button>
+          </div>
         </div>
       )}
     </div>
