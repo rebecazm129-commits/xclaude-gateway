@@ -16,7 +16,7 @@ import type {
   Severity,
   TimeRange,
 } from '../shared/types.js';
-import { DAY_MS, normalizeSource } from '../shared/types.js';
+import { normalizeSource } from '../shared/types.js';
 
 const TIME_WINDOW_MS: Record<Exclude<TimeRange, 'all' | 'custom'>, number> = {
   '1h': 60 * 60 * 1000,
@@ -34,6 +34,28 @@ function cmp(
   return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
 }
 
+// Parse a customRange bound ('YYYY-MM-DD') as midnight LOCAL time of that day.
+// Strict shape only — anything else is NaN, which withinTimeWindow treats as
+// "this bound does not restrict" (each bound validated separately, matching
+// the previous Date.parse behavior). Month/day ranges beyond the regex are
+// not validated: Date normalizes them, and the input comes from a controlled
+// UI (<input type=date>).
+export function parseLocalDayStart(dateStr: string): number {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (m === null) return NaN;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
+}
+
+// Local midnight of the day AFTER dateStr (same strict shape → NaN). The
+// Date constructor normalizes d+1 across month/year rollover AND DST — a
+// 23h/25h transition day keeps its true local end, which a flat +24h would
+// not.
+export function parseLocalNextDayStart(dateStr: string): number {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (m === null) return NaN;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + 1).getTime();
+}
+
 function withinTimeWindow(
   e: EnrichableEvent,
   filter: DetectionFilter,
@@ -43,14 +65,17 @@ function withinTimeWindow(
   const t = Date.parse(e.ts);
   if (Number.isNaN(t)) return false;
   // Custom range (delta final): explicit YYYY-MM-DD from/to, inclusive on
-  // both ends ([from 00:00, to 24:00)). Absent/null range → no restriction.
+  // both ends ([from 00:00, to 24:00) in the machine's LOCAL timezone —
+  // YYYY-MM-DD bounds are local days, not UTC days; to bound = local
+  // midnight of the day AFTER to, computed via Date normalization so DST
+  // days (23h/25h) stay correct). Absent/null range → no restriction.
   if (filter.timeRange === 'custom') {
     const cr = filter.customRange;
     if (cr === undefined || cr === null) return true;
-    const from = Date.parse(cr.from);
-    const to = Date.parse(cr.to);
+    const from = parseLocalDayStart(cr.from);
+    const toEnd = parseLocalNextDayStart(cr.to);
     if (!Number.isNaN(from) && t < from) return false;
-    if (!Number.isNaN(to) && t >= to + DAY_MS) return false;
+    if (!Number.isNaN(toEnd) && t >= toEnd) return false;
     return true;
   }
   return t >= now - TIME_WINDOW_MS[filter.timeRange];

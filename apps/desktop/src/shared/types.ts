@@ -302,7 +302,9 @@ export interface DetectionFilter {
   // cualquier filtro de status activo — no son ok ni error.
   status?: string[] | null;
   // Rango explícito cuando timeRange === 'custom'. Fechas YYYY-MM-DD
-  // (input type=date); semántica inclusiva: [from 00:00, to 24:00).
+  // (input type=date); semántica inclusiva: [from 00:00, to 24:00) en la
+  // timezone LOCAL de la máquina — los límites son días locales, no días UTC
+  // (parseLocalDayStart en detection-page.ts).
   customRange?: { from: string; to: string } | null;
 }
 

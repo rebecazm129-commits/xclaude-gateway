@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { matchesFilter, paginate, toDetail, toSlim } from '../src/main/detection-page.js';
+import { matchesFilter, paginate, parseLocalDayStart, parseLocalNextDayStart, toDetail, toSlim } from '../src/main/detection-page.js';
 import { createAuditStore } from '../src/main/audit-store.js';
 import { readAudit } from '../src/main/detection-reader.js';
 import type {
@@ -632,10 +632,12 @@ describe('delta final — text, status, custom range, session facet meta', () =>
     expect(byId.get('t3')?.outcome).toBeUndefined();
   });
 
-  it('custom range: explicit from/to, inclusive both ends', () => {
-    const july1 = req('d1', '2026-07-01T10:00:00.000Z');
-    const july15 = req('d2', '2026-07-15T10:00:00.000Z');
-    const july20 = req('d3', '2026-07-20T23:30:00.000Z');
+  it('custom range: explicit from/to, inclusive both ends (local days)', () => {
+    // Timestamps built with the LOCAL Date constructor so the expectations
+    // hold in any runner timezone (bounds are local days since the tz fix).
+    const july1 = req('d1', new Date(2026, 6, 1, 10, 0).toISOString());
+    const july15 = req('d2', new Date(2026, 6, 15, 10, 0).toISOString());
+    const july20 = req('d3', new Date(2026, 6, 20, 23, 30).toISOString());
     const all = [july1, july15, july20];
     const p = paginate(
       all,
@@ -647,6 +649,51 @@ describe('delta final — text, status, custom range, session facet meta', () =>
     expect(
       paginate(all, { ...ALL, timeRange: 'custom', customRange: null }, 10, null, NOW).totalMatching,
     ).toBe(3);
+  });
+
+  it('parseLocalDayStart: valid date → local midnight; malformed → NaN', () => {
+    expect(parseLocalDayStart('2026-07-15')).toBe(new Date(2026, 6, 15).getTime());
+    expect(parseLocalDayStart('2026-01-01')).toBe(new Date(2026, 0, 1).getTime());
+    expect(parseLocalDayStart('')).toBeNaN();
+    expect(parseLocalDayStart('2026-7-1')).toBeNaN(); // strict shape: two digits
+    expect(parseLocalDayStart('garbage')).toBeNaN();
+  });
+
+  it('parseLocalNextDayStart: next local midnight, month/year rollover via Date; malformed → NaN', () => {
+    expect(parseLocalNextDayStart('2026-07-15')).toBe(new Date(2026, 6, 16).getTime());
+    expect(parseLocalNextDayStart('2026-12-31')).toBe(new Date(2027, 0, 1).getTime()); // year rollover
+    expect(parseLocalNextDayStart('')).toBeNaN();
+    expect(parseLocalNextDayStart('2026-7-1')).toBeNaN();
+    expect(parseLocalNextDayStart('garbage')).toBeNaN();
+  });
+
+  it('custom range uses LOCAL days: edges of from/to are in, past-to local morning is out', () => {
+    // All event timestamps built with the LOCAL Date constructor — the
+    // assertions hold in any runner timezone. 00:30 local of the from day
+    // and 23:30 local of the to day fall INSIDE; 01:00 local of the day
+    // after to falls OUTSIDE (in UTC terms it may still be the to day —
+    // that was exactly the pre-fix bug).
+    const fromEdge = req('lf', new Date(2026, 6, 10, 0, 30).toISOString());
+    const toEdge = req('lt', new Date(2026, 6, 20, 23, 30).toISOString());
+    const pastTo = req('lp', new Date(2026, 6, 21, 1, 0).toISOString());
+    const p = paginate(
+      [fromEdge, toEdge, pastTo],
+      { ...ALL, timeRange: 'custom', customRange: { from: '2026-07-10', to: '2026-07-20' } },
+      10, null, NOW,
+    );
+    expect(p.rows.map((r) => r.id).sort()).toEqual(['lf', 'lt']);
+  });
+
+  it('custom range: a malformed from does not void a valid to (per-bound validation)', () => {
+    const inside = req('ok1', new Date(2026, 6, 15, 12, 0).toISOString());
+    const pastTo = req('out1', new Date(2026, 6, 21, 1, 0).toISOString());
+    const p = paginate(
+      [inside, pastTo],
+      { ...ALL, timeRange: 'custom', customRange: { from: 'garbage', to: '2026-07-20' } },
+      10, null, NOW,
+    );
+    // from is NaN → no lower bound; to still excludes the past-to event.
+    expect(p.rows.map((r) => r.id)).toEqual(['ok1']);
   });
 
   it('session facet meta: started=min ts, where=most recent project (mcp fallback), recent-first', () => {
