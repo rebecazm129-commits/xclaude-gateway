@@ -12,6 +12,7 @@ import type {
 import { AuditFooter } from './AuditFooter.js';
 import { CATEGORY_OPTIONS, SEVERITY_OPTIONS, HEADER_AND_FILTERS_HEIGHT, SEARCH_DEBOUNCE_MS } from './Detections.js';
 import { ClaudeCodeRow } from './ClaudeCodeRow.js';
+import { DateRangePicker } from './DateRangePicker.js';
 import { DetailDrawer } from './DetailDrawer.js';
 import { formatTimestamp } from './detections-format.js';
 import { FilterDropdown } from './FilterDropdown.js';
@@ -431,28 +432,19 @@ export function ClaudeCode(): JSX.Element {
           </button>
         )}
         {selectedTimeRange === 'custom' && (
-          // Native date inputs (delta final): the house has no datepicker —
-          // <input type="date"> is the simplest coherent pattern, tokens on
-          // top. IN the chips row since dogfood 3ª ronda (the own-row band
-          // died): right-aligned at the end, under the time segment; on a
-          // narrow window it wraps as a whole unit like any chip.
-          <span className={styles['customRange']}>
-            <input
-              type="date"
-              className={styles['dateInput']}
-              aria-label="From date"
-              value={customFrom}
-              onChange={(e) => setCustomFrom(e.target.value)}
-            />
-            <span className={styles['customRangeSep']}>–</span>
-            <input
-              type="date"
-              className={styles['dateInput']}
-              aria-label="To date"
-              value={customTo}
-              onChange={(e) => setCustomTo(e.target.value)}
-            />
-          </span>
+          // DateRangePicker (replaces the native date inputs — the house
+          // datepicker exists now): IN the chips row since dogfood 3ª ronda,
+          // keeping the old .customRange spot (right-aligned at the end,
+          // whole-unit wrap on narrow windows). The view stays the owner of
+          // customFrom/customTo — same wire contract.
+          <DateRangePicker
+            from={customFrom}
+            to={customTo}
+            onChange={(f, t) => {
+              setCustomFrom(f);
+              setCustomTo(t);
+            }}
+          />
         )}
         </div>
       </div>

@@ -1,0 +1,207 @@
+/* DateRangePicker — the Custom range control. Triggers wear the EXACT skin
+   of the old .dateInput (surface, hairline border-strong, ink, 12px font-ui,
+   radius-sm); the panel wears FilterDropdown's .menu grammar (surface,
+   0.5px border-strong, radius-md, the color-mix double shadow). The root
+   keeps the old .customRange positioning: end of the chips row via
+   margin-left auto; the chips row's whole-unit wrap covers narrow windows. */
+.root {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.trigger {
+  background: var(--kraft-surface);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  color: var(--kraft-ink);
+  font-family: var(--kraft-font-ui);
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: var(--kraft-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  /* Wide enough for both the placeholder and the ISO date — the trigger
+     doesn't jump between empty and selected states. */
+  min-width: 84px;
+  text-align: center;
+}
+
+/* Empty trigger shows its placeholder text ('From date' / 'To date'). */
+.triggerEmpty {
+  color: var(--kraft-ink-soft);
+}
+
+.sep {
+  color: var(--kraft-ink-soft);
+  font-size: 12px;
+}
+
+/* Anchored RIGHT: the group lives at the right end of the chips row — a
+   left-anchored ~300px panel would run past the window edge (and body
+   overflow:hidden would eat it). */
+.panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 302px;
+  background: var(--kraft-surface);
+  border: 0.5px solid var(--kraft-border-strong);
+  border-radius: var(--kraft-radius-md);
+  padding: 16px;
+  z-index: 10;
+  box-shadow:
+    0 6px 20px color-mix(in srgb, var(--kraft-ink) 14%, transparent),
+    0 2px 4px color-mix(in srgb, var(--kraft-ink) 6%, transparent);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.monthLabel {
+  font-family: var(--kraft-font-display);
+  font-size: 15px;
+  color: var(--kraft-ink);
+}
+
+.navBtn {
+  background: none;
+  border: none;
+  padding: 2px 8px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--kraft-ink-soft);
+  border-radius: var(--kraft-radius-sm);
+  cursor: pointer;
+  transition: color var(--kraft-transition-fast) ease;
+}
+
+.navBtn:hover {
+  color: var(--kraft-ink);
+}
+
+.weekRow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.weekRow + .weekRow {
+  margin-top: 2px;
+}
+
+.weekday {
+  font-family: var(--kraft-font-ui);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: var(--kraft-ink-soft);
+  text-align: center;
+  padding: 4px 0;
+}
+
+/* Transparent border keeps today's 1.5px ring from shifting the layout. */
+.cell {
+  background: none;
+  border: 1.5px solid transparent;
+  padding: 7px 0;
+  font-family: var(--kraft-font-ui);
+  font-size: 12.5px;
+  color: var(--kraft-ink);
+  border-radius: 8px;
+  text-align: center;
+  cursor: pointer;
+}
+
+/* Hover of a plain cell: FilterDropdown's ink-over-surface mix. */
+.cell:hover {
+  background: color-mix(in srgb, var(--kraft-ink) 4%, var(--kraft-surface));
+}
+
+.cellOutside {
+  color: var(--kraft-ink-disabled);
+}
+
+.cellToday {
+  border-color: var(--kraft-accent);
+  color: var(--kraft-accent);
+}
+
+/* Straight band with rounded endpoints (mockup fallback): in-range cells go
+   flat; the selected endpoints keep their own radius below. Pinned hover —
+   house precedent: selected/range state stays flat under the pointer. */
+.cellInRange {
+  background: var(--kraft-filter-bg);
+  border-radius: 0;
+}
+
+.cellInRange:hover {
+  background: var(--kraft-filter-bg);
+}
+
+/* Selected wins over today's text color (same specificity, later rule). */
+.cellSelected {
+  background: var(--kraft-accent);
+  color: #fdfbf7;
+  border-radius: 8px;
+}
+
+.cellSelected:hover {
+  background: var(--kraft-accent);
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: var(--kraft-hairline) solid var(--kraft-border-strong);
+}
+
+.footerClear,
+.footerToday {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--kraft-font-ui);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.footerClear {
+  color: var(--kraft-ink-soft);
+}
+
+.footerClear:hover {
+  color: var(--kraft-ink);
+}
+
+.footerToday {
+  color: var(--kraft-accent);
+}
+
+.footerToday:hover {
+  color: var(--kraft-accent-hover);
+}
+
+/* Keyboard-only focus ring, house pattern: outline ONLY on :focus-visible,
+   never on bare :focus. */
+.trigger:focus,
+.cell:focus,
+.navBtn:focus,
+.footerClear:focus,
+.footerToday:focus {
+  outline: none;
+}
+
+.trigger:focus-visible,
+.cell:focus-visible,
+.navBtn:focus-visible,
+.footerClear:focus-visible,
+.footerToday:focus-visible {
+  outline: 2px solid var(--kraft-accent);
+  outline-offset: 2px;
+}

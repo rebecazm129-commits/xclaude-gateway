@@ -476,15 +476,20 @@ describe('ClaudeCode — delta final (search, status, custom range, server sessi
     expect(screen.getAllByTestId('error-dot')).toHaveLength(1); // only r3
   });
 
-  it('Custom time range: date inputs appear and ship {from,to} server-side', async () => {
+  it('Custom time range: the picker ships {from,to} server-side', async () => {
     const { listDetectionPage } = stubXcgForView(PAGE_WITH_ROWS);
     render(<ClaudeCode />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Custom' })).toBeDefined());
     fireEvent.click(screen.getByRole('button', { name: 'Custom' }));
-    const from = screen.getByLabelText('From date');
-    const to = screen.getByLabelText('To date');
-    fireEvent.change(from, { target: { value: '2026-07-10' } });
-    fireEvent.change(to, { target: { value: '2026-07-20' } });
+    // Drive the DateRangePicker: open the panel, walk back to July 2026 (it
+    // opens on the CURRENT month; bounded loop keeps this green at any
+    // runner date), tap both endpoints — the second tap completes the range.
+    fireEvent.click(screen.getByLabelText('From date'));
+    for (let i = 0; i < 1200 && screen.queryByText('July 2026') === null; i++) {
+      fireEvent.click(screen.getByRole('button', { name: 'Previous month' }));
+    }
+    fireEvent.click(screen.getByRole('gridcell', { name: '2026-07-10' }));
+    fireEvent.click(screen.getByRole('gridcell', { name: '2026-07-20' }));
     await waitFor(() => {
       expect(
         shippedFilters(listDetectionPage).some(

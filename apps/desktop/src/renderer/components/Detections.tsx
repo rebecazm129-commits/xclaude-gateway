@@ -12,6 +12,7 @@ import type {
 import { SOURCE_LABELS } from './detections-format.js';
 
 import { AuditFooter } from './AuditFooter.js';
+import { DateRangePicker } from './DateRangePicker.js';
 import { DetailDrawer } from './DetailDrawer.js';
 import { DetectionRow } from './DetectionRow.js';
 import { FilterDropdown } from './FilterDropdown.js';
@@ -21,7 +22,7 @@ import { TimeFilter, type TimeRange } from './TimeFilter.js';
 
 import styles from './Detections.module.css';
 // The whole toolbar band (toolbar/toolbarRow/chipsRow) plus the
-// search/date-input skins live in ClaudeCode.module.css — since the toolbar
+// search-box skin live in ClaudeCode.module.css — since the toolbar
 // parity (dogfood 22/07) Detections renders CC's exact multi-row band.
 // Commit 5f's anti-drift pattern in the opposite direction (one physical
 // rule, zero drift); CSS-module import only: no TSX cycle (ClaudeCode.tsx
@@ -378,26 +379,18 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
             </button>
           )}
           {selectedTimeRange === 'custom' && (
-            // Native date inputs — CC's exact pattern: IN the chips row
-            // (dogfood 3ª ronda), right-aligned under the time segment; on a
-            // narrow window they wrap as a whole unit like any chip.
-            <span className={ccStyles['customRange']}>
-              <input
-                type="date"
-                className={ccStyles['dateInput']}
-                aria-label="From date"
-                value={customFrom}
-                onChange={(e) => setCustomFrom(e.target.value)}
-              />
-              <span className={ccStyles['customRangeSep']}>–</span>
-              <input
-                type="date"
-                className={ccStyles['dateInput']}
-                aria-label="To date"
-                value={customTo}
-                onChange={(e) => setCustomTo(e.target.value)}
-              />
-            </span>
+            // DateRangePicker (replaces the native date inputs) — CC's exact
+            // pattern: IN the chips row, keeping the old .customRange spot
+            // (right-aligned at the end, whole-unit wrap on narrow windows).
+            // The view stays the owner of customFrom/customTo.
+            <DateRangePicker
+              from={customFrom}
+              to={customTo}
+              onChange={(f, t) => {
+                setCustomFrom(f);
+                setCustomTo(t);
+              }}
+            />
           )}
         </div>
       </div>

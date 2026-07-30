@@ -121,7 +121,7 @@ describe('Detections — filter parity: search + custom range (22/07)', () => {
     });
   });
 
-  it('Custom range: date inputs in the chips row narrow the list to the window', async () => {
+  it('Custom range: the picker in the chips row narrows the list to the window', async () => {
     const { container } = await renderWithRealPaginate([
       evt('old1', '2026-07-10T12:00:00.000Z', 'notion-fetch', 'id 123abc'),
       evt('new1', new Date(Date.now() - 1000).toISOString(), 'Bash', 'git push origin'),
@@ -137,8 +137,16 @@ describe('Detections — filter parity: search + custom range (22/07)', () => {
     expect(chipsRow?.contains(from)).toBe(true);
     expect(chipsRow?.contains(screen.getByRole('button', { name: /Severity/ }))).toBe(true);
     expect(chipsRow?.contains(screen.getByRole('searchbox', { name: 'Search tool or details' }))).toBe(false);
-    fireEvent.change(from, { target: { value: '2026-07-09' } });
-    fireEvent.change(screen.getByLabelText('To date'), { target: { value: '2026-07-11' } });
+    // Drive the DateRangePicker: open the panel from the From trigger, walk
+    // back to July 2026 (it opens on the CURRENT month; bounded loop keeps
+    // this green at any runner date), then tap both endpoints. The second
+    // tap completes the range and closes the panel.
+    fireEvent.click(from);
+    for (let i = 0; i < 1200 && screen.queryByText('July 2026') === null; i++) {
+      fireEvent.click(screen.getByRole('button', { name: 'Previous month' }));
+    }
+    fireEvent.click(screen.getByRole('gridcell', { name: '2026-07-09' }));
+    fireEvent.click(screen.getByRole('gridcell', { name: '2026-07-11' }));
     await waitFor(() => {
       expect(screen.queryByText('Bash')).toBeNull();
       expect(screen.getByText('notion-fetch')).toBeDefined();

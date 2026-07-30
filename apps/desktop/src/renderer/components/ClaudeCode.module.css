@@ -36,7 +36,7 @@
 /* Toolbar band (incidencia B): the MULTI-ROW band, shared by BOTH views
    since the toolbar parity (22/07 — Detections' old single-row .filters is
    gone). Row 1: search + time segment. Row 2: chips (whole-chip wrap, never
-   splitting a chip's text) + — only with Custom active — the date inputs,
+   splitting a chip's text) + — only with Custom active — the DateRangePicker,
    right-aligned at the end of the same row (dogfood 3ª ronda). */
 .toolbar {
   display: flex;
@@ -119,31 +119,9 @@
   color: var(--kraft-ink-soft);
 }
 
-/* Custom date range (delta final) — native date inputs, token skin. Lives at
-   the END of the chips row (dogfood 3ª ronda — the own-row band died):
-   margin-left auto pushes it right, under the time segment; the chips row's
-   whole-unit wrap covers narrow windows. */
-.customRange {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-}
-
-.dateInput {
-  background: var(--kraft-surface);
-  border: var(--kraft-hairline) solid var(--kraft-border-strong);
-  color: var(--kraft-ink);
-  font-family: var(--kraft-font-ui);
-  font-size: 12px;
-  padding: 3px 8px;
-  border-radius: var(--kraft-radius-sm);
-}
-
-.customRangeSep {
-  color: var(--kraft-ink-soft);
-  font-size: 12px;
-}
+/* (The .customRange/.dateInput/.customRangeSep family died with the native
+   date inputs — the DateRangePicker carries its own module now, replicating
+   the same skin and the end-of-chips-row positioning.) */
 
 /* Session menu option (commit 6): one line — human label ellipsizes, the
    dimmed hash keeps a fixed slot on the right. */
