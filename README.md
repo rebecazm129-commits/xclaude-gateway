@@ -16,7 +16,7 @@ xCLAUDE Gateway is in beta — https://xclaude.ai
 
 </div>
 
-<p align="center"><img src="docs/screenshots/detections-hero.png" alt="Detections view with severity, category and time-range filters" width="900" /></p>
+<p align="center"><img src="docs/screenshots/detections-hero-2.png" alt="Detections view with severity, category, source and time-range filters" width="900" /></p>
 
 xCLAUDE Gateway sits between Claude Desktop and the services it talks to — remote connectors like Notion, Linear, Atlassian, GitHub or Gmail, or the local MCP servers you already run — records every JSON-RPC frame to a per-session log on your Mac, and classifies sensitive patterns with severity tags. The audit happens locally; the traffic still reaches the service it's addressed to. The audit covers both sides of the conversation: what Claude Desktop asks your tools to do, and what those tools send back.
 
@@ -34,7 +34,7 @@ xCLAUDE Gateway sits between Claude Desktop and the services it talks to — rem
 
 ## Configuration
 
-Open `xCLAUDE Gateway.app`. The **Connectors** tab lists every entry in your `claude_desktop_config.json` with its audit state: **auditing** (already wrapped), **not audited** (eligible for wrapping) or **unsupported**. To wrap the eligible servers, open **Settings** (the gear icon in the header) and click **Install**; click **Uninstall** there to revert.
+Open `xCLAUDE Gateway.app`. The **Sources** tab lists every entry in your `claude_desktop_config.json` with its audit state: **auditing** (already wrapped), **not audited** (eligible for wrapping) or **unsupported**. To wrap the eligible servers, open **Settings** (the gear icon in the header) and click **Install**; click **Uninstall** there to revert.
 
 The first time you click Install, xCLAUDE Gateway makes a one-time backup of your config at `~/Library/Application Support/Claude/claude_desktop_config.json.bak` which is never overwritten by subsequent operations.
 
@@ -109,7 +109,7 @@ xCLAUDE Gateway in its current state **covers a specific subset** of the Claude 
 What's audited is Claude Desktop's MCP JSON-RPC traffic — nothing else on your Mac.
 
 - **Claude Desktop** with **local MCP servers** that are wrapped via the app's **Install** action (or manually in `claude_desktop_config.json` by pointing them to `xcg-proxy`).
-- **Remote MCP servers connected through xCLAUDE** (Notion, Linear, Atlassian, GitHub, Stripe, Apollo, Slack, Gmail, Google Calendar and Google Drive today; more on the way). You connect them from the Connectors tab (+ Add connector), which signs you in and bridges the traffic through your machine for auditing.
+- **Remote MCP servers connected through xCLAUDE** (Notion, Linear, Atlassian, GitHub, Stripe, Apollo, Slack, Gmail, Google Calendar and Google Drive today; more on the way). You connect them from the Sources tab (+ Add source), which signs you in and bridges the traffic through your machine for auditing.
 - **Claude Code** (the CLI), on two levels. Claude Code's activity — the tool calls in a session, native tools and MCP tools alike — is audited natively via a session hook, with its own view in the app. Detection and credential masking run on this stream just as they do on wrapped traffic, keyed by the same salt. Additionally, Claude Code's local MCP servers can be wrapped by the proxy (see "Wrapping Claude Code's MCP servers" below).
 
 ### What is NOT covered
@@ -121,6 +121,8 @@ What's audited is Claude Desktop's MCP JSON-RPC traffic — nothing else on your
 - **Claude's native tools** (web search, computer use, code execution, etc.). These are internal model tools, not MCP servers. They never traverse the proxy.
 
 If you're using Claude Desktop with local MCP servers, if you connect a remote service through xCLAUDE, or if you work in Claude Code, you're in scope. If your main use is anything else, this tool will not give you what you expect today.
+
+<p align="center"><img src="docs/screenshots/claude-code-tab.png" alt="Claude Code view with per-session audit trail, severity summary and faceted filters" width="900" /></p>
 
 ### Wrapping Claude Code's MCP servers
 
@@ -136,9 +138,9 @@ Replace `/Users/<you>` with your actual home directory — the quoted JSON will 
 
 Notes: only local stdio servers can be wrapped — Claude Code's claude.ai-managed connectors are brokered remotely and never reach your machine, same as Claude Desktop's native Connectors. With both the wrapper and the native Claude Code audit active, each call on a wrapped server is recorded by both sources; the two records are correlated by Claude Code's tool-use ID: paired rows carry a link indicator in Detections, and the event detail names the other source.
 
-## Remote connectors
+<p align="center"><img src="docs/screenshots/sources-claude-code.png" alt="Sources view showing the claude-code source: hook status, session heartbeat and recent flagged calls" width="900" /></p>
 
-<p align="center"><img src="docs/screenshots/connector-inspector.png" alt="Connector inspector with audited calls and flagged events" width="900" /></p>
+## Remote connectors
 
 <p align="center"><img src="docs/screenshots/add-connector.png" alt="Add connector gallery" width="900" /></p>
 
@@ -147,7 +149,7 @@ xCLAUDE can audit remote MCP services (Notion, Linear, Atlassian, GitHub, Stripe
 To audit a service this way:
 
 1. If you already have it enabled as a native Connector in Claude Desktop, disconnect it there first. xCLAUDE audits its own bridged connection, not the native one.
-2. In xCLAUDE, open the **Connectors** tab and click **+ Add connector** to open the connector gallery. Pick the service and click **Connect**. (Not listed? Use the **Request a connector** link.)
+2. In xCLAUDE, open the **Sources** tab and click **+ Add source** to open the connector gallery. Pick the service and click **Connect**. (Not listed? Use the **Request a connector** link.)
 3. A browser window opens to authorize the service (standard OAuth). Approve it; the tab will say the login is complete.
 4. Restart Claude Desktop. Claude now reaches the service through xCLAUDE, and every call is recorded and classified like any other MCP traffic.
 
@@ -160,7 +162,7 @@ Connects via standard OAuth. xCLAUDE requests a narrow scope set — `repo`, `re
 <details>
 <summary>Google services setup (BYO OAuth client)</summary>
 
-Google's official Workspace MCP servers (Gmail, Calendar, Drive) don't use the one-click flow the other connectors do: Google has no dynamic client registration, so you bring your own (free) OAuth client, and the servers are currently behind Google's Workspace Developer Preview Program. One OAuth client serves all three connectors — and the app walks you through the whole thing. Click **Set up…** on any Google card in **Add connector**: a guided 4-step wizard with deep links into the Google Cloud console at every step. Plan for about 10 minutes of clicking, plus an asynchronous wait for Google's approval email.
+Google's official Workspace MCP servers (Gmail, Calendar, Drive) don't use the one-click flow the other connectors do: Google has no dynamic client registration, so you bring your own (free) OAuth client, and the servers are currently behind Google's Workspace Developer Preview Program. One OAuth client serves all three connectors — and the app walks you through the whole thing. Click **Set up…** on any Google card in **Add source**: a guided 4-step wizard with deep links into the Google Cloud console at every step. Plan for about 10 minutes of clicking, plus an asynchronous wait for Google's approval email.
 
 What the wizard walks you through:
 
@@ -232,7 +234,7 @@ Each session writes its own file. The file name is the session ID (ULID). Open `
 
 ### Verify detection (self-test)
 
-The Connectors tab includes a **Verify detection** button — a safe, self-contained end-to-end check of the kind these tools usually ship. It runs a synthetic risky payload through the audit pipeline and confirms the event is recorded and flagged, so you can see the detectors working end to end without touching any real connector.
+The Sources tab includes a **Verify detection** button — a safe, self-contained end-to-end check of the kind these tools usually ship. It runs a synthetic risky payload through the audit pipeline and confirms the event is recorded and flagged, so you can see the detectors working end to end without touching any real connector.
 
 <p align="center"><img src="docs/screenshots/verify-detection.png" alt="Verify detection self-test" width="900" /></p>
 
