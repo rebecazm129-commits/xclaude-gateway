@@ -76,7 +76,7 @@ The audit runs entirely on your Mac: no telemetry, no account, no analytics. xCL
 
 **`tool_manifest_changed` baseline.** xCLAUDE keeps a small per-connector baseline (a hash plus per-tool signatures) of each server's `tools/list`. The first time a connector is seen the baseline is seeded silently — no detection — and a later change is recorded exactly once: a changed description or input schema flags at HIGH, an added or removed tool at MEDIUM. Since 0.7.0.
 
-<p align="center"><img src="docs/screenshots/detection-detail.png" alt="Event detail with tool call arguments" width="900" /></p>
+<p align="center"><img src="docs/screenshots/detection-detail-2.png" alt="Event detail panel with tool call arguments, detection result and technical details" width="900" /></p>
 
 ## What this proxy is, and what it is not
 
