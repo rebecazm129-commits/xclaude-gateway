@@ -142,7 +142,7 @@ Notes: only local stdio servers can be wrapped — Claude Code's claude.ai-manag
 
 ## Remote connectors
 
-<p align="center"><img src="docs/screenshots/add-connector.png" alt="Add connector gallery" width="900" /></p>
+<p align="center"><img src="docs/screenshots/add-source.png" alt="Add source gallery with one-click connect services" width="900" /></p>
 
 xCLAUDE can audit remote MCP services (Notion, Linear, Atlassian, GitHub, Stripe, Apollo, Slack, Gmail, Google Calendar and Google Drive today, with more on the way) by acting as your connection to them, instead of Claude Desktop connecting directly.
 
