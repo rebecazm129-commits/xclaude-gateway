@@ -76,16 +76,16 @@ const CATALOG: readonly CatalogEntry[] = [
   {
     label: 'Gmail', name: 'gmail', logo: 'gmail', group: 'google', setupCatalog: 'google',
     url: 'https://gmailmcp.googleapis.com/mcp/v1',
-    scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose',
-    description: "Read and draft — Google's MCP has no send tool by design.",
+    scope: 'https://www.googleapis.com/auth/gmail.modify',
+    description: "Read, draft and organize your mail — every call recorded and classified.",
   },
   {
     label: 'Google Calendar', name: 'calendar', logo: 'googlecalendar', group: 'google',
     setupCatalog: 'google',
     url: 'https://calendarmcp.googleapis.com/mcp/v1',
     scope:
-      'https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.events.readonly',
-    description: 'Read-only calendar access — every call recorded and classified.',
+      'https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.events',
+    description: 'Read and manage your calendar events — every call recorded and classified.',
   },
   {
     label: 'Google Drive', name: 'drive', logo: 'googledrive', group: 'google',
