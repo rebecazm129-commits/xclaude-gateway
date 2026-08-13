@@ -11,7 +11,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 import { Setup } from '../../src/renderer/components/Setup.js';
-import type { StatusResult } from '@xcg/shared/config';
+import type { ConnectResult, RemoveRemoteResult, StatusResult } from '@xcg/shared/config';
+import type { CchookStatus } from '../../src/shared/types.js';
 
 // One already-wrapped http entry → toConnectors yields { name:'notion',
 // type:'remote', status:'audited' }, so the row renders in the Auditing group.
@@ -29,7 +30,9 @@ const STATUS = {
   ],
 } as unknown as StatusResult;
 
-const CCHOOK_OFF = {
+// Annotated with the real IPC type: the bare literal would infer
+// lastSessionStartTs as the literal null, rejecting CCHOOK_ON's string.
+const CCHOOK_OFF: CchookStatus = {
   installed: false,
   hookRegistered: false,
   pendingSpool: 0,
@@ -88,8 +91,27 @@ function SetupHarness({
       onOpenInDetections={noop}
       onOpenClaudeCodeInDetections={noop}
       onAudit={noop}
-      onReconnect={vi.fn(async () => ({ ok: true, reconnected: true, name: 'notion' }))}
-      onRemove={vi.fn(async () => ({ ok: true }))}
+      // Complete ConnectOk/RemoveRemoteOk shapes (no Setup test reaches
+      // Reconnect/Remove, so the results are wiring, not data under test).
+      onReconnect={vi.fn(
+        async (): Promise<ConnectResult> => ({
+          ok: true,
+          op: 'connect',
+          configPath: '/tmp/claude_desktop_config.json',
+          name: 'notion',
+          outcome: 'wrote',
+          reconnected: true,
+        }),
+      )}
+      onRemove={vi.fn(
+        async (): Promise<RemoveRemoteResult> => ({
+          ok: true,
+          op: 'remove-remote',
+          configPath: '/tmp/claude_desktop_config.json',
+          name: 'notion',
+          outcome: 'wrote',
+        }),
+      )}
       onOpenSettings={onOpenSettings}
     />
   );

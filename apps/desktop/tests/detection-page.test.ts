@@ -208,16 +208,22 @@ describe('AuditStore — slim cache (entrega 2)', () => {
       reqJson('x1', new Date(NOW).toISOString(), { args: bigArgs }) + '\n',
     );
     const full = await store.get();
-    const ev = full.events[0] as Record<string, unknown>;
-    // Presentation fields kept:
-    expect(ev['id']).toBe('x1');
-    expect(ev['toolName']).toBe('echo');
-    expect((ev['detection'] as { severity: string }).severity).toBe('low');
-    // Heavy / raw fields dropped from the cache (and thus from get()):
-    expect('argumentsJson' in ev).toBe(false);
-    expect('params' in ev).toBe(false);
-    expect('bytes' in ev).toBe(false);
-    expect('overheadUs' in ev).toBe(false);
+    const ev = full.events[0];
+    // The one event written above is an mcp.request; assert the discriminant
+    // loudly and narrow to DetectionEvent — its real type already carries the
+    // presentation fields (toolName, detection), no Record cast needed.
+    expect(ev?.type).toBe('mcp.request');
+    if (ev?.type === 'mcp.request') {
+      // Presentation fields kept:
+      expect(ev.id).toBe('x1');
+      expect(ev.toolName).toBe('echo');
+      expect(ev.detection.severity).toBe('low');
+      // Heavy / raw fields dropped from the cache (and thus from get()):
+      expect('argumentsJson' in ev).toBe(false);
+      expect('params' in ev).toBe(false);
+      expect('bytes' in ev).toBe(false);
+      expect('overheadUs' in ev).toBe(false);
+    }
     // Detail re-reads the source line → heavy fields available again.
     const d = await store.getDetail('x1');
     expect(d?.argumentsJson).toBe(JSON.stringify(bigArgs, null, 2));

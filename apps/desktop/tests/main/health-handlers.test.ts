@@ -150,7 +150,8 @@ describe('runValidateHealth (Milestone 5 Component 4 step B.1)', () => {
     expect(wrapsCheck?.status).toBe('fail');
     if (wrapsCheck?.status === 'fail') {
       expect(wrapsCheck.details).toHaveLength(1);
-      expect(wrapsCheck.details?.[0].name).toBe('filesystem');
+      // toHaveLength(1) above fails loudly if details is undefined or empty.
+      expect(wrapsCheck.details![0]!.name).toBe('filesystem');
     }
   });
 
@@ -180,7 +181,8 @@ describe('runValidateHealth (Milestone 5 Component 4 step B.1)', () => {
     const wrapsCheck = result.checks.find((c) => c.check === 'wraps');
     if (wrapsCheck?.status === 'fail') {
       expect(wrapsCheck.details).toHaveLength(1);
-      expect(wrapsCheck.details?.[0].name).toBe('broken-wrap');
+      // toHaveLength(1) above fails loudly if details is undefined or empty.
+      expect(wrapsCheck.details![0]!.name).toBe('broken-wrap');
     }
   });
 
@@ -301,7 +303,8 @@ describe('runRepairWraps (Milestone 5 Component 4 step B.2)', () => {
       expect(result.newHealth.status).toBe('healthy');
     }
     const cfg = readConfig();
-    expect(cfg.mcpServers.filesystem.command).toBe(symlinkPath);
+    expect(cfg.mcpServers.filesystem).toBeDefined();
+    expect(cfg.mcpServers.filesystem!.command).toBe(symlinkPath);
   });
 
   it('R5. 2 broken wraps → rewrites both, repairedWraps has 2, healthy after', () => {
@@ -315,8 +318,10 @@ describe('runRepairWraps (Milestone 5 Component 4 step B.2)', () => {
       expect(result.repairedWraps.sort()).toEqual(['fs1', 'fs2']);
     }
     const cfg = readConfig();
-    expect(cfg.mcpServers.fs1.command).toBe(symlinkPath);
-    expect(cfg.mcpServers.fs2.command).toBe(symlinkPath);
+    expect(cfg.mcpServers.fs1).toBeDefined();
+    expect(cfg.mcpServers.fs2).toBeDefined();
+    expect(cfg.mcpServers.fs1!.command).toBe(symlinkPath);
+    expect(cfg.mcpServers.fs2!.command).toBe(symlinkPath);
   });
 
   it('R6. 1 broken + 1 OK → only the broken one is rewritten, OK preserved', () => {
@@ -332,8 +337,10 @@ describe('runRepairWraps (Milestone 5 Component 4 step B.2)', () => {
       expect(result.repairedWraps).toEqual(['broken-wrap']);
     }
     const cfg = readConfig();
-    expect(cfg.mcpServers['ok-wrap'].command).toBe(okXcg);
-    expect(cfg.mcpServers['broken-wrap'].command).toBe(symlinkPath);
+    expect(cfg.mcpServers['ok-wrap']).toBeDefined();
+    expect(cfg.mcpServers['broken-wrap']).toBeDefined();
+    expect(cfg.mcpServers['ok-wrap']!.command).toBe(okXcg);
+    expect(cfg.mcpServers['broken-wrap']!.command).toBe(symlinkPath);
   });
 
   it('R7. non-wrap entries → untouched, preserved verbatim', () => {
@@ -351,7 +358,8 @@ describe('runRepairWraps (Milestone 5 Component 4 step B.2)', () => {
       expect(result.repairedWraps).toHaveLength(0);
     }
     const cfg = readConfig();
-    expect(cfg.mcpServers.filesystem.command).toBe('/usr/local/bin/npx');
+    expect(cfg.mcpServers.filesystem).toBeDefined();
+    expect(cfg.mcpServers.filesystem!.command).toBe('/usr/local/bin/npx');
   });
 
   it('R8. wrap with existing command but NOT pointing to symlinkPath → left alone (criterio (b))', () => {
@@ -366,7 +374,8 @@ describe('runRepairWraps (Milestone 5 Component 4 step B.2)', () => {
       expect(result.repairedWraps).toHaveLength(0);
     }
     const cfg = readConfig();
-    expect(cfg.mcpServers.filesystem.command).toBe(directPath);
+    expect(cfg.mcpServers.filesystem).toBeDefined();
+    expect(cfg.mcpServers.filesystem!.command).toBe(directPath);
   });
 
   it('R9. config not found → ok: false with parse error message', () => {
@@ -410,10 +419,11 @@ describe('runRepairWraps (Milestone 5 Component 4 step B.2)', () => {
     const result = runRepairWraps(opts());
     expect(result.ok).toBe(true);
     const cfg = readConfig();
+    expect(cfg.mcpServers.filesystem).toBeDefined();
     // command rewritten
-    expect(cfg.mcpServers.filesystem.command).toBe(symlinkPath);
+    expect(cfg.mcpServers.filesystem!.command).toBe(symlinkPath);
     // args preserved verbatim
-    expect(cfg.mcpServers.filesystem.args).toEqual([
+    expect(cfg.mcpServers.filesystem!.args).toEqual([
       '--wrap', '/usr/local/bin/npx', '--name', 'filesystem', '--', '-y', 'somepkg',
     ]);
     // top-level keys preserved

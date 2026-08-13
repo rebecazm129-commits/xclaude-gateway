@@ -10,6 +10,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 
 import { ConnectorInspector } from '../../src/renderer/components/ConnectorInspector.js';
 import type { Connector } from '@xcg/shared/config/connectors';
+import type { ConnectResult, RemoveRemoteResult } from '@xcg/shared/config';
 import type { ConnectorAuthAlert } from '../../src/shared/types.js';
 
 function stubXcg(): void {
@@ -45,8 +46,27 @@ function renderInspector(authAlert: ConnectorAuthAlert | null): void {
       authAlert={authAlert}
       onOpenInDetections={noop}
       onAudit={noop}
-      onReconnect={vi.fn(async () => ({ ok: true, reconnected: true, name: 'notion' }))}
-      onRemove={vi.fn(async () => ({ ok: true }))}
+      // Complete ConnectOk/RemoveRemoteOk shapes (these tests never click
+      // Reconnect/Remove, so the results are wiring, not data under test).
+      onReconnect={vi.fn(
+        async (): Promise<ConnectResult> => ({
+          ok: true,
+          op: 'connect',
+          configPath: '/tmp/claude_desktop_config.json',
+          name: 'notion',
+          outcome: 'wrote',
+          reconnected: true,
+        }),
+      )}
+      onRemove={vi.fn(
+        async (): Promise<RemoveRemoteResult> => ({
+          ok: true,
+          op: 'remove-remote',
+          configPath: '/tmp/claude_desktop_config.json',
+          name: 'notion',
+          outcome: 'wrote',
+        }),
+      )}
     />,
   );
 }

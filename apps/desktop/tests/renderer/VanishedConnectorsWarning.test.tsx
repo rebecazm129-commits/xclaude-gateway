@@ -13,13 +13,16 @@ import {
   diffVanishedConnectors,
   pruneAgedRemoves,
 } from '../../src/renderer/components/VanishedConnectorsWarning.js';
-import type { StatusResult } from '@xcg/shared/config';
+import type { StatusOk, StatusResult } from '@xcg/shared/config';
 
 afterEach(cleanup);
 
 // Snapshot with the given already-wrapped http (remote) names plus one local
 // wrappable entry, so the remote-only filter has something to ignore.
-function snap(remoteNames: readonly string[]): StatusResult {
+// Returns the narrow StatusOk (not the StatusResult union): the fixture builds
+// a complete, legal ok-snapshot, and the narrow type lets tests reach .entries
+// without casts. Every StatusOk is a valid StatusResult where one is needed.
+function snap(remoteNames: readonly string[]): StatusOk {
   return {
     ok: true,
     configPresent: true,
@@ -35,7 +38,7 @@ function snap(remoteNames: readonly string[]): StatusResult {
       { kind: 'wrappable' as const, name: 'local-fs', transport: 'stdio' as const },
     ],
     summary: { wrappable: 1, alreadyWrapped: remoteNames.length, skippedOther: 0 },
-  } as unknown as StatusResult;
+  };
 }
 
 const NONE: ReadonlySet<string> = new Set();

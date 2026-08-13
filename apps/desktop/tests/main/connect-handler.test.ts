@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { runConfigConnect, type ConnectConfig } from '../../src/main/connect-handler.js';
-import type { LoginOutcome } from '../../src/main/login-runner.js';
+import type { LoginOutcome, LoginProcessOptions } from '../../src/main/login-runner.js';
 
 const FAKE_XCG = '/fake/path/to/xcg-proxy';
 const URL_OK = 'https://mcp.notion.com/mcp';
@@ -184,14 +184,18 @@ describe('runConfigConnect (Hito 6 Fase 5, Pieza A)', () => {
 
   it('forwards scope from ConnectConfig to deps.login', async () => {
     writeConfig({ mcpServers: {} });
-    const login = vi.fn((): Promise<LoginOutcome> => Promise.resolve({ kind: 'success' }));
+    // Param annotated with the production signature so mock.calls carries the
+    // real tuple type (an arg-less impl infers Parameters = [] and calls[0][0]
+    // does not typecheck).
+    const login = vi.fn((_opts: LoginProcessOptions): Promise<LoginOutcome> => Promise.resolve({ kind: 'success' }));
     await runConfigConnect({ login }, { ...cfg('gmail'), scope: 'a b' });
     expect(login.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ scope: 'a b' }));
   });
 
   it('forwards scope=undefined when ConnectConfig has none', async () => {
     writeConfig({ mcpServers: {} });
-    const login = vi.fn((): Promise<LoginOutcome> => Promise.resolve({ kind: 'success' }));
+    // Same production-signature annotation as the scope-forwarding test above.
+    const login = vi.fn((_opts: LoginProcessOptions): Promise<LoginOutcome> => Promise.resolve({ kind: 'success' }));
     await runConfigConnect({ login }, cfg('gmail'));
     expect(login.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ scope: undefined }));
   });

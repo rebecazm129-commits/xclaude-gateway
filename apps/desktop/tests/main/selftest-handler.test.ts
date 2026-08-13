@@ -131,7 +131,14 @@ describe('runSelfTest', () => {
   it('reserves rpcId 0 for initialize and never includes it in expectedRpcIds', async () => {
     const h = harness();
     const launcher = vi.fn(() => Promise.resolve(h.handle));
-    const reader = vi.fn(() => Promise.resolve(correctMap(h.payloads)));
+    // Params annotated with readDetectionsFromAudit's real signature so the
+    // destructuring of mock.calls[0] below typechecks (an arg-less impl infers
+    // Parameters = []). Type-only mirror — importing the value would drag the
+    // real runner (spawn/fs) into this mocked test.
+    const reader = vi.fn(
+      (_auditFile: string, _session: string, _expectedRpcIds: readonly number[], _timeoutMs: number) =>
+        Promise.resolve(correctMap(h.payloads)),
+    );
 
     await runSelfTest(
       { launcher, reader, runId: h.runId, now: h.now, payloads: h.payloads },
