@@ -173,12 +173,12 @@ What the wizard walks you through:
 
 **Finally, connect and restart.** Once seeded, the Google cards show **Connect** instead of **Set up…**. Click it, approve in the browser window that opens (you'll pass Google's "unverified app" screen — see below), then restart Claude Desktop. Google traffic is now audited like any other connector.
 
-**What to expect while your client is unverified.** Two rough edges come from running your own client in Testing mode, not from xCLAUDE:
+**What to expect while your client is unverified.** Two things to know about running your own client — both are Google's behavior, not xCLAUDE's:
 
 - Google shows a **"Google hasn't verified this app"** screen on each authorization. You continue past it because it's your own client.
-- Google expires the refresh token after 7 days, so you **re-authorize about once a week**. xCLAUDE flags a re-login alert on the connector when that happens.
+- If you clicked **Publish app** on the consent screen (the path the in-app wizard recommends), you authorize once and you're done. If you left the project in testing instead, Google expires the refresh token after 7 days and you **re-authorize about once a week** — xCLAUDE flags a re-login alert on the connector when that happens.
 
-**Scopes.** xCLAUDE requests the scopes Google documents for each server — Gmail: read + compose (the Gmail MCP has **no send tool** by Google's design, so a draft is the most it can do; you send from Gmail yourself); Calendar: read-only; Drive: read with per-file access.
+**Scopes.** xCLAUDE requests the scopes Google documents for each server. **Gmail:** `gmail.modify`. Google's consent screen presents this as "Read, compose, and send emails from your Gmail account" — the permission you grant is broader than what the connector does. Google's Gmail MCP exposes no send tool, so drafting is the most Claude can do through xCLAUDE; the scope also covers moving mail to Trash and marking it as spam — only permanent deletion that bypasses Trash is excluded. **Calendar:** `calendar.events` (read and write events), plus `calendar.calendarlist.readonly` and `calendar.events.freebusy`. **Drive:** `drive.readonly` + `drive.file` — read, with per-file access.
 
 </details>
 
