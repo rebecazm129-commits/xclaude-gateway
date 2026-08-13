@@ -98,16 +98,23 @@ export type ParseError =
 // unexpected errors (handler bug, IPC corruption), not for domain errors
 // like "config not found" or "invalid JSON".
 
-export type IpcConfigError =
-  | { ok: false; error: { kind: 'not-found' } }
-  | { ok: false; error: { kind: 'unreadable'; detail: string } }
-  | { ok: false; error: { kind: 'invalid-json'; detail: string } }
-  | { ok: false; error: { kind: 'unexpected-shape'; detail: string } }
-  | { ok: false; error: { kind: 'invalid-name'; detail: string } }
-  | { ok: false; error: { kind: 'invalid-url'; detail: string } }
-  | { ok: false; error: { kind: 'name-exists'; detail: string } }
-  | { ok: false; error: { kind: 'login-failed'; detail: string } }
-  | { ok: false; error: { kind: 'login-invalid-args'; detail: string } };
+// Single envelope with the union on `error`, not nine copies of the envelope:
+// isomorphic for readers (narrow on result.ok, then error.kind), and it lets
+// producers pass a narrowed domain error straight through as `error` (TS does
+// not distribute a union-typed property against a union of envelopes).
+export interface IpcConfigError {
+  ok: false;
+  error:
+    | { kind: 'not-found' }
+    | { kind: 'unreadable'; detail: string }
+    | { kind: 'invalid-json'; detail: string }
+    | { kind: 'unexpected-shape'; detail: string }
+    | { kind: 'invalid-name'; detail: string }
+    | { kind: 'invalid-url'; detail: string }
+    | { kind: 'name-exists'; detail: string }
+    | { kind: 'login-failed'; detail: string }
+    | { kind: 'login-invalid-args'; detail: string };
+}
 
 export interface IpcConfigSummary {
   wrappable: number;

@@ -71,8 +71,9 @@ export async function runConfigConnect(
   //     parseConfig errors propagate as IpcConfigError.
   const parsed = parseConfig(config.configPath);
   if (!parsed.ok) {
-    if (parsed.error.kind === 'not-found') return { ok: false, error: { kind: 'not-found' } };
-    return { ok: false, error: { kind: parsed.error.kind, detail: parsed.error.detail } };
+    // ParseError passes through whole (same fix as parseErrorToIpc): every one
+    // of its kinds is a member of IpcConfigError's error union.
+    return { ok: false, error: parsed.error };
   }
   const existing = parsed.plan.entries.find((e) => e.name === config.name);
   let reconnecting = false;

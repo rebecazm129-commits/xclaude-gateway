@@ -104,11 +104,10 @@ function summarize(entries: readonly WrapPlanEntry[]): IpcConfigSummary {
 }
 
 function parseErrorToIpc(err: ParseError): IpcConfigError {
-  if (err.kind === 'not-found') {
-    return { ok: false, error: { kind: 'not-found' } };
-  }
-  // unreadable | invalid-json | unexpected-shape — all carry detail.
-  return { ok: false, error: { kind: err.kind, detail: err.detail } };
+  // Every ParseError kind is a member of IpcConfigError's error union, so the
+  // object passes through whole — no field-by-field rebuild (which would widen
+  // `kind` and lose the discrimination).
+  return { ok: false, error: err };
 }
 
 function writeAtomicErrorToIpc(err: WriteAtomicError): IpcConfigError {

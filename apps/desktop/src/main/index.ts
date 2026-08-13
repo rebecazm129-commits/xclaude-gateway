@@ -36,6 +36,7 @@ import type {
   DetectionFilter,
   DetectionListResult,
   DetectionPageResult,
+  RetentionBannerInfo,
   RetentionConfig,
   RetentionSetModeResult,
   RetentionSizeSnapshot,
@@ -124,8 +125,11 @@ function openWindow(): void {
 }
 
 // Retention banner info from the in-memory caches (populated by the sweep). No
-// disk cost. Shared by detection:list (back-compat) and detection:page.
-function retentionBanner(): DetectionListResult['retention'] {
+// disk cost. Shared by detection:list (whose retention field is optional for
+// back-compat) and detection:page (where it is required) — hence the explicit
+// return type: indexing the optional field would widen it with undefined,
+// which this function never returns and detection:page does not admit.
+function retentionBanner(): RetentionBannerInfo | null {
   return retentionSizeCache !== null && retentionConfigCache !== null
     ? {
         totalBytes: retentionSizeCache.totalBytes,
