@@ -7,5 +7,10 @@
     "jsx": "react-jsx",
     "types": ["node"]
   },
-  "include": ["src/renderer/**/*", "src/shared/**/*"]
+  "include": [
+    "tests/renderer/**/*",
+    "src/renderer/**/*",
+    "src/shared/**/*",
+    "src/main/detection-page.ts"
+  ]
 }

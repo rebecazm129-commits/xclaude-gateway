@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": true,
+    "lib": ["ES2022"],
+    "types": ["node", "electron"]
+  },
+  "include": [
+    "tests/*.ts",
+    "tests/main/**/*",
+    "src/main/**/*",
+    "src/preload/**/*",
+    "src/shared/**/*",
+    "src/renderer/components/date-range-logic.ts"
+  ]
+}
