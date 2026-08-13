@@ -118,11 +118,22 @@ const GOOGLE_CATALOG: SetupCatalog = {
           <div className={styles['block']}>
             <span className={styles['blockTitle']}>Consent screen</span>
             <p className={styles['text']}>
-              Choose <b>Internal</b> if available, otherwise <b>External</b> — and add your
-              own email under <b>Test users</b>.
+              Choose <b>Internal</b> if available — that’s the smoothest path. Otherwise
+              choose <b>External</b>, then click <b>Publish app</b>. Publishing means you
+              authorize once, instead of re-authorizing every 7 days.
+            </p>
+            <p className={styles['warn']}>
+              You’ll still see Google’s “this app isn’t verified” screen when you connect.
+              That’s expected — the OAuth client is yours, not ours. Click Advanced, then
+              continue.
             </p>
             <LinkBtn url={CONSENT_SCREEN_URL}>Open the consent screen</LinkBtn>
           </div>
+          <p className={styles['muted']}>
+            Prefer to leave it in testing? Add your own email under <b>Test users</b>{' '}
+            instead — Google will then expire the authorization every 7 days and you’ll
+            reconnect weekly.
+          </p>
           <div className={styles['block']}>
             <span className={styles['blockTitle']}>OAuth client</span>
             <p className={styles['text']}>
