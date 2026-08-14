@@ -29,7 +29,7 @@ function buildResult(artifactPaths?: string[]): unknown {
 
 beforeEach(async () => {
   outDir = await mkdtemp(join(tmpdir(), 'xcg-notarize-'));
-  dmgPath = join(outDir, 'xCLAUDE Gateway-1.0.0-beta.4-arm64.dmg');
+  dmgPath = join(outDir, 'xCLAUDE Gateway-1.0.0-beta.5-arm64.dmg');
   await mkdir(join(outDir, 'mac-arm64', 'xCLAUDE Gateway.app'), { recursive: true });
   savedEnv['APPLE_KEYCHAIN_PROFILE'] = process.env['APPLE_KEYCHAIN_PROFILE'];
   savedEnv['XCG_SKIP_DMG_NOTARIZE'] = process.env['XCG_SKIP_DMG_NOTARIZE'];
