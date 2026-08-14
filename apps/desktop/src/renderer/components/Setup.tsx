@@ -50,7 +50,7 @@ export function Setup({ status, addOpen, onAddOpenChange, onRefresh, onOpenInDet
   const [selected, setSelected] = useState<Selection>(null);
   const [query, setQuery] = useState('');
   const { events: detections, authAlerts } = usePolledAudit();
-  const cchook = usePolledCchookStatus();
+  const { status: cchook } = usePolledCchookStatus();
   const hookRegistered = cchook?.hookRegistered ?? false;
   const alertedMcps = useMemo(() => new Set(authAlerts.map((a) => a.mcp)), [authAlerts]);
 

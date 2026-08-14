@@ -23,6 +23,7 @@ const CCHOOK_NOT_INSTALLED = {
   installed: false,
   hookRegistered: false,
   pendingSpool: 0,
+  pendingNotice: null,
   unreadableTotal: 0,
   lastCycle: null,
   lastSessionStartTs: null,

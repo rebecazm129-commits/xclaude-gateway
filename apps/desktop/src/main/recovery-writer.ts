@@ -106,3 +106,38 @@ export function writeRetentionPurged(
     console.error(`writeRetentionPurged: failed to append ${filePath}:`, err);
   }
 }
+
+// Event type the hook-integrity check (cchook-integrity.ts) appends when the
+// Claude Code capture hook disappears from ~/.claude/settings.json without an
+// in-app Uninstall. Inert for the detection pipeline, like the purge marker:
+// it matches none of readAudit's guards (not proxy.error, not mcp.*, not the
+// recovery type), so it never shows up as a detection or affects auth alerts —
+// tests/main/recovery-writer.test.ts pins that.
+export const CCHOOK_REMOVED_TYPE = 'app.cchook_removed';
+
+// Appends ONE marker per detected out-of-band removal. Same durability model
+// and best-effort contract as writeRetentionPurged (v:1, randomUUID,
+// session:'desktop', append-only, never throws). mcp is 'claude-code' — the
+// source bucket the removal silences — and settingsPath records the file the
+// integrity check watched.
+export function writeCchookRemoved(
+  settingsPath: string,
+  dir: string = DEFAULT_WRAPPERS_DIR,
+): void {
+  const envelope = {
+    v: 1,
+    id: randomUUID(),
+    ts: new Date().toISOString(),
+    session: 'desktop',
+    mcp: 'claude-code',
+    type: CCHOOK_REMOVED_TYPE,
+    settingsPath,
+  };
+  const filePath = join(dir, APP_EVENTS_FILENAME);
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    appendFileSync(filePath, `${JSON.stringify(envelope)}\n`, { mode: 0o600 });
+  } catch (err) {
+    console.error(`writeCchookRemoved: failed to append ${filePath}:`, err);
+  }
+}

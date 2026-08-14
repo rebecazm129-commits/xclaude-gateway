@@ -23,6 +23,7 @@ const STATUS: CchookStatus = {
   installed: true,
   hookRegistered: true,
   pendingSpool: 3,
+  pendingNotice: null,
   unreadableTotal: 1,
   lastCycle: { processed: 5, skippedUnreadable: 1, deletedStale: 0, ts: '2026-07-16T09:00:00.000Z' },
   lastSessionStartTs: new Date(Date.now() - 5 * 60_000).toISOString(),

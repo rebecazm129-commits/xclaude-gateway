@@ -181,6 +181,9 @@ export interface CchookStatus extends CchookIngestStatus {
   hookRegistered: boolean;
   /** Spool files waiting for the next ingest cycle (dir absent → 0). */
   pendingSpool: number;
+  /** Hook-integrity notice (claude-code/hook-state.json): set while an
+   *  out-of-band hook removal is undismissed; null otherwise. */
+  pendingNotice: { ts: string } | null;
 }
 
 // A connector whose most recent auth event is a (recent) oauth failure with no

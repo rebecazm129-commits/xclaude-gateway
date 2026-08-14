@@ -58,6 +58,12 @@ import {
 import { createAuditStore } from './audit-store.js';
 import { cchookSpoolDir } from '@xcg/proxy/cchook-ingest';
 import { getCchookStatus, runCchookIngestCycle } from './cchook-ingester.js';
+import {
+  checkCchookIntegrity,
+  dismissCchookNotice,
+  readPendingNotice,
+  recordCchookExpected,
+} from './cchook-integrity.js';
 import { installCchook, uninstallCchook } from './cchook-install.js';
 import { detectClaudeCode, isHookRegistered } from './claude-code-detect.js';
 import { spawnWrapper, readDetectionsFromAudit, resolveNpxPath } from './selftest-runner.js';
@@ -153,6 +159,7 @@ ipcMain.handle('cchook:status', async (): Promise<CchookStatus> => {
     installed: detectClaudeCode().installed,
     hookRegistered: isHookRegistered(),
     pendingSpool,
+    pendingNotice: readPendingNotice(),
     ...getCchookStatus(),
   };
 });
@@ -163,6 +170,10 @@ ipcMain.handle('cchook:status', async (): Promise<CchookStatus> => {
 // appear without waiting for the 15s tick.
 ipcMain.handle('cchook:install', (): CchookInstallResult => {
   const result = installCchook();
+  // Hook-integrity intent: registered in-app (wrote) or already registered
+  // (noop) — either way the hook is expected from here on, and a pending
+  // out-of-band notice is resolved (the banner's Reinstall lands here).
+  if (result.ok) recordCchookExpected(true);
   if (result.ok && result.outcome === 'wrote') {
     void runCchookIngestCycle().catch((err) => {
       console.error('cchook-ingester: post-install cycle failed:', err);
@@ -172,7 +183,18 @@ ipcMain.handle('cchook:install', (): CchookInstallResult => {
 });
 
 ipcMain.handle('cchook:uninstall', (): CchookInstallResult => {
-  return uninstallCchook();
+  const result = uninstallCchook();
+  // In-app intent, recorded BEFORE the result reaches the renderer: the next
+  // integrity pass must already know this removal was in-app, or it would
+  // notify it as out-of-band.
+  if (result.ok && result.outcome === 'wrote') recordCchookExpected(false);
+  return result;
+});
+
+// Explicit dismiss of the hook-removed notice (CchookVanishedWarning) —
+// clears the persisted pendingNotice, keeps the expected flag.
+ipcMain.handle('cchook:dismiss-vanished', (): void => {
+  dismissCchookNotice();
 });
 
 // Back-compat: the full unpaginated list. Still used by Setup and
@@ -526,13 +548,32 @@ const auditStore = createAuditStore(WRAPPERS_DIR);
 // captures) into the wrappers/ trail the auditStore reads. Trigger: app start
 // + every 15 s [propuesta F1.2]. No auditStore invalidation needed: appends
 // grow the session file and the store's size-based refresh picks them up.
-void runCchookIngestCycle().catch((err) => {
-  console.error('cchook-ingester: startup cycle failed:', err);
-});
-setInterval(() => {
-  void runCchookIngestCycle().catch((err) => {
-    console.error('cchook-ingester: cycle failed:', err);
+// The hook-integrity pass rides the same trigger (app start + 15s tick),
+// AFTER each ingest cycle and with its own catch — an ingest failure never
+// hides an integrity check, and vice versa.
+void runCchookIngestCycle()
+  .catch((err) => {
+    console.error('cchook-ingester: startup cycle failed:', err);
+  })
+  .then(() => {
+    try {
+      checkCchookIntegrity();
+    } catch (err) {
+      console.error('cchook-integrity: startup check failed:', err);
+    }
   });
+setInterval(() => {
+  void runCchookIngestCycle()
+    .catch((err) => {
+      console.error('cchook-ingester: cycle failed:', err);
+    })
+    .then(() => {
+      try {
+        checkCchookIntegrity();
+      } catch (err) {
+        console.error('cchook-integrity: check failed:', err);
+      }
+    });
 }, 15_000);
 
 async function runRetentionSweep(): Promise<void> {

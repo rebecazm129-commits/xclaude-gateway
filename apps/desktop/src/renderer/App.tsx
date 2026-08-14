@@ -19,9 +19,11 @@ import {
   diffVanishedConnectors,
   pruneAgedRemoves,
 } from './components/VanishedConnectorsWarning.js';
+import { CchookVanishedWarning } from './components/CchookVanishedWarning.js';
 import { Tabs, type TabOption } from './components/Tabs.js';
 import { usePolledHealth } from './hooks/usePolledHealth.js';
 import { usePolledConfigStatus } from './hooks/usePolledConfigStatus.js';
+import { usePolledCchookStatus } from './hooks/usePolledCchookStatus.js';
 
 import styles from './App.module.css';
 
@@ -89,6 +91,10 @@ export function App(): JSX.Element {
   // first tick resolves — Setup shows its loading state on null.
   const { status: configStatus, previous: previousStatus, refresh: refreshStatus } =
     usePolledConfigStatus();
+  // Hook-integrity notice (persisted by main in claude-code/hook-state.json):
+  // App polls its own cchook:status instance so the banner below renders on
+  // every tab, not only while Sources is mounted.
+  const { status: cchookStatus, refresh: refreshCchookStatus } = usePolledCchookStatus();
   // Add connector modal visibility. Lives here (not in Setup, where it used
   // to) so the vanished-connectors notice can open it — and switch to the
   // Connectors tab first — from any tab. Setup consumes it as a controlled prop.
@@ -172,6 +178,27 @@ export function App(): JSX.Element {
     handleTabChange('setup');
     setAddOpen(true);
   }, [handleTabChange]);
+
+  // Hook-integrity notice actions (CchookVanishedWarning). Both round-trip
+  // through main, then re-read cchook:status so the banner reflects the
+  // persisted state without waiting out the 2s tick.
+  const handleReinstallHook = useCallback(() => {
+    void window.xcg
+      .cchookInstall()
+      .then((result) => {
+        if (result.ok) return refreshCchookStatus();
+        console.error('cchookInstall failed:', result.error);
+        return undefined;
+      })
+      .catch((err) => console.error('cchookInstall failed:', err));
+  }, [refreshCchookStatus]);
+
+  const handleDismissCchookNotice = useCallback(() => {
+    void window.xcg
+      .cchookDismissVanished()
+      .then(() => refreshCchookStatus())
+      .catch((err) => console.error('cchookDismissVanished failed:', err));
+  }, [refreshCchookStatus]);
 
   const handleOpenInDetections = useCallback((name: string) => {
     setDetectionsMcpFilter(name);
@@ -283,6 +310,11 @@ export function App(): JSX.Element {
         names={vanished}
         onReAdd={handleReAdd}
         onDismiss={() => setVanished([])}
+      />
+      <CchookVanishedWarning
+        notice={cchookStatus?.pendingNotice ?? null}
+        onReinstall={handleReinstallHook}
+        onDismiss={handleDismissCchookNotice}
       />
       {activeTab === 'setup' ? (
         <Setup

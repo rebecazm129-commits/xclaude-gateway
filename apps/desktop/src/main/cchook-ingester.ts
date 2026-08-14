@@ -75,8 +75,9 @@ export interface IngestCycleResult {
 // sessions.json / ingest-state.json may not exist yet: writeAtomic requires an
 // existing target (it stats it and captures a first-write-wins .bak), so the
 // FIRST write seeds the file with writeFileSync (0o600, parent mkdir), and
-// every later write goes through writeAtomic (F1.2 v2 point 3).
-function persistJson(path: string, value: unknown): void {
+// every later write goes through writeAtomic (F1.2 v2 point 3). Exported for
+// cchook-integrity's hook-state.json — same dir, same durability contract.
+export function persistJson(path: string, value: unknown): void {
   if (!existsSync(path)) {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });

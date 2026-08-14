@@ -56,6 +56,8 @@ export interface XcgApi {
   cchookInstall(): Promise<CchookInstallResult>;
   /** Surgically remove our hook entries from ~/.claude/settings.json. */
   cchookUninstall(): Promise<CchookInstallResult>;
+  /** Dismiss the hook-removed notice (clears the persisted pendingNotice). */
+  cchookDismissVanished(): Promise<void>;
   validateHealth(): Promise<HealthResult>;
   repairWraps(): Promise<RepairResult>;
   runSelfTest(): Promise<SelfTestReport>;

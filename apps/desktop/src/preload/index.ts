@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld('xcg', {
   cchookStatus: (): Promise<CchookStatus> => ipcRenderer.invoke('cchook:status'),
   cchookInstall: (): Promise<CchookInstallResult> => ipcRenderer.invoke('cchook:install'),
   cchookUninstall: (): Promise<CchookInstallResult> => ipcRenderer.invoke('cchook:uninstall'),
+  cchookDismissVanished: (): Promise<void> => ipcRenderer.invoke('cchook:dismiss-vanished'),
   validateHealth: (): Promise<HealthResult> => ipcRenderer.invoke('system:health'),
   repairWraps: (): Promise<RepairResult> => ipcRenderer.invoke('system:repair-wraps'),
   runSelfTest: (): Promise<SelfTestReport> => ipcRenderer.invoke('system:self-test:run'),

@@ -104,7 +104,7 @@ function stubXcgForApp(): ReturnType<typeof vi.fn> {
     configIsConnected: vi.fn(async () => ({ ok: true, connected: false })),
     configHasClient: vi.fn(async () => false),
     cchookStatus: vi.fn(async () => ({
-      installed: false, hookRegistered: false, pendingSpool: 0,
+      installed: false, hookRegistered: false, pendingSpool: 0, pendingNotice: null,
       unreadableTotal: 0, lastCycle: null, lastSessionStartTs: null,
     })),
   });
