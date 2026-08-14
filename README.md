@@ -78,9 +78,43 @@ The audit runs entirely on your Mac: no telemetry, no account, no analytics. xCL
 
 <p align="center"><img src="docs/screenshots/detection-detail-2.png" alt="Event detail panel with tool call arguments, detection result and technical details" width="900" /></p>
 
-## What this proxy is, and what it is not
+## Scope and limits
 
-xCLAUDE Gateway is a **complement to the safety behavior of your MCP client**, not a replacement for it.
+xCLAUDE Gateway is a **complement to the safety behavior of your MCP client**, not a replacement for it. It records, classifies and warns; it never blocks. The map of what it covers today:
+
+| Surface | Audited? | How |
+| --- | --- | --- |
+| Claude Desktop — local MCP servers | ✅ | Wrapped by the proxy (Install action, or manually) |
+| Remote MCP servers connected through xCLAUDE | ✅ | Bridged through your machine from the Sources tab |
+| Claude Code — sessions | ✅ | Session hook records every tool call (native and MCP); optional proxy wrap adds the protocol level |
+| Claude Code — claude.ai-managed connectors | ❌ | Brokered remotely; never reach your machine |
+| Claude Desktop — native Connectors | ❌ | Brokered through Anthropic's servers; connect them through xCLAUDE instead |
+| Cowork | ❌ | Separate client, not currently tested |
+| Anthropic's API directly (SDK integrations) | ❌ | No MCP client involved; out of scope by design |
+| Skills | ❌ | Not JSON-RPC traffic; tool calls they trigger are captured |
+| Claude's native tools (web search, code execution…) | ❌ | Internal model tools, not MCP servers |
+
+### What is covered
+
+What's audited is your Claude clients' MCP JSON-RPC traffic and Claude Code's tool calls — nothing else on your Mac.
+
+- **Claude Desktop** with **local MCP servers** that are wrapped via the app's **Install** action (or manually in `claude_desktop_config.json` by pointing them to `xcg-proxy`).
+- **Remote MCP servers connected through xCLAUDE** (Notion, Linear, Atlassian, GitHub, Stripe, Apollo, Slack, Gmail, Google Calendar and Google Drive today; more on the way). You connect them from the Sources tab (+ Add source), which signs you in and bridges the traffic through your machine for auditing.
+- **Claude Code** (the CLI), on two levels. Claude Code's activity — the tool calls in a session, native tools and MCP tools alike — is audited natively via a session hook, with its own view in the app. Detection and credential masking run on this stream just as they do on wrapped traffic, keyed by the same salt. Additionally, Claude Code's local MCP servers can be wrapped by the proxy (see "Wrapping Claude Code's MCP servers" below). The hook lives in `~/.claude/settings.json`, a file any program — including Claude Code itself — can edit. xCLAUDE does not prevent its removal; it makes it visible: if the hook disappears without an in-app Uninstall, the app warns, offers one-click reinstall, and records an `app.cchook_removed` marker in the audit trail.
+
+### What is not covered
+
+- **Claude Desktop's native Connectors** (the ones you enable with one click in Settings). xCLAUDE cannot audit those: they are brokered through Anthropic's servers, so their traffic never reaches your machine — intercepting it would require breaking TLS, which this project will not do. **What xCLAUDE offers instead is its own audited path to the same services:** connect a remote MCP server *through* xCLAUDE (see "Remote connectors" below) and its traffic is bridged via your machine, where xCLAUDE can observe it. To audit a service this way, connect it through xCLAUDE rather than as a native Connector.
+- **Cowork.** Separate client, separate configuration, not currently tested.
+- **Anthropic's API directly** (any SDK integration). No MCP client model applies; out of scope by design.
+- **Skills** (markdown files used by the model as context). They are not JSON-RPC traffic; they are not interceptable by a stdio proxy. The proxy does capture any tool calls a skill ends up making, but not the skill content itself.
+- **Claude's native tools** (web search, computer use, code execution, etc.). These are internal model tools, not MCP servers. They never traverse the proxy.
+
+If you're using Claude Desktop with local MCP servers, if you connect a remote service through xCLAUDE, or if you work in Claude Code, you're in scope. If your main use is anything else, this tool will not give you what you expect today.
+
+### What it does not do — by design
+
+- **No blocking or altering of tool calls.** The detectors record and classify with severity; xCLAUDE never stops, reroutes or withholds an operation.
 
 In practice, Claude Desktop's model often refuses sensitive operations on its own — before they ever reach the proxy. If you ask the model to write a credential to a file, it will likely decline. The proxy doesn't see that refusal because no tool call was made. **That is by design and not a limitation of this tool**.
 
@@ -92,35 +126,9 @@ What the proxy adds on top of that:
 
 If you're looking for a tool that prevents Claude from making sensitive tool calls in the first place, the model itself is already doing most of that work. If you're looking for a tool that records, classifies and gives you visibility over the MCP traffic on your machine, this is it.
 
-## What it does NOT do yet
+### Early stage
 
-- **No blocking or altering of tool calls.** The detectors record and classify with severity; xCLAUDE never stops, reroutes or withholds an operation — that is the design, not a limitation.
-- **Named-entity PII detection runs as an async enrichment** (transformers.js NER): persons, organizations and locations found in tool-call payloads are recorded in the audit log alongside the main detector chain. It is early stage — it complements the checksum-based `pii_structured` detector, and is not yet part of the synchronous detector chain.
-- **No auditing of native Connectors.** Services you connect with one click in Claude Desktop's settings are brokered through Anthropic's servers; their traffic never reaches your Mac, so xCLAUDE can't see it. To audit such a service, connect it through xCLAUDE instead (see "Remote connectors" below).
-
-These come in upcoming milestones. See the project roadmap for details.
-
-## Scope
-
-xCLAUDE Gateway in its current state **covers a specific subset** of the Claude ecosystem:
-
-### What is covered
-
-What's audited is Claude Desktop's MCP JSON-RPC traffic — nothing else on your Mac.
-
-- **Claude Desktop** with **local MCP servers** that are wrapped via the app's **Install** action (or manually in `claude_desktop_config.json` by pointing them to `xcg-proxy`).
-- **Remote MCP servers connected through xCLAUDE** (Notion, Linear, Atlassian, GitHub, Stripe, Apollo, Slack, Gmail, Google Calendar and Google Drive today; more on the way). You connect them from the Sources tab (+ Add source), which signs you in and bridges the traffic through your machine for auditing.
-- **Claude Code** (the CLI), on two levels. Claude Code's activity — the tool calls in a session, native tools and MCP tools alike — is audited natively via a session hook, with its own view in the app. Detection and credential masking run on this stream just as they do on wrapped traffic, keyed by the same salt. Additionally, Claude Code's local MCP servers can be wrapped by the proxy (see "Wrapping Claude Code's MCP servers" below). The hook lives in `~/.claude/settings.json`, a file any program — including Claude Code itself — can edit. xCLAUDE does not prevent its removal; it makes it visible: if the hook disappears without an in-app Uninstall, the app warns, offers one-click reinstall, and records an `app.cchook_removed` marker in the audit trail.
-
-### What is NOT covered
-
-- **Claude Desktop's native Connectors** (the ones you enable with one click in Settings). xCLAUDE cannot audit those: they are brokered through Anthropic's servers, so their traffic never reaches your machine — intercepting it would require breaking TLS, which this project will not do. **What xCLAUDE offers instead is its own audited path to the same services:** connect a remote MCP server *through* xCLAUDE (see "Remote connectors" below) and its traffic is bridged via your machine, where xCLAUDE can observe it. To audit a service this way, connect it through xCLAUDE rather than as a native Connector.
-- **Cowork.** Separate client, separate configuration, not currently tested.
-- **Anthropic's API directly** (any SDK integration). No MCP client model applies; out of scope by design.
-- **Skills** (markdown files used by the model as context). They are not JSON-RPC traffic; they are not interceptable by a stdio proxy. The proxy does capture any tool calls a skill ends up making, but not the skill content itself.
-- **Claude's native tools** (web search, computer use, code execution, etc.). These are internal model tools, not MCP servers. They never traverse the proxy.
-
-If you're using Claude Desktop with local MCP servers, if you connect a remote service through xCLAUDE, or if you work in Claude Code, you're in scope. If your main use is anything else, this tool will not give you what you expect today.
+- **Named-entity PII detection runs as an async enrichment** (transformers.js NER): persons, organizations and locations found in tool-call payloads are recorded in the audit log alongside the main detector chain. It is early stage — it complements the checksum-based `pii_structured` detector, and is not yet part of the synchronous detector chain. It will mature in upcoming releases.
 
 <p align="center"><img src="docs/screenshots/claude-code-tab.png" alt="Claude Code view with per-session audit trail, severity summary and faceted filters" width="900" /></p>
 
