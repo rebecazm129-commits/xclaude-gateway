@@ -112,6 +112,8 @@ What's audited is your Claude clients' MCP JSON-RPC traffic and Claude Code's to
 
 If you're using Claude Desktop with local MCP servers, if you connect a remote service through xCLAUDE, or if you work in Claude Code, you're in scope. If your main use is anything else, this tool will not give you what you expect today.
 
+<p align="center"><img src="docs/screenshots/claude-code-tab.png" alt="Claude Code view with per-session audit trail, severity summary and faceted filters" width="900" /></p>
+
 ### What it does not do — by design
 
 - **No blocking or altering of tool calls.** The detectors record and classify with severity; xCLAUDE never stops, reroutes or withholds an operation.
@@ -129,8 +131,6 @@ If you're looking for a tool that prevents Claude from making sensitive tool cal
 ### Early stage
 
 - **Named-entity PII detection runs as an async enrichment** (transformers.js NER): persons, organizations and locations found in tool-call payloads are recorded in the audit log alongside the main detector chain. It is early stage — it complements the checksum-based `pii_structured` detector, and is not yet part of the synchronous detector chain. It will mature in upcoming releases.
-
-<p align="center"><img src="docs/screenshots/claude-code-tab.png" alt="Claude Code view with per-session audit trail, severity summary and faceted filters" width="900" /></p>
 
 ### Wrapping Claude Code's MCP servers
 
