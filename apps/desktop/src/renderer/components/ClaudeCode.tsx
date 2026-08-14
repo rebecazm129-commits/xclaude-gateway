@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FixedSizeList } from 'react-window';
 
 import { useDetectionPage } from '../hooks/useDetectionPage.js';
@@ -10,7 +10,7 @@ import type {
 } from '../../shared/types.js';
 
 import { AuditFooter } from './AuditFooter.js';
-import { CATEGORY_OPTIONS, SEVERITY_OPTIONS, HEADER_AND_FILTERS_HEIGHT, SEARCH_DEBOUNCE_MS } from './Detections.js';
+import { CATEGORY_OPTIONS, SEVERITY_OPTIONS, INITIAL_LIST_HEIGHT, SEARCH_DEBOUNCE_MS } from './Detections.js';
 import { ClaudeCodeRow } from './ClaudeCodeRow.js';
 import { DateRangePicker } from './DateRangePicker.js';
 import { DetailDrawer } from './DetailDrawer.js';
@@ -36,12 +36,6 @@ import toolbarStyles from './Detections.module.css';
 // back once the data existed).
 
 const ROW_HEIGHT = 40;
-// List chrome height IS Detections' HEADER_AND_FILTERS_HEIGHT since the
-// toolbar parity (22/07): the two-row toolbar excess (the old
-// CC_TOOLBAR_EXTRA = 52) is folded into the shared constant — both views
-// render the identical band. The custom date inputs live INSIDE the chips
-// row (dogfood 3ª ronda), so Custom adds no extra height.
-const CHROME_HEIGHT = HEADER_AND_FILTERS_HEIGHT;
 // Rows from the end at which we prefetch the next page (same threshold as
 // Detections' infinite scroll).
 const LOAD_MORE_THRESHOLD = 20;
@@ -142,9 +136,10 @@ export function ClaudeCode(): JSX.Element {
   const [openDropdown, setOpenDropdown] = useState<
     'severity' | 'tool' | 'session' | 'project' | 'status' | null
   >(null);
-  const [listHeight, setListHeight] = useState(
-    window.innerHeight - CHROME_HEIGHT,
-  );
+  // Measured list height (Detections' exact pattern — fallback replaced by
+  // the measuring layout effect before the first paint).
+  const [listHeight, setListHeight] = useState(INITIAL_LIST_HEIGHT);
+  const listViewportRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -221,13 +216,25 @@ export function ClaudeCode(): JSX.Element {
   // separators directly over them.
   const items = useMemo(() => buildListItems(rows), [rows]);
 
-  useEffect(() => {
-    function onResize(): void {
-      setListHeight(window.innerHeight - CHROME_HEIGHT);
-    }
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
+  // Measured, not computed (Detections' exact pattern — see the comment on
+  // its measuring effect): .listViewport is flex:1/min-height:0, the layout
+  // effect reads it before paint, the ResizeObserver tracks window resizes
+  // and banners appearing/disappearing above. Re-runs on hasItems: the
+  // viewport only exists while the list renders.
+  const hasItems = items.length > 0;
+  useLayoutEffect(() => {
+    const el = listViewportRef.current;
+    if (el === null) return undefined;
+    const measure = (): void => {
+      const h = el.clientHeight;
+      // Layout-less environments (jsdom) report 0 — keep the fallback.
+      if (h > 0) setListHeight(h);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasItems]);
 
   // Outside-click closes the open dropdown (Detections' pattern, single bar ref).
   useEffect(() => {
@@ -476,43 +483,45 @@ export function ClaudeCode(): JSX.Element {
             <span className={styles['columnHeaderCell']}>Tool</span>
             <span className={styles['columnHeaderCell']}>Details</span>
           </div>
-          <FixedSizeList
-            height={listHeight}
-            width="100%"
-            itemSize={ROW_HEIGHT}
-            itemCount={items.length}
-            itemKey={(index) => {
-              const it = items[index];
-              if (it === undefined) return index;
-              return it.kind === 'row' ? it.row.id : `sep-${it.ccSession}-${index}`;
-            }}
-            onItemsRendered={({ visibleStopIndex }) => {
-              if (page.hasMore && visibleStopIndex >= items.length - LOAD_MORE_THRESHOLD) {
-                page.loadMore();
-              }
-            }}
-          >
-            {({ index, style }) => {
-              const item = items[index];
-              if (item === undefined) return null;
-              if (item.kind === 'separator') {
+          <div className={styles['listViewport']} ref={listViewportRef}>
+            <FixedSizeList
+              height={listHeight}
+              width="100%"
+              itemSize={ROW_HEIGHT}
+              itemCount={items.length}
+              itemKey={(index) => {
+                const it = items[index];
+                if (it === undefined) return index;
+                return it.kind === 'row' ? it.row.id : `sep-${it.ccSession}-${index}`;
+              }}
+              onItemsRendered={({ visibleStopIndex }) => {
+                if (page.hasMore && visibleStopIndex >= items.length - LOAD_MORE_THRESHOLD) {
+                  page.loadMore();
+                }
+              }}
+            >
+              {({ index, style }) => {
+                const item = items[index];
+                if (item === undefined) return null;
+                if (item.kind === 'separator') {
+                  return (
+                    <div style={style}>
+                      <div className={styles['sessionSeparator']}>{item.label}</div>
+                    </div>
+                  );
+                }
                 return (
                   <div style={style}>
-                    <div className={styles['sessionSeparator']}>{item.label}</div>
+                    <ClaudeCodeRow
+                      row={item.row}
+                      selected={selectedRow?.id === item.row.id}
+                      onClick={() => handleRowClick(item.row)}
+                    />
                   </div>
                 );
-              }
-              return (
-                <div style={style}>
-                  <ClaudeCodeRow
-                    row={item.row}
-                    selected={selectedRow?.id === item.row.id}
-                    onClick={() => handleRowClick(item.row)}
-                  />
-                </div>
-              );
-            }}
-          </FixedSizeList>
+              }}
+            </FixedSizeList>
+          </div>
         </div>
       )}
       {selectedRow !== null && (

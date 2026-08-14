@@ -6,7 +6,7 @@
 // the Project chip when no loaded row has a project, redesigned session
 // separators (no hash), and ships the CC filter (fixed sources) to export.
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { App } from '../../src/renderer/App.js';
@@ -114,6 +114,23 @@ function stubXcgForApp(): ReturnType<typeof vi.fn> {
 function shippedFilters(mock: ReturnType<typeof vi.fn>): DetectionFilter[] {
   return mock.mock.calls.map((c) => (c[0] as { filter: DetectionFilter }).filter);
 }
+
+// jsdom implements neither ResizeObserver nor layout: the measuring effect
+// (banner fix) constructs one whenever the list renders. A no-op stub is
+// enough here — heights keep the component's fallback because clientHeight
+// reads 0, which the measure ignores. (The height-follows-the-viewport
+// regression itself is pinned in Detections.test.tsx: same shared effect
+// pattern.) Re-stubbed per test because the afterEach unstubs all globals;
+// named so tests that unstub MID-test can restore it themselves.
+class ResizeObserverStub {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+
+beforeEach(() => {
+  vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+});
 
 afterEach(() => {
   cleanup();
@@ -270,6 +287,9 @@ describe('ClaudeCode view (F2.4 commit 4)', () => {
     expect(screen.queryByRole('button', { name: /Project/ })).toBeNull();
     cleanup();
     vi.unstubAllGlobals();
+    // The mid-test unstub clears the ResizeObserver stub too — restore it or
+    // the second render's measuring effect throws and unmounts the tree.
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub);
 
     stubXcgForView(PAGE_WITH_ROWS); // r1 carries proj-a
     render(<ClaudeCode />);

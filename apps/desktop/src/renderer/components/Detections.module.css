@@ -28,7 +28,24 @@
 }
 
 .listContainer {
+  /* The elastic zone (banner fix): Setup's .container pattern — flex:1 +
+     min-height:0 absorbs any height the chrome above gains (app-level
+     banners, the retention banner) instead of overflowing 100vh. Column flex
+     so .columnHeader keeps its natural height and .listViewport takes the
+     rest. */
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   position: relative;
+}
+
+/* The element the virtualized list's height is MEASURED from (ResizeObserver
+   in Detections.tsx): its size is whatever the flex layout actually grants,
+   banners included. */
+.listViewport {
+  flex: 1;
+  min-height: 0;
 }
 
 .columnHeader {

@@ -183,7 +183,21 @@
 }
 
 .listContainer {
+  /* The elastic zone (banner fix) — Detections' .listContainer pattern,
+     mirrored: flex:1 + min-height:0 absorbs banner heights instead of
+     overflowing 100vh. */
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   position: relative;
+}
+
+/* Measured by ClaudeCode.tsx's ResizeObserver — Detections' .listViewport
+   pattern, mirrored. */
+.listViewport {
+  flex: 1;
+  min-height: 0;
 }
 
 .columnHeader {

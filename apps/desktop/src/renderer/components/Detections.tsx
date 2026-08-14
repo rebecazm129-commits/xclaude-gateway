@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FixedSizeList } from 'react-window';
 
 import { useDetectionPage } from '../hooks/useDetectionPage.js';
@@ -65,25 +65,17 @@ function formatBytes(bytes: number): string {
 }
 
 const ROW_HEIGHT = 40;
-// Chrome around the virtualized list: titlebar (42) + header (84) + tabs (40) +
-// the TWO-ROW toolbar (~92 MEASURED via CDP, dogfood 3ª ronda: padding 12×2 +
-// row1 29.5 + gap 14 + row2 23.5 = 91 — CC's band, shared since the toolbar
-// parity 22/07; the custom date inputs ride INSIDE row 2, no extra height),
-// PLUS the bottom "Open audit folder" footer (~34px: padding 8×2 + row +
-// hairline) which renders below the list. The 42 mirrors
-// --kraft-titlebar-height in index.css (keep in sync — TS can't read the CSS
-// var).
-// Exported (commit 5h): ClaudeCode shares this constant — both views have the
-// IDENTICAL chrome stack, toolbar included since the parity. A view-local
-// estimate drifting low overflows 100vh and flex-shrink compresses the
-// titlebar (the drag strip visibly narrows).
-export const HEADER_AND_FILTERS_HEIGHT = 440;
-// Height reclaimed from the list when the retention size banner is visible.
-// Mirrors .retentionBanner in Detections.module.css: padding 10×2 + hairline +
-// ~2 wrapped lines of 13px/1.5 text ≈ 60px. Erring generous (vs. a 1-line
-// banner on a wide window) keeps the list from ever overflowing the footer;
-// worst case is a hair of empty space, never a row hidden below it.
-const RETENTION_BANNER_HEIGHT = 60;
+// Pre-measure fallback for the virtualized list height. The real value is
+// MEASURED from .listViewport by a layout effect before the first paint and
+// kept true by a ResizeObserver (see the effect in the component) — never
+// derived from window.innerHeight minus a chrome constant again: any sibling
+// the constant didn't know about (an app-level banner, the retention banner)
+// made the fixed sum overflow 100vh and flex-shrink compressed the titlebar.
+// This fallback is only ever painted in layout-less environments (jsdom
+// reports clientHeight 0, which the measure ignores).
+// Exported (commit 5h precedent): ClaudeCode shares the same measuring
+// pattern and the same fallback.
+export const INITIAL_LIST_HEIGHT = 400;
 // (CUSTOM_ROW_HEIGHT died in dogfood 3ª ronda: the custom date inputs live
 // inside the chips row now, so the Custom segment adds no extra height.)
 // Rows from the end at which we prefetch the next page (infinite scroll).
@@ -120,9 +112,10 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
   const severityRef = useRef<HTMLDivElement>(null);
   const categoryRef = useRef<HTMLDivElement>(null);
   const sourceRef = useRef<HTMLDivElement>(null);
-  const [listHeight, setListHeight] = useState(
-    window.innerHeight - HEADER_AND_FILTERS_HEIGHT,
-  );
+  // Measured list height — see the measuring layout effect below. In the real
+  // renderer the fallback is replaced before the first paint.
+  const [listHeight, setListHeight] = useState(INITIAL_LIST_HEIGHT);
+  const listViewportRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const listRef = useRef<FixedSizeList>(null);
   const [scrollOffset, setScrollOffset] = useState(0);
@@ -168,13 +161,27 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
     onSourcesPresetConsumed?.();
   }, [sourcesPreset, onSourcesPresetConsumed]);
 
-  useEffect(() => {
-    function onResize(): void {
-      setListHeight(window.innerHeight - HEADER_AND_FILTERS_HEIGHT);
-    }
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
+  // The list's height is MEASURED from .listViewport (flex:1/min-height:0 —
+  // Setup's .container pattern, the one layout that already coexisted with
+  // app-level banners), never derived from window.innerHeight minus a chrome
+  // constant. useLayoutEffect measures synchronously before the first paint;
+  // the ResizeObserver keeps the value true afterwards (window resizes,
+  // banners appearing/disappearing above the list). Re-runs on hasRows: the
+  // viewport only exists while there are rows to render.
+  const hasRows = rows.length > 0;
+  useLayoutEffect(() => {
+    const el = listViewportRef.current;
+    if (el === null) return undefined;
+    const measure = (): void => {
+      const h = el.clientHeight;
+      // Layout-less environments (jsdom) report 0 — keep the fallback.
+      if (h > 0) setListHeight(h);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasRows]);
 
   useEffect(() => {
     if (openDropdown === null) return;
@@ -281,12 +288,6 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
 
   const showSizeWarning =
     retention !== null && retention.totalBytes > retention.sizeWarnBytes;
-
-  // The banner renders above the list, so shrink the list by its height when
-  // shown (listHeight itself stays keyed to the window/resize only).
-  const effectiveListHeight = showSizeWarning
-    ? listHeight - RETENTION_BANNER_HEIGHT
-    : listHeight;
 
   return (
     <>
@@ -423,34 +424,36 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
             <span className={styles['columnHeaderCell']}>MCP</span>
             <span className={styles['columnHeaderCell']}>Tool</span>
           </div>
-          <FixedSizeList
-            ref={listRef}
-            height={effectiveListHeight}
-            width="100%"
-            itemSize={ROW_HEIGHT}
-            itemCount={rows.length}
-            itemKey={(index) => rows[index]?.id ?? index}
-            onScroll={({ scrollOffset: offset }) => setScrollOffset(offset)}
-            onItemsRendered={({ visibleStopIndex }) => {
-              if (page.hasMore && visibleStopIndex >= rows.length - LOAD_MORE_THRESHOLD) {
-                page.loadMore();
-              }
-            }}
-          >
-            {({ index, style }) => {
-              const item = rows[index];
-              if (item === undefined) return null;
-              return (
-                <div style={style}>
-                  <DetectionRow
-                    row={item}
-                    selected={selectedRow?.id === item.id}
-                    onClick={() => handleRowClick(item)}
-                  />
-                </div>
-              );
-            }}
-          </FixedSizeList>
+          <div className={styles['listViewport']} ref={listViewportRef}>
+            <FixedSizeList
+              ref={listRef}
+              height={listHeight}
+              width="100%"
+              itemSize={ROW_HEIGHT}
+              itemCount={rows.length}
+              itemKey={(index) => rows[index]?.id ?? index}
+              onScroll={({ scrollOffset: offset }) => setScrollOffset(offset)}
+              onItemsRendered={({ visibleStopIndex }) => {
+                if (page.hasMore && visibleStopIndex >= rows.length - LOAD_MORE_THRESHOLD) {
+                  page.loadMore();
+                }
+              }}
+            >
+              {({ index, style }) => {
+                const item = rows[index];
+                if (item === undefined) return null;
+                return (
+                  <div style={style}>
+                    <DetectionRow
+                      row={item}
+                      selected={selectedRow?.id === item.id}
+                      onClick={() => handleRowClick(item)}
+                    />
+                  </div>
+                );
+              }}
+            </FixedSizeList>
+          </div>
           {newCount > 0 && (
             <NewEventsPill count={newCount} onClick={handlePillClick} />
           )}

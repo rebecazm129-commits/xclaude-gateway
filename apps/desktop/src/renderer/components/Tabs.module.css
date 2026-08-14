@@ -6,6 +6,9 @@
   border-bottom: var(--kraft-hairline) solid var(--kraft-border);
   height: 40px;
   box-sizing: border-box;
+  /* Chrome never compresses (banner fix — matches .titlebar/.header in
+     App.module.css). */
+  flex-shrink: 0;
 }
 
 .tab {

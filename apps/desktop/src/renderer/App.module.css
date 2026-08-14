@@ -9,6 +9,11 @@
   background: var(--kraft-titlebar);
   border-bottom: var(--kraft-hairline) solid var(--kraft-border);
   -webkit-app-region: drag;
+  /* The drag strip never compresses: when the flex column overflows (e.g. an
+     app-level banner appearing), flex-shrink would collapse this empty div
+     first — and macOS paints the traffic lights at fixed window coordinates,
+     they don't follow the DOM, so they'd overlap the header title. */
+  flex-shrink: 0;
 }
 
 .header {
@@ -21,6 +26,8 @@
   height: 84px;
   box-sizing: border-box;
   -webkit-app-region: no-drag;
+  /* Chrome never compresses (see .titlebar). */
+  flex-shrink: 0;
 }
 
 .headerActions {

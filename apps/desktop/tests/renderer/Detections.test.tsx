@@ -3,8 +3,8 @@
 // sourcesPreset from outside (the Claude Code inspector's Open in Detections),
 // applies it to its own Source pill and acknowledges consumption.
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { Detections } from '../../src/renderer/components/Detections.js';
 // The toolbar band classes live in ClaudeCode.module.css (shared band since
@@ -13,7 +13,7 @@ import { Detections } from '../../src/renderer/components/Detections.js';
 // Clear (producto 22/07) coexists with the empty state's button.
 import ccStyles from '../../src/renderer/components/ClaudeCode.module.css';
 import detStyles from '../../src/renderer/components/Detections.module.css';
-import type { DetectionPageResult } from '../../src/shared/types.js';
+import type { DetectionPageResult, DetectionRowSlim } from '../../src/shared/types.js';
 
 const EMPTY_PAGE: DetectionPageResult = {
   rows: [],
@@ -32,6 +32,28 @@ function stubXcg(): { listDetectionPage: ReturnType<typeof vi.fn> } {
   vi.stubGlobal('xcg', { listDetectionPage });
   return { listDetectionPage };
 }
+
+// jsdom implements neither ResizeObserver nor layout, and the measuring
+// effect (banner fix) constructs one whenever rows render. The stub captures
+// the observer callbacks so the regression tests below can simulate the
+// viewport resizing; every other test just needs the constructor to exist
+// (heights keep the component's fallback: clientHeight reads 0 unless
+// mocked, and the measure ignores 0). Re-stubbed per test because the
+// afterEach unstubs all globals.
+class ResizeObserverStub {
+  static callbacks: Array<() => void> = [];
+  constructor(cb: ResizeObserverCallback) {
+    ResizeObserverStub.callbacks.push(() => cb([], this as unknown as ResizeObserver));
+  }
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+
+beforeEach(() => {
+  ResizeObserverStub.callbacks = [];
+  vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+});
 
 afterEach(() => {
   cleanup();
@@ -189,5 +211,76 @@ describe('Detections — filter parity: search + custom range (22/07)', () => {
     );
     expect(screen.getByRole('button', { name: 'All' }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByText('notion-fetch')).toBeDefined();
+  });
+});
+
+// ── List height is measured, not computed (banner-compression regression) ──
+// The real bug: an app-level banner above the list made the old
+// constant-based height (window.innerHeight - chrome constant) overflow
+// 100vh, and flex-shrink compressed the titlebar under the macOS traffic
+// lights. What jsdom CAN verify: the height handed to the virtualized list
+// comes from the viewport element's measured clientHeight, and follows it
+// when the ResizeObserver fires (a banner appearing above shrinks the flex
+// viewport). What jsdom CANNOT verify: the actual flex compression — it has
+// no layout engine and CSS modules don't apply, so the flex-shrink:0 chrome
+// rules (App.module.css / Tabs.module.css) are not assertable here.
+describe('list height is measured from the viewport (banner regression)', () => {
+  const ROW: DetectionRowSlim = {
+    id: 'd1', ts: '2026-08-14T10:00:00.000Z', mcp: 'notion', type: 'mcp.request',
+    category: 'tool_call_allowed', severity: 'low', source: 'gateway',
+    toolName: 'notion-search', method: 'tools/call',
+  };
+  const PAGE_ONE_ROW: DetectionPageResult = {
+    ...EMPTY_PAGE,
+    rows: [ROW],
+    total: 1,
+    totalMatching: 1,
+    severityCounts: { low: 1, medium: 0, high: 0, critical: 0 },
+    categoryFilteredTotal: 1,
+  };
+
+  let viewportHeight = 512;
+
+  beforeEach(() => {
+    viewportHeight = 512;
+    // jsdom's layout-less clientHeight (always 0) would make the measure keep
+    // the fallback forever; the mock gives the effect a real number to read.
+    vi.spyOn(Element.prototype, 'clientHeight', 'get').mockImplementation(
+      () => viewportHeight,
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('hands the virtualized list the measured wrapper height, not a window-derived constant', async () => {
+    vi.stubGlobal('xcg', { listDetectionPage: vi.fn(async () => PAGE_ONE_ROW) });
+    const { container } = render(<Detections mcpFilter={null} onClearMcpFilter={() => {}} />);
+    // react-window's outer element carries the exact height it was handed.
+    await waitFor(() => {
+      expect(container.querySelector('[style*="height: 512px"]')).not.toBeNull();
+    });
+    // The old formula (window.innerHeight - 440 = 328 under jsdom's default
+    // 768) must be nowhere: the height came from the measured viewport.
+    expect(container.querySelector('[style*="height: 328px"]')).toBeNull();
+  });
+
+  it('follows the viewport when it resizes (a banner appearing above the list)', async () => {
+    vi.stubGlobal('xcg', { listDetectionPage: vi.fn(async () => PAGE_ONE_ROW) });
+    const { container } = render(<Detections mcpFilter={null} onClearMcpFilter={() => {}} />);
+    await waitFor(() => {
+      expect(container.querySelector('[style*="height: 512px"]')).not.toBeNull();
+    });
+    // A banner appears above → the flex viewport shrinks → the observer
+    // fires → the list must adopt the new measured height.
+    viewportHeight = 404;
+    act(() => {
+      for (const fire of ResizeObserverStub.callbacks) fire();
+    });
+    await waitFor(() => {
+      expect(container.querySelector('[style*="height: 404px"]')).not.toBeNull();
+    });
+    expect(container.querySelector('[style*="height: 512px"]')).toBeNull();
   });
 });
