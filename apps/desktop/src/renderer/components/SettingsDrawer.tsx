@@ -411,14 +411,16 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
           </button>
         </p>
         <p className={styles['about']}>
-          xCLAUDE Gateway audits every tool call Claude makes through your
-          sources, classified by risk across 7 risk categories and 4 severity
-          levels. Everything is audited locally — no account, no telemetry.
+          xCLAUDE Gateway audits every tool call Claude Desktop and Claude Code
+          make through your sources, classified by risk across 7 risk categories
+          and 4 severity levels. Everything is audited locally — no account, no
+          telemetry.
         </p>
         <p className={styles['about']}>
           xCLAUDE Gateway is an independent, open-source project, not affiliated
-          with, endorsed by, or sponsored by Anthropic. "Claude" and "Claude
-          Desktop" are trademarks of Anthropic. Other product names and logos —
+          with, endorsed by, or sponsored by Anthropic. "Claude", "Claude
+          Desktop" and "Claude Code" are trademarks of Anthropic. Other product
+          names and logos —
           Google, Gmail, Slack, Notion, and the like — belong to their respective
           owners and are used for identification only.
         </p>
