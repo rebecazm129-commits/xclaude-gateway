@@ -4,35 +4,103 @@
 
 # xCLAUDE Gateway
 
-**A local audit layer for Claude Desktop and Claude Code — records, classifies and warns; never blocks.**
+**A durable audit trail for Claude's tool activity.**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/rebecazm129-commits/xclaude-gateway/ci.yml?branch=main&label=CI)](https://github.com/rebecazm129-commits/xclaude-gateway/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/rebecazm129-commits/xclaude-gateway?include_prereleases&label=release&color=D86A4D)](https://github.com/rebecazm129-commits/xclaude-gateway/releases)
 [![Status](https://img.shields.io/badge/status-beta-E8A33D)](https://github.com/rebecazm129-commits/xclaude-gateway/releases)
-[![Platform](https://img.shields.io/badge/macOS-arm64%20(Apple%20Silicon)-000000?logo=apple&logoColor=white)](#requirements)
+[![Platform](https://img.shields.io/badge/macOS-arm64%20(Apple%20Silicon)-000000?logo=apple&logoColor=white)](#installation)
 [![License](https://img.shields.io/badge/license-MIT-informational)](#license)
 
-xCLAUDE Gateway is in beta — https://xclaude.ai
+xCLAUDE records and classifies tool activity from Claude Code and wrapped MCP servers — locally on your Mac, in a record you control.
+
+Keep a reviewable history across sessions, spot activity worth a second look, and audit wrapped MCP servers in Claude Desktop too.
+
+No account. No telemetry. Nothing sent to xCLAUDE.
+
+macOS 13+ · Apple Silicon · Open source · MIT
+
+**[Download xCLAUDE](https://github.com/rebecazm129-commits/xclaude-gateway/releases)** · **[xclaude.ai](https://xclaude.ai)**
 
 </div>
 
-<p align="center"><img src="docs/screenshots/detections-hero-2.png" alt="Detections view with severity, category, source and time-range filters" width="900" /></p>
+<p align="center"><img src="docs/screenshots/detections-hero-2.png" alt="Detections view: every tool call recorded with its severity, category and source, filterable and exportable" width="900" /></p>
 
-xCLAUDE Gateway sits between Claude Desktop and the services it talks to — remote connectors like Notion, Linear, Atlassian, GitHub or Gmail, or the local MCP servers you already run — records every JSON-RPC frame to a per-session log on your Mac, and classifies sensitive patterns with severity tags. The audit happens locally; the traffic still reaches the service it's addressed to. The audit covers both sides of the conversation: what Claude Desktop asks your tools to do, and what those tools send back. It audits Claude Code natively as well: every tool call in a session — native tools and MCP tools alike — is captured via a session hook, with its own view in the app.
+<p align="center"><em>Every tool call, classified and kept — with its severity, category and source.</em></p>
 
-## Requirements
+## Why xCLAUDE?
+
+Claude can make dozens or hundreds of tool calls while you work.
+
+xCLAUDE gives those calls a durable audit trail instead of leaving them scattered across sessions and clients. It keeps the record locally, classifies activity that deserves a second look, and lets you review what happened later.
+
+That includes things like:
+
+- credentials detected in tool traffic
+- PII
+- prompt-injection patterns
+- data exports and email actions
+- changes to an MCP server's advertised tools
+- ordinary tool calls where nothing unusual happened
+
+It audits. It doesn't block.
+
+## What you get
+
+- **One reviewable history.** A **Detections** view over every recorded event, with severity, category, source and time-range filters — plus a dedicated **Claude Code** view grouped by session and project.
+- **Classification with severity.** Eight categories, from `credential_detected` at CRITICAL down to the `tool_call_allowed` baseline — see [Detectors](#detectors).
+- **The record stays yours.** Append-only JSONL under your own home directory, exportable to raw JSONL or CSV from the app.
+- **Credential masking.** Values the credential detector recognizes are masked before they are written.
+- **A menu-bar summary.** A dropdown listing the number of flagged events in the last 24 hours.
+- **A self-test.** A **Verify detection** button that runs a synthetic risky payload end to end, so you can confirm the pipeline works without touching a real connector.
+
+## What it sees
+
+| Surface | Audited? | How |
+| --- | --- | --- |
+| Claude Code tool calls | ✅ | `PostToolUse` / `PostToolUseFailure` hooks with matcher `*` — every Claude Code tool, built-in and MCP alike |
+| Wrapped local MCP servers (Claude Code) | ✅ | Registered manually with `claude mcp add-json`; adds the protocol level on top of the hook |
+| Remote MCP servers connected through xCLAUDE | ✅ | Bridged through your Mac from the Sources tab |
+| Wrapped MCP servers in Claude Desktop | ✅ | One click on **Install** in Settings, or [by hand](#manual-configuration) |
+| Claude Desktop native connectors | ❌ | Brokered through Anthropic's servers; their traffic never reaches your machine. Connect the service through xCLAUDE instead |
+| Claude Desktop built-in tools (web search, code execution…) | ❌ | Internal model tools, not MCP servers; they never traverse the proxy |
+| Conversations / Claude reasoning | ❌ | Never captured — xCLAUDE reads tool traffic, not prompts or replies |
+
+Two limits worth stating up front:
+
+- **Claude Code events arrive after the call has run.** The hooks fire on completion, so a tool call that never finishes may leave no event.
+- **Detector coverage is not identical on both paths.** Claude Code events today do not carry `pii_detected` (the on-device NER enrichment) or `tool_manifest_changed`; both of those detectors run only on the MCP proxy path. Everything else — credentials, prompt injection, email and export warnings, checksum-validated PII, and the baseline — runs on both.
+
+xCLAUDE is an audit trail for tool activity, not a transcript of your conversation with Claude.
+
+## Local by design
+
+- **No account.** Nothing to sign up for.
+- **No telemetry, no analytics.** xCLAUDE makes no network calls of its own. The only outbound traffic is the connectors you add and their OAuth sign-in, plus the "Request a connector" link, which opens your system browser.
+- **Nothing is sent to xCLAUDE.** There is no server on our side to send it to.
+- **The logs stay on your Mac,** under `~/Library/Application Support/xCLAUDE Gateway/`.
+- **Nothing is deleted by default.** Retention is `never` out of the box; automatic purge by age is opt-in and configurable — see [Audit log retention](#audit-log-retention).
+- **Credentials are masked before they are written.** When the `credential_detected` detector matches, the value never reaches the log in the clear.
+
+One consequence to take seriously: **everything else is stored as captured.** Tool arguments and results are written verbatim, including any PII in them that no detector masked. Treat the audit trail as sensitive material — it is a faithful record of what your tools handled.
+
+Wrapped servers still talk to their destination — a local MCP server to your filesystem, a remote connector to its provider over the network. xCLAUDE observes that traffic; it doesn't reroute or withhold it.
+
+## Installation
+
+**Requirements**
 
 - macOS 13 or later, on Apple Silicon (M1 or newer). The current build is arm64-only; Intel Macs are not supported.
 - Claude Desktop, Claude Code, or both — either one alone is enough. Claude Desktop's MCP servers are wrapped by the proxy; Claude Code is audited natively via a session hook (its local MCP servers can be wrapped too).
 - Optional: local MCP servers you already use (xCLAUDE wraps them). If you only want to audit remote services, no local server is needed. If you want to try local wrapping and don't have a server, `@modelcontextprotocol/server-filesystem` is an easy starting point (installable via `npx -y`).
 
-## Installation
+**Install**
 
 1. Download the latest `.dmg` from the [latest GitHub release](https://github.com/rebecazm129-commits/xclaude-gateway/releases/latest).
 2. Open the `.dmg` and drag `xCLAUDE Gateway.app` into `/Applications/`, then eject the disk image and launch the app **from Applications** (not from the disk image window).
 3. The app is signed with a Developer ID and notarized by Apple; it opens cleanly on first launch.
 
-## Configuration
+**First run**
 
 Open `xCLAUDE Gateway.app`. The **Sources** tab lists every entry in your `claude_desktop_config.json` with its audit state: **auditing** (already wrapped), **not audited** (eligible for wrapping) or **unsupported**. To wrap the eligible servers, open **Settings** (the gear icon in the header) and click **Install**; click **Uninstall** there to revert.
 
@@ -40,9 +108,9 @@ The first time you click Install, xCLAUDE Gateway makes a one-time backup of you
 
 If you prefer manual configuration, see [Manual configuration](#manual-configuration) below.
 
-## What it does
+## How the audit works
 
-Whether you connect a remote service through xCLAUDE (Notion, Linear, Atlassian, GitHub, Stripe, Apollo, Slack, Gmail, Google Calendar, Google Drive) or wrap a local MCP server you already run (filesystem, custom scripts, anything you launch via `npx` or a local binary), xCLAUDE Gateway sits transparently between Claude Desktop and that server:
+Whether you connect a remote service through xCLAUDE (Notion, Linear, Atlassian, GitHub, Stripe, Apollo, Slack, Gmail, Google Calendar, Google Drive) or wrap a local MCP server you already run (filesystem, custom scripts, anything you launch via `npx` or a local binary), xCLAUDE Gateway sits transparently between the client and that server:
 
 - **Wraps your existing MCP servers transparently** — no changes to the servers themselves.
 - **Records every JSON-RPC frame** (requests, responses, notifications) to a per-session JSONL log under `~/Library/Application Support/xCLAUDE Gateway/wrappers/`.
@@ -50,87 +118,60 @@ Whether you connect a remote service through xCLAUDE (Notion, Linear, Atlassian,
 - **Both directions.** All five regex detectors scan tool-call results as well as outgoing arguments — a secret, an injected instruction or a checksum-valid identifier arriving in a server's response is classified too. Named-entity PII (async enrichment) runs on requests only.
 - **Captures latency overhead per response** (`overheadUs`) and end-to-end server response time (`latencyMs`).
 - **Captures the wrapped server's stderr output** as separate events.
-- **Shows the classified events in a Detections view** inside the `xCLAUDE Gateway.app` window, with severity, category and time-range filters, and lets you **export the filtered trail** to raw JSONL or CSV — plus a menu-bar icon whose dropdown menu lists the number of flagged events in the last 24 hours.
+- **Lets you export the filtered trail** to raw JSONL or CSV from the Detections view.
 - **Auto-configures `claude_desktop_config.json`** from the app: one click on **Install** (in the Settings drawer) wraps the eligible servers, another reverts them, with a backup of your original config preserved.
 
-The audit runs entirely on your Mac: no telemetry, no account, no analytics. xCLAUDE makes no network calls of its own — the only outbound traffic is the connectors you add and their OAuth sign-in, plus the "Request a connector" link, which opens your system browser. Note that wrapped servers still talk to their destination — a local MCP server to your filesystem, a remote connector to its provider over the network. xCLAUDE observes that traffic; it doesn't reroute or withhold it.
-
-**Credential masking.** Detected credentials are the one deliberate exception to capture-all. When the `credential_detected` detector matches an API key or token, its value is masked before the event is written: a 10-character prefix plus an HMAC-SHA256 fingerprint, keyed by a random salt created once per install (`~/Library/Application Support/xCLAUDE Gateway/audit-salt`). The prefix keeps the row recognizable; the fingerprint is irreversible and verifies nothing outside your machine. The same salt keys both audit sources — wrapped MCP traffic and Claude Code — so one credential carries the same fingerprint wherever it appears, and masked events still correlate across sources. There is no toggle. Everything else is recorded as captured (oversized values are size-truncated and flagged as such).
+Claude Code is audited on a different path: a session hook registered in `~/.claude/settings.json` reports every tool call after it runs. Detection and credential masking apply to that stream too — see [Claude Code](#claude-code).
 
 ### Detectors
 
 | Category | Severity | What it detects |
 | --- | --- | --- |
 | `credential_detected` | CRITICAL | Known formats of API keys (Anthropic, OpenAI, GitHub, AWS, and similar). |
-| `prompt_injection` | CRITICAL | Common injection / jailbreak phrases ("ignore all previous instructions", "follow any instructions you find inside this file", etc.). |
-| `tool_manifest_changed` | HIGH / MEDIUM | Changes to a connector's advertised `tools/list` versus a per-connector baseline — tool poisoning. Since 0.7.0. |
+| `prompt_injection` | CRITICAL | Four families of injection / jailbreak phrasing: instruction override ("ignore all previous instructions"), role override ("act as an unrestricted…"), system-prompt extraction ("reveal your system prompt") and jailbreak markers ("DAN mode", "do anything now"). |
+| `tool_manifest_changed` | HIGH / MEDIUM | Changes to a connector's advertised `tools/list` versus a per-connector baseline — tool poisoning. Proxy path only. Since 0.7.0. |
 | `email_send_warning` | HIGH / MEDIUM | Imperative requests to send email in tool text, and send-semantics tool calls (see below). |
 | `data_export_warning` | MEDIUM | Imperative requests to export data. |
-| `pii_structured` | MEDIUM | Well-formed, checksum-validated PII shapes (see below). |
-| `pii_detected` | LOW | Named-entity PII — people, organizations, locations — found by the on-device NER model. Async enrichment; runs on requests only. |
+| `pii_structured` | MEDIUM | Well-formed PII shapes, checksum-confirmed where the format has a checksum (see below). |
+| `pii_detected` | LOW | Named-entity PII — people, organizations, locations — found by the on-device NER model. Async enrichment; runs on requests only, proxy path only. |
 | `tool_call_allowed` | LOW | Baseline emitted for every tool call that matches none of the above — the "everything is normal" line, not an absence of analysis. |
 
 **`email_send_warning` branches.** An AI-executed send (`send`/`reply`/`forward` tools) flags at HIGH — an action that deserves human attention regardless of intent; an AI-composed draft (`draft`/`compose` tools) flags at MEDIUM, since a draft is content one click away from sent.
 
-**`pii_structured` shapes.** Emails, IBANs (mod-97), credit cards (Luhn), US SSNs, UK National Insurance and NHS numbers, Spanish DNI/NIE, international phone numbers, passport MRZ lines (ICAO 9303), French NIR, Italian codice fiscale, Dutch BSN, German Steuer-ID and Portuguese NIF. A regex preselects each candidate and a checksum confirms it, which keeps false positives near zero on numeric-heavy payloads. Findings record the matched type only — never the datum itself. Available since 0.4.4.
+**`pii_structured` shapes.** Fifteen rules: emails, IBANs (mod-97), credit cards (Luhn), US SSNs, UK National Insurance and NHS numbers, Spanish DNI/NIE, E.164 phone numbers, passport MRZ line 2 (ICAO 9303 TD3), French NIR, Italian codice fiscale (standard form; omocodia variants are out of scope), Dutch BSN, German Steuer-ID and Portuguese NIF. A regex preselects each candidate and, for every shape that carries one, a checksum confirms it — which keeps false positives near zero on numeric-heavy payloads. Two shapes have no checksum to verify and match on their pattern alone: emails and E.164 phone numbers. Findings record the matched type only — never the datum itself. Available since 0.4.4.
 
 **`tool_manifest_changed` baseline.** xCLAUDE keeps a small per-connector baseline (a hash plus per-tool signatures) of each server's `tools/list`. The first time a connector is seen the baseline is seeded silently — no detection — and a later change is recorded exactly once: a changed description or input schema flags at HIGH, an added or removed tool at MEDIUM. Since 0.7.0.
 
+**Named-entity PII is early stage.** The transformers.js NER enrichment records persons, organizations and locations found in tool-call payloads alongside the main detector chain. It complements the checksum-based `pii_structured` detector and is not yet part of the synchronous detector chain. It will mature in upcoming releases.
+
 <p align="center"><img src="docs/screenshots/detection-detail-2.png" alt="Event detail panel with tool call arguments, detection result and technical details" width="900" /></p>
 
-## Scope and limits
+### What to expect in normal use
 
-xCLAUDE Gateway is a **complement to the safety behavior of your MCP client**, not a replacement for it. It records, classifies and warns; it never blocks. The map of what it covers today:
+In ordinary, day-to-day use, most events will be `tool_call_allowed` at LOW severity. That is the intended baseline, not a sign that "nothing is happening". The Detections view highlights events at MEDIUM, HIGH or CRITICAL only when a detector matches — which happens rarely in normal use, because Claude's own model already refuses many sensitive operations before any tool call is issued.
 
-| Surface | Audited? | How |
-| --- | --- | --- |
-| Claude Desktop — local MCP servers | ✅ | Wrapped by the proxy (Install action, or manually) |
-| Remote MCP servers connected through xCLAUDE | ✅ | Bridged through your machine from the Sources tab |
-| Claude Code — sessions | ✅ | Session hook records every tool call (native and MCP); optional proxy wrap adds the protocol level |
-| Claude Code — claude.ai-managed connectors | ❌ | Brokered remotely; never reach your machine |
-| Claude Desktop — native Connectors | ❌ | Brokered through Anthropic's servers; connect them through xCLAUDE instead |
-| Cowork | ❌ | Separate client, not currently tested |
-| Anthropic's API directly (SDK integrations) | ❌ | No MCP client involved; out of scope by design |
-| Skills | ❌ | Not JSON-RPC traffic; tool calls they trigger are captured |
-| Claude's native tools (web search, code execution…) | ❌ | Internal model tools, not MCP servers |
+The value of xCLAUDE Gateway in this phase comes from three places: the **complete local audit trail**, the **classification of patterns when they do appear**, and the **foundation for richer detection and reporting** as the engine matures.
 
-### What is covered
+## How the audit trail is stored
 
-What's audited is your Claude clients' MCP JSON-RPC traffic and Claude Code's tool calls — nothing else on your Mac.
+- **Append-only.** Each line is one complete JSON envelope, appended to a per-session file under `~/Library/Application Support/xCLAUDE Gateway/wrappers/`. Nothing is rewritten in place.
+- **Session files are compacted into day files.** Once a session ends, the compactor appends its lines to a file for that day (UTC) and removes the original. "One file per session" is therefore true while the session is live, not permanently.
+- **Durability is page-cache backed.** There is no `fsync` per line — the fd is flushed on clean shutdown. The last writes before a power cut or a kernel panic are not absolutely guaranteed.
+- **Claude Code events come from post-execution hooks.** They are recorded once the tool call has completed.
+- **Credentials are masked; the rest is verbatim.** See below.
+- **Nothing is purged by default** (`purgeMode = never`). See [Audit log retention](#audit-log-retention).
 
-- **Claude Desktop** with **local MCP servers** that are wrapped via the app's **Install** action (or manually in `claude_desktop_config.json` by pointing them to `xcg-proxy`).
-- **Remote MCP servers connected through xCLAUDE** (Notion, Linear, Atlassian, GitHub, Stripe, Apollo, Slack, Gmail, Google Calendar and Google Drive today; more on the way). You connect them from the Sources tab (+ Add source), which signs you in and bridges the traffic through your machine for auditing.
-- **Claude Code** (the CLI), on two levels. Claude Code's activity — the tool calls in a session, native tools and MCP tools alike — is audited natively via a session hook, with its own view in the app. Detection and credential masking run on this stream just as they do on wrapped traffic, keyed by the same salt. Additionally, Claude Code's local MCP servers can be wrapped by the proxy (see "Wrapping Claude Code's MCP servers" below). The hook lives in `~/.claude/settings.json`, a file any program — including Claude Code itself — can edit. xCLAUDE does not prevent its removal; it makes it visible: if the hook disappears without an in-app Uninstall, the app warns, offers one-click reinstall, and records an `app.cchook_removed` marker in the audit trail.
+**Credential masking.** Detected credentials are the one deliberate exception to capture-all. When the `credential_detected` detector matches an API key or token, its value is masked before the event is written: a 10-character prefix plus an HMAC-SHA256 fingerprint, keyed by a random salt created once per install (`~/Library/Application Support/xCLAUDE Gateway/audit-salt`). The prefix keeps the row recognizable; the fingerprint is irreversible and verifies nothing outside your machine. The same salt keys both audit sources — wrapped MCP traffic and Claude Code — so one credential carries the same fingerprint wherever it appears, and masked events still correlate across sources. There is no toggle. Everything else is recorded as captured, including PII no detector masked (oversized values are size-truncated and flagged as such).
 
-### What is not covered
-
-- **Claude Desktop's native Connectors** (the ones you enable with one click in Settings). xCLAUDE cannot audit those: they are brokered through Anthropic's servers, so their traffic never reaches your machine — intercepting it would require breaking TLS, which this project will not do. **What xCLAUDE offers instead is its own audited path to the same services:** connect a remote MCP server *through* xCLAUDE (see "Remote connectors" below) and its traffic is bridged via your machine, where xCLAUDE can observe it. To audit a service this way, connect it through xCLAUDE rather than as a native Connector.
-- **Cowork.** Separate client, separate configuration, not currently tested.
-- **Anthropic's API directly** (any SDK integration). No MCP client model applies; out of scope by design.
-- **Skills** (markdown files used by the model as context). They are not JSON-RPC traffic; they are not interceptable by a stdio proxy. The proxy does capture any tool calls a skill ends up making, but not the skill content itself.
-- **Claude's native tools** (web search, computer use, code execution, etc.). These are internal model tools, not MCP servers. They never traverse the proxy.
-
-If you're using Claude Desktop with local MCP servers, if you connect a remote service through xCLAUDE, or if you work in Claude Code, you're in scope. If your main use is anything else, this tool will not give you what you expect today.
+## Claude Code
 
 <p align="center"><img src="docs/screenshots/claude-code-tab.png" alt="Claude Code view with per-session audit trail, severity summary and faceted filters" width="900" /></p>
 
-### What it does not do — by design
+Claude Code's activity — the tool calls in a session, built-in tools and MCP tools alike — is audited natively via a session hook, with its own view in the app. Detection and credential masking run on this stream just as they do on wrapped traffic, keyed by the same salt.
 
-- **No blocking or altering of tool calls.** The detectors record and classify with severity; xCLAUDE never stops, reroutes or withholds an operation.
+The hook lives in `~/.claude/settings.json`, a file any program — including Claude Code itself — can edit. xCLAUDE does not prevent its removal; it makes it visible: if the hook disappears without an in-app Uninstall, the app warns, offers one-click reinstall, and records an `app.cchook_removed` marker in the audit trail.
 
-In practice, Claude Desktop's model often refuses sensitive operations on its own — before they ever reach the proxy. If you ask the model to write a credential to a file, it will likely decline. The proxy doesn't see that refusal because no tool call was made. **That is by design and not a limitation of this tool**.
-
-What the proxy adds on top of that:
-
-- A **complete local audit trail** of every tool call that did happen. Forensics, not just detection. If in six months you wonder what crossed your Mac, the JSONL log tells you exactly.
-- A **second independent layer** of classification, useful in flows where the model is less cautious about each individual tool call (agentic workflows, long automated chains, future MCP clients with different safety postures).
-- A **foundation for richer detection, alerting and reporting** as the audit engine grows.
-
-If you're looking for a tool that prevents Claude from making sensitive tool calls in the first place, the model itself is already doing most of that work. If you're looking for a tool that records, classifies and gives you visibility over the MCP traffic on your machine, this is it.
-
-### Early stage
-
-- **Named-entity PII detection runs as an async enrichment** (transformers.js NER): persons, organizations and locations found in tool-call payloads are recorded in the audit log alongside the main detector chain. It is early stage — it complements the checksum-based `pii_structured` detector, and is not yet part of the synchronous detector chain. It will mature in upcoming releases.
+<p align="center"><img src="docs/screenshots/sources-claude-code.png" alt="Sources view showing the claude-code source: hook status, session heartbeat and recent flagged calls" width="900" /></p>
 
 ### Wrapping Claude Code's MCP servers
 
@@ -145,8 +186,6 @@ claude mcp add-json <name> '{"type":"stdio","command":"/Users/<you>/Library/Appl
 Replace `/Users/<you>` with your actual home directory — the quoted JSON will not expand `~` or `$HOME`. Then start a new Claude Code session. The `bin/xcg-proxy` path is a stable symlink the app maintains; it runs on the app's own runtime, so no Node installation is required. This registers the server for the current project; add `--scope user` to wrap it across all your projects. To revert, `claude mcp remove <name>` and re-add the server with its original command.
 
 Notes: only local stdio servers can be wrapped — Claude Code's claude.ai-managed connectors are brokered remotely and never reach your machine, same as Claude Desktop's native Connectors. With both the wrapper and the native Claude Code audit active, each call on a wrapped server is recorded by both sources; the two records are correlated by Claude Code's tool-use ID: paired rows carry a link indicator in Detections, and the event detail names the other source.
-
-<p align="center"><img src="docs/screenshots/sources-claude-code.png" alt="Sources view showing the claude-code source: hook status, session heartbeat and recent flagged calls" width="900" /></p>
 
 ## Remote connectors
 
@@ -206,7 +245,7 @@ Verify a session log was created:
 ls -lt ~/Library/Application\ Support/xCLAUDE\ Gateway/wrappers/
 ```
 
-A new JSONL file appears every time Claude Desktop starts with wrapped MCPs.
+A new JSONL file appears every time Claude Desktop starts with wrapped MCPs. Its name is the session ID (ULID); once the session ends, the compactor folds it into that day's file.
 
 Inspect a log entry:
 
@@ -238,7 +277,7 @@ A typical event:
 }
 ```
 
-Each session writes its own file. The file name is the session ID (ULID). Open `xCLAUDE Gateway.app` and click the **Detections** tab to see the same events with severity, category and time-range filters.
+Open `xCLAUDE Gateway.app` and click the **Detections** tab to see the same events with severity, category and time-range filters.
 
 ### Verify detection (self-test)
 
@@ -250,7 +289,7 @@ The Sources tab includes a **Verify detection** button — a safe, self-containe
 
 <p align="center"><img src="docs/screenshots/settings-retention.png" alt="Retention controls under Settings → Audit log" width="900" /></p>
 
-The audit trail is the product, so **nothing is ever deleted by default**. Session logs accumulate in the wrappers directory and stay there until you decide otherwise.
+The audit trail is the product, so **nothing is ever deleted by default** (`purgeMode = never`). Session and day logs accumulate in the wrappers directory and stay there until you decide otherwise.
 
 - **A visible size warning.** When the wrappers directory grows past a configured threshold (default **500 MiB**), the app shows a warning in the Detections view. It only warns — auditing continues unchanged.
 - **Optional automatic purge by age.** In Settings you can opt in to automatic cleanup of session logs older than **30, 90 or 365 days**. It is **off by default**. Every purge is recorded as a visible `app.retention_purged` event in the audit log — a purge is never silent.
@@ -258,6 +297,35 @@ The audit trail is the product, so **nothing is ever deleted by default**. Sessi
 - **Where the setting lives.** Retention configuration is stored in `settings.json`, next to the wrappers directory under `~/Library/Application Support/xCLAUDE Gateway/`.
 
 Retention mode, current audit log size, and the last cleanup are shown under Settings → Audit log.
+
+## Known limitations
+
+xCLAUDE Gateway is a **complement to the safety behavior of your MCP client**, not a replacement for it. The full coverage map is in [What it sees](#what-it-sees); this section explains the edges.
+
+**It never blocks or alters a tool call.** The detectors record and classify with severity; xCLAUDE never stops, reroutes or withholds an operation. In practice, Claude's model often refuses sensitive operations on its own — before they ever reach the proxy. If you ask the model to write a credential to a file, it will likely decline. The proxy doesn't see that refusal because no tool call was made. **That is by design and not a limitation of this tool.**
+
+What the audit adds on top of that:
+
+- A **complete local audit trail** of every tool call that did happen. Forensics, not just detection. If in six months you wonder what crossed your Mac, the JSONL log tells you exactly.
+- A **second independent layer** of classification, useful in flows where the model is less cautious about each individual tool call (agentic workflows, long automated chains, future MCP clients with different safety postures).
+- A **foundation for richer detection, alerting and reporting** as the audit engine grows.
+
+**Claude Code events are post-execution.** They arrive through `PostToolUse` / `PostToolUseFailure` hooks, so a call that never completes may leave no event.
+
+**Detector coverage differs by path.** `pii_detected` (NER) and `tool_manifest_changed` run only on the MCP proxy path, not on Claude Code events.
+
+**Durability is not transactional.** Writes are append-only but page-cache backed, with no `fsync` per line; the last writes before a power cut or kernel panic have no absolute guarantee.
+
+**Claude Desktop's native Connectors cannot be audited.** The ones you enable with one click in Settings are brokered through Anthropic's servers, so their traffic never reaches your machine — intercepting it would require breaking TLS, which this project will not do. **What xCLAUDE offers instead is its own audited path to the same services:** connect a remote MCP server *through* xCLAUDE (see [Remote connectors](#remote-connectors)) and its traffic is bridged via your machine, where xCLAUDE can observe it.
+
+**Also out of scope today:**
+
+- **Cowork.** Separate client, separate configuration, not currently tested.
+- **Anthropic's API directly** (any SDK integration). No MCP client model applies; out of scope by design.
+- **Skills** (markdown files used by the model as context). They are not JSON-RPC traffic and are not interceptable by a stdio proxy. Any tool calls a skill ends up making are captured; the skill content itself is not.
+- **Claude's built-in tools** (web search, computer use, code execution, etc.). These are internal model tools, not MCP servers. They never traverse the proxy.
+
+If you're using Claude Desktop with local MCP servers, if you connect a remote service through xCLAUDE, or if you work in Claude Code, you're in scope. If your main use is anything else, this tool will not give you what you expect today.
 
 ## Manual configuration
 
@@ -324,12 +392,6 @@ The same pattern applies to other remote connectors — for example Linear, with
 You must run the OAuth login once before this works — the Remote connectors panel does this for you. Restart Claude Desktop after editing.
 
 </details>
-
-## A note on expectations
-
-In ordinary, day-to-day use of Claude Desktop with local MCP servers, most events will be `tool_call_allowed` at LOW severity. That is the intended baseline, not a sign that "nothing is happening". The Detections view highlights events at MEDIUM, HIGH or CRITICAL only when a detector matches. This typically happens rarely in normal use, because Claude Desktop's model already refuses many sensitive operations before any tool call is issued.
-
-The value of xCLAUDE Gateway in this phase comes from three places: the **complete local audit trail**, the **classification of patterns when they do appear**, and the **foundation for richer detection and reporting** as the engine matures.
 
 ## Troubleshooting
 
