@@ -7,10 +7,13 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import {
+  StreamableHTTPClientTransport,
+  StreamableHTTPError,
+} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
+import type { JSONRPCErrorResponse, JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { ulid } from 'ulid';
 
 import { runLogin } from './login.js';
@@ -296,6 +299,47 @@ function classifyHttpClientError(err: Error): 'http_connect_failed' | 'http_stat
   return typeof (err as { code?: unknown }).code === 'number' ? 'http_status_error' : 'http_connect_failed';
 }
 
+// Implementation-defined server error (JSON-RPC 2.0 reserves -32000..-32099).
+// -32000 is left alone: it is the de-facto generic "Server error" that a
+// wrapped/remote server may legitimately return on its own, and the trail must
+// keep those distinguishable from ours. -32001 is xcg-proxy's own "the gateway
+// could not deliver this request upstream" — the JSON-RPC analogue of HTTP 502.
+export const FORWARD_FAILED_CODE = -32001;
+
+// A 401 that reaches us as StreamableHTTPError is the SDK's auth circuit
+// breaker: it already refreshed once and the server rejected the fresh token
+// (streamableHttp.js:314-318 → `throw new StreamableHTTPError(401, 'Server
+// returned 401 after successful authentication')`). That is a re-login
+// condition, not a transient upstream error, so it must take the auth branch.
+// `code` is the HTTP status (streamableHttp.d.ts:5 — `readonly code: number |
+// undefined`).
+export function isAuthError(e: unknown): boolean {
+  if (e instanceof ReauthRequiredError || e instanceof UnauthorizedError) return true;
+  return e instanceof StreamableHTTPError && e.code === 401;
+}
+
+// Synthesizes the JSON-RPC error response owed to a request we could not
+// forward. Returns null for notifications (no id → nothing is waiting on an
+// answer) and for responses, where inventing an id would be wrong. Without
+// this the client's id dangles until ITS timeout fires (4 min in Claude
+// Desktop) and the connector looks unresponsive with no error surfaced.
+export function forwardFailureResponse(
+  msg: JSONRPCMessage,
+  err: unknown,
+): JSONRPCErrorResponse | null {
+  if (!('method' in msg) || !('id' in msg)) return null;
+  const id = (msg as { id: string | number }).id;
+  const detail = err instanceof Error ? err.message : String(err);
+  return {
+    jsonrpc: '2.0',
+    id,
+    error: {
+      code: FORWARD_FAILED_CODE,
+      message: `xcg-proxy: forward to remote failed: ${detail}`,
+    },
+  };
+}
+
 async function runHttp(opts: HttpArgs): Promise<void> {
   const { url, name } = opts;
 
@@ -335,9 +379,6 @@ async function runHttp(opts: HttpArgs): Promise<void> {
   const authProvider = new KeychainOAuthProvider(name, (e) => {
     sink.emit({ type: 'proxy.token', ...e });
   });
-  const isAuthError = (e: unknown): boolean =>
-    e instanceof ReauthRequiredError || e instanceof UnauthorizedError;
-
   // opts.fetch llega como fetchFn hasta el POST del token endpoint dentro de
   // auth() (streamableHttp propaga _fetchWithInit a cada auth interno), así que
   // el interceptor ve todo refresh de esta sesión; los requests MCP normales
@@ -366,6 +407,22 @@ async function runHttp(opts: HttpArgs): Promise<void> {
     else framesOut++;
   };
 
+  // Answers the in-flight request with a JSON-RPC error so its id never
+  // dangles. Observed as 'server_to_client' first, so the synthesized response
+  // lands in the trail as an mcp.response carrying `error` (classifyFromMessage
+  // maps it at parser.ts:129; the desktop reader keys outcome='error' off that
+  // field at detection-reader.ts:255). Notifications get nothing but stderr —
+  // there is no id to answer.
+  const answerForwardFailure = (msg: JSONRPCMessage, err: unknown): void => {
+    process.stderr.write(`xcg-proxy: forward to remote failed: ${err instanceof Error ? err.message : String(err)}\n`);
+    const errorResponse = forwardFailureResponse(msg, err);
+    if (errorResponse === null) return;
+    observe(errorResponse, 'server_to_client');
+    void stdioServer.send(errorResponse).catch((sendErr: unknown) => {
+      process.stderr.write(`xcg-proxy: forward to client failed: ${sendErr instanceof Error ? sendErr.message : String(sendErr)}\n`);
+    });
+  };
+
   stdioServer.onmessage = (msg) => {
     observe(msg, 'client_to_server');
     void httpClient.send(msg).catch((err: unknown) => {
@@ -379,10 +436,12 @@ async function runHttp(opts: HttpArgs): Promise<void> {
         });
         // fail-fast: error de auth en runtime = re-login necesario (runtime no
         // puede hacerlo). Cerrar la sesión (proxy.shutdown reason=auth_failed)
-        // para que el cliente no espere 60s.
+        // para que el cliente no espere 60s. Se responde ANTES del shutdown:
+        // el id en vuelo no puede quedar huérfano al cerrar el transporte.
+        answerForwardFailure(msg, err);
         void runHttpShutdown('auth_failed');
       } else {
-        process.stderr.write(`xcg-proxy: forward to remote failed: ${err instanceof Error ? err.message : String(err)}\n`);
+        answerForwardFailure(msg, err);
       }
     });
   };
