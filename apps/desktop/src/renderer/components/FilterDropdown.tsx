@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode, Ref } from 'react';
 
 import { Tooltip } from './Tooltip.js';
@@ -23,6 +24,9 @@ interface Props<T extends string> {
   tooltip?: string;
 }
 
+/** Gap kept between the menu's bottom edge and the window's. */
+const MENU_BOTTOM_MARGIN_PX = 16;
+
 export function FilterDropdown<T extends string>({
   label,
   options,
@@ -35,6 +39,30 @@ export function FilterDropdown<T extends string>({
   tooltip,
 }: Props<T>): JSX.Element {
   const selectedSet = new Set(selected);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [menuMaxHeight, setMenuMaxHeight] = useState<number | null>(null);
+
+  // The menu's max-height is MEASURED from its own viewport position — never
+  // derived from a chrome constant (the titlebar lesson, Detections.tsx:70:
+  // any sibling the constant didn't know about breaks the fixed sum). The
+  // menu always opens downward (.menu top: calc(100% + 4px)), so the space it
+  // may occupy is exactly window bottom − its own top − a breathing margin.
+  // useLayoutEffect runs before paint (no flash of a clipped menu); the
+  // resize listener keeps it true while open — chips reflow on narrow
+  // windows, so the trigger's Y can change with width too.
+  useLayoutEffect(() => {
+    if (!isOpen) return undefined;
+    const measure = (): void => {
+      const el = menuRef.current;
+      if (el === null) return;
+      const available =
+        window.innerHeight - el.getBoundingClientRect().top - MENU_BOTTOM_MARGIN_PX;
+      if (available > 0) setMenuMaxHeight(available);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [isOpen]);
 
   function toggle(option: T): void {
     const next = new Set(selectedSet);
@@ -60,21 +88,29 @@ export function FilterDropdown<T extends string>({
     <div className={styles['dropdown']} ref={dropdownRef}>
       {tooltip !== undefined ? <Tooltip text={tooltip}>{trigger}</Tooltip> : trigger}
       {isOpen && (
-        <div className={styles['menu']}>
-          {options.map((option) => (
-            <label key={option} className={styles['option']}>
-              <input
-                type="checkbox"
-                checked={selectedSet.has(option)}
-                onChange={() => toggle(option)}
-              />
-              {/* Single-line contract (commit 6): long values ellipsize
-                  instead of wrapping the option onto multiple lines. */}
-              <span className={styles['optionLabel']}>
-                {formatOption !== undefined ? formatOption(option) : option}
-              </span>
-            </label>
-          ))}
+        <div
+          className={styles['menu']}
+          ref={menuRef}
+          style={menuMaxHeight !== null ? { maxHeight: menuMaxHeight } : undefined}
+        >
+          {/* Scroll lives HERE, not on .menu: the All/None footer below stays
+              pinned while long option lists (Session: 25) scroll. */}
+          <div className={styles['menuList']}>
+            {options.map((option) => (
+              <label key={option} className={styles['option']}>
+                <input
+                  type="checkbox"
+                  checked={selectedSet.has(option)}
+                  onChange={() => toggle(option)}
+                />
+                {/* Single-line contract (commit 6): long values ellipsize
+                    instead of wrapping the option onto multiple lines. */}
+                <span className={styles['optionLabel']}>
+                  {formatOption !== undefined ? formatOption(option) : option}
+                </span>
+              </label>
+            ))}
+          </div>
           {/* Pie All/None (mockup 28/07): atajos de selección total/vacía. */}
           <div className={styles['menuFooter']}>
             <button

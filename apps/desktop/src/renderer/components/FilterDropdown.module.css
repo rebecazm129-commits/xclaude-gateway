@@ -45,7 +45,21 @@
   box-shadow:
     0 6px 20px color-mix(in srgb, var(--kraft-ink) 14%, transparent),
     0 2px 4px color-mix(in srgb, var(--kraft-ink) 6%, transparent);
+  /* Column so .menuList can flex-shrink under the measured max-height (set
+     inline by FilterDropdown.tsx from the menu's own viewport position) while
+     the All/None footer keeps its height. overflow: hidden here only clips to
+     the rounded corners — the vertical scroll lives in .menuList. */
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+}
+
+/* The scrolling half of the menu: options only. min-height: 0 lets it shrink
+   below its content (flex default min-height:auto would defeat max-height);
+   the footer stays out, always visible. */
+.menuList {
+  overflow-y: auto;
+  min-height: 0;
 }
 
 /* El padding lateral del menú da el margen que hace visible el relleno
@@ -130,6 +144,8 @@
   margin-top: 8px;
   padding: 10px 12px 2px;
   border-top: var(--kraft-hairline) solid var(--kraft-border-strong);
+  /* Pinned under the scrolling list: never compresses, never scrolls away. */
+  flex: none;
 }
 
 .footerAll,
