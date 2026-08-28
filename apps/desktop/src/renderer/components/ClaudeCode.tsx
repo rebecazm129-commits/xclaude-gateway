@@ -141,7 +141,13 @@ export function ClaudeCode(): JSX.Element {
   const [listHeight, setListHeight] = useState(INITIAL_LIST_HEIGHT);
   const listViewportRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
-  const barRef = useRef<HTMLDivElement>(null);
+  // One container ref PER chip (Detections' shape): the close criterion is
+  // "outside the OPEN dropdown" (its chip + its menu), so the handler needs
+  // exactly that chip's node — never the whole toolbar.
+  const dropdownRefs = useRef<Record<
+    'severity' | 'tool' | 'session' | 'project' | 'status',
+    HTMLDivElement | null
+  >>({ severity: null, tool: null, session: null, project: null, status: null });
 
   // Source is FIXED: this view IS the claude-code slice — no Source chip.
   // tool/ccSession/project are all server-side since commit 6 (project moved
@@ -236,23 +242,34 @@ export function ClaudeCode(): JSX.Element {
     return () => observer.disconnect();
   }, [hasItems]);
 
-  // Outside-click closes the open dropdown (Detections' pattern, single bar ref).
+  // Escape and outside-click close the open dropdown. "Outside" means outside
+  // the OPEN chip's own container (chip + menu): clicking the search box, the
+  // time segment or ANOTHER chip now closes it — and on another chip the same
+  // click's onToggle then sees v === null and opens that one (close-then-open,
+  // no fighting states). The old criterion compared against the whole toolbar,
+  // which left a long scrolling menu (Session: 25) undismissable from inside
+  // the bar. The setTimeout(0) "active" guard is gone: this effect registers
+  // its listener post-commit, after the click that opened the menu has fully
+  // finished — and a mousedown on the open chip itself lands inside its
+  // container anyway. StrictMode's dev double-invoke is safe: the cleanup
+  // removes both listeners before the re-registration, never two copies.
   useEffect(() => {
     if (openDropdown === null) return;
-    let active = false;
-    const timer = setTimeout(() => {
-      active = true;
-    }, 0);
+    const openKey = openDropdown; // narrowed: the closure below indexes with a non-null key
     function onMouseDown(e: MouseEvent): void {
-      if (!active) return;
-      if (!(barRef.current?.contains(e.target as Node) ?? false)) {
+      const open = dropdownRefs.current[openKey];
+      if (!(open?.contains(e.target as Node) ?? false)) {
         setOpenDropdown(null);
       }
     }
+    function onKeyDown(e: KeyboardEvent): void {
+      if (e.key === 'Escape') setOpenDropdown(null);
+    }
     document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKeyDown);
     return () => {
-      clearTimeout(timer);
       document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKeyDown);
     };
   }, [openDropdown]);
 
@@ -327,7 +344,7 @@ export function ClaudeCode(): JSX.Element {
         onSelectTotal={handleSelectTotal}
         onSelectSeverity={handleSelectSeverity}
       />
-      <div className={styles['toolbar']} ref={barRef}>
+      <div className={styles['toolbar']}>
         <div className={styles['toolbarRow']}>
           <input
             type="search"
@@ -361,6 +378,7 @@ export function ClaudeCode(): JSX.Element {
           options={SEVERITY_OPTIONS}
           selected={selectedSeverities}
           onChange={setSelectedSeverities}
+          dropdownRef={(el) => { dropdownRefs.current.severity = el; }}
           isOpen={openDropdown === 'severity'}
           onToggle={() =>
             setOpenDropdown((v) => (v === 'severity' ? null : 'severity'))
@@ -371,6 +389,7 @@ export function ClaudeCode(): JSX.Element {
           options={toolOptions}
           selected={toolFilter ?? toolOptions}
           onChange={(next) => facetChange(next, toolOptions, setToolFilter)}
+          dropdownRef={(el) => { dropdownRefs.current.tool = el; }}
           isOpen={openDropdown === 'tool'}
           onToggle={() => setOpenDropdown((v) => (v === 'tool' ? null : 'tool'))}
         />
@@ -379,6 +398,7 @@ export function ClaudeCode(): JSX.Element {
           options={sessionOptions}
           selected={sessionFilter ?? sessionOptions}
           onChange={(next) => facetChange(next, sessionOptions, setSessionFilter)}
+          dropdownRef={(el) => { dropdownRefs.current.session = el; }}
           isOpen={openDropdown === 'session'}
           onToggle={() =>
             setOpenDropdown((v) => (v === 'session' ? null : 'session'))
@@ -404,6 +424,7 @@ export function ClaudeCode(): JSX.Element {
           options={STATUS_OPTIONS}
           selected={statusFilter ?? STATUS_OPTIONS}
           onChange={(next) => facetChange(next, STATUS_OPTIONS, setStatusFilter)}
+          dropdownRef={(el) => { dropdownRefs.current.status = el; }}
           isOpen={openDropdown === 'status'}
           onToggle={() =>
             setOpenDropdown((v) => (v === 'status' ? null : 'status'))
@@ -419,6 +440,7 @@ export function ClaudeCode(): JSX.Element {
             options={projectOptions}
             selected={projectFilter ?? projectOptions}
             onChange={(next) => facetChange(next, projectOptions, setProjectFilter)}
+            dropdownRef={(el) => { dropdownRefs.current.project = el; }}
             isOpen={openDropdown === 'project'}
             onToggle={() =>
               setOpenDropdown((v) => (v === 'project' ? null : 'project'))

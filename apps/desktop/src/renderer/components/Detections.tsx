@@ -183,26 +183,30 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
     return () => observer.disconnect();
   }, [hasRows]);
 
+  // Escape and outside-click close the open dropdown. "Outside" means outside
+  // the OPEN chip's own container only — clicking another chip closes this one
+  // and that click's onToggle (v === null) opens the other: close-then-open.
+  // Guard and rationale mirror ClaudeCode's effect (the setTimeout(0) "active"
+  // guard is unnecessary: the listener registers post-commit, after the
+  // opening click; StrictMode's double-invoke is covered by the cleanup).
   useEffect(() => {
     if (openDropdown === null) return;
-    let active = false;
-    const timer = setTimeout(() => {
-      active = true;
-    }, 0);
+    const openKey = openDropdown; // narrowed for the closure below
+    const refFor = { severity: severityRef, category: categoryRef, source: sourceRef };
     function onMouseDown(e: MouseEvent): void {
-      if (!active) return;
-      const target = e.target as Node;
-      const insideSeverity = severityRef.current?.contains(target) ?? false;
-      const insideCategory = categoryRef.current?.contains(target) ?? false;
-      const insideSource = sourceRef.current?.contains(target) ?? false;
-      if (!insideSeverity && !insideCategory && !insideSource) {
+      const open = refFor[openKey].current;
+      if (!(open?.contains(e.target as Node) ?? false)) {
         setOpenDropdown(null);
       }
     }
+    function onKeyDown(e: KeyboardEvent): void {
+      if (e.key === 'Escape') setOpenDropdown(null);
+    }
     document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKeyDown);
     return () => {
-      clearTimeout(timer);
       document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKeyDown);
     };
   }, [openDropdown]);
 

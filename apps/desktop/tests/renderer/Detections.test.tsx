@@ -104,6 +104,46 @@ describe('Detections — sources preset (F1.3c)', () => {
   });
 });
 
+describe('Detections — dropdown closing (fix: outside = the open chip only)', () => {
+  async function openSeverityMenu(): Promise<void> {
+    stubXcg();
+    render(<Detections mcpFilter={null} onClearMcpFilter={() => {}} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /Severity/ })).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: /Severity/ }));
+    expect(screen.getByLabelText('low')).toBeDefined(); // menu open
+  }
+
+  it('(a) Escape closes the open menu', async () => {
+    await openSeverityMenu();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByLabelText('low')).toBeNull();
+  });
+
+  it('(b) mousedown outside the open dropdown closes it — the search box counts as outside', async () => {
+    await openSeverityMenu();
+    fireEvent.mouseDown(screen.getByRole('searchbox', { name: 'Search tool or details' }));
+    expect(screen.queryByLabelText('low')).toBeNull();
+  });
+
+  it('(c) mousedown inside the menu (an option) does NOT close it', async () => {
+    await openSeverityMenu();
+    const option = screen.getByLabelText('low');
+    fireEvent.mouseDown(option);
+    fireEvent.click(option);
+    expect(screen.getByLabelText('low')).toBeDefined();
+  });
+
+  it('(d) All and None do NOT close the menu (intentional: keep adjusting)', async () => {
+    await openSeverityMenu();
+    for (const id of ['filter-all', 'filter-none']) {
+      const btn = screen.getByTestId(id);
+      fireEvent.mouseDown(btn);
+      fireEvent.click(btn);
+      expect(screen.getByLabelText('low')).toBeDefined();
+    }
+  });
+});
+
 describe('Detections — filter parity: search + custom range (22/07)', () => {
   // Gateway-shaped events (no `source` field → normalizeSource ⇒ 'gateway')
   // run through the REAL paginate — the F2.4 lesson (incidencia A): assert

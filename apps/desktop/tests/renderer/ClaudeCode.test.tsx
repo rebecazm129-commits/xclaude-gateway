@@ -251,6 +251,52 @@ describe('ClaudeCode view (F2.4 commit 4)', () => {
     expect((screen.getByLabelText('Read') as HTMLInputElement).disabled).toBe(false);
   });
 
+  describe('dropdown closing (fix: outside = the open chip only)', () => {
+    async function openToolMenu(): Promise<void> {
+      render(<ClaudeCode />);
+      await waitFor(() => expect(screen.getByRole('button', { name: /Tool/ })).toBeDefined());
+      fireEvent.click(screen.getByRole('button', { name: /Tool/ }));
+      expect(screen.getByLabelText('Read')).toBeDefined(); // menu open
+    }
+
+    it('(a) Escape closes the open menu', async () => {
+      stubXcgForView(PAGE_WITH_ROWS);
+      await openToolMenu();
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByLabelText('Read')).toBeNull();
+    });
+
+    it('(b) mousedown outside the open dropdown closes it — the search box counts as outside', async () => {
+      stubXcgForView(PAGE_WITH_ROWS);
+      await openToolMenu();
+      // The old criterion (whole toolbar) kept the menu open here.
+      fireEvent.mouseDown(screen.getByPlaceholderText(/Search/i));
+      expect(screen.queryByLabelText('Read')).toBeNull();
+    });
+
+    it('(c) mousedown inside the menu (an option) does NOT close it', async () => {
+      stubXcgForView(PAGE_WITH_ROWS);
+      await openToolMenu();
+      const option = screen.getByLabelText('Read');
+      fireEvent.mouseDown(option);
+      fireEvent.click(option);
+      expect(screen.getByLabelText('Read')).toBeDefined(); // still open
+    });
+
+    it('(d) All and None do NOT close the menu (intentional: keep adjusting)', async () => {
+      stubXcgForView(PAGE_WITH_ROWS);
+      await openToolMenu();
+      const all = screen.getByTestId('filter-all');
+      fireEvent.mouseDown(all);
+      fireEvent.click(all);
+      expect(screen.getByLabelText('Read')).toBeDefined();
+      const none = screen.getByTestId('filter-none');
+      fireEvent.mouseDown(none);
+      fireEvent.click(none);
+      expect(screen.getByLabelText('Read')).toBeDefined();
+    });
+  });
+
   it('Session chip: human labels one-line layout, unchecking ships the remaining ccSession', async () => {
     const { listDetectionPage } = stubXcgForView(PAGE_WITH_ROWS);
     render(<ClaudeCode />);
