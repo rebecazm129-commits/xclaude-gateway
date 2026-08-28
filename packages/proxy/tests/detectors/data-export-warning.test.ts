@@ -7,6 +7,7 @@ import {
   dataExportWarning,
   dataExportWarningInbound,
 } from '../../src/detection/detectors/data-export-warning.js';
+import { ATTACK_CORPUS, NOISE_CORPUS } from '../fixtures/data-export-corpus.js';
 import type { DetectorInput } from '../../src/detection/types.js';
 
 function input(paramsJson: string): DetectorInput {
@@ -178,6 +179,27 @@ describe('dataExportWarning', () => {
         dataExportWarning(input('The entire database server is down.')),
       ).toBeNull();
     });
+  });
+});
+
+describe('dataExportWarningInbound — exfiltration corpus (28/08)', () => {
+  describe('ATTACK_CORPUS: every documented exfiltration phrasing fires', () => {
+    for (const text of ATTACK_CORPUS) {
+      it(`fires: ${text.slice(0, 72)}`, () => {
+        const out = dataExportWarningInbound(input(text));
+        expect(out?.category).toBe('data_export_warning');
+        expect(out?.severity).toBe('medium');
+        expect(out?.findings.some((f) => f.type === 'data_export_destination')).toBe(true);
+      });
+    }
+  });
+
+  describe('NOISE_CORPUS: real-trail false positives stay silent', () => {
+    for (const text of NOISE_CORPUS) {
+      it(`silent: ${text.replace(/\n/g, ' ').slice(0, 72)}`, () => {
+        expect(dataExportWarningInbound(input(text))).toBeNull();
+      });
+    }
   });
 });
 
