@@ -79,8 +79,9 @@ export type EventBody =
       // 'invalidated' ≈ invalid_grant en el refresh (grant muerto/rotado);
       // 'refreshed' ≈ el server devolvió 401 con un token recién refrescado;
       // 'corrupt_blob' ≈ el fallo vino de un blob de Keychain ilegible;
-      // 'refresh_coalesced'/'lock_timeout' ≈ el single-flight actuó justo antes
-      // (los emite el interceptor vía provider.noteEvent, así que cuentan aquí).
+      // 'refresh_coalesced'/'refresh_coalesced_stale'/'lock_timeout' ≈ el
+      // single-flight actuó justo antes (los emite el interceptor vía
+      // provider.noteEvent, así que cuentan aquí).
       // Ausentes si el provider no emitió ningún evento en la sesión.
       lastTokenEvent?:
         | 'refreshed'
@@ -88,6 +89,7 @@ export type EventBody =
         | 'invalidated'
         | 'corrupt_blob'
         | 'refresh_coalesced'
+        | 'refresh_coalesced_stale'
         | 'lock_timeout';
       lastTokenEventAgoMs?: number;
     }
@@ -142,6 +144,9 @@ export type EventBody =
       // 'refresh_coalesced': el single-flight cross-process (refresh-fetch.ts)
       // detectó bajo lock que otro proceso ya rotó el RT y respondió el refresh
       // desde el Keychain sin ir a red (la revocación por reuso que evitamos).
+      // 'refresh_coalesced_stale': otro proceso rotó, pero su access token está
+      // caducado (o sin edad conocida); el coalesce se elevó a refresh REAL
+      // contra el token endpoint gastando el RT almacenado (incidente 27/08).
       // 'lock_timeout': no se pudo adquirir el lock en el plazo; el refresh
       // procedió SIN él (fail-open) — waitedMs = cuánto se esperó.
       type: 'proxy.token';
@@ -151,6 +156,7 @@ export type EventBody =
         | 'invalidated'
         | 'corrupt_blob'
         | 'refresh_coalesced'
+        | 'refresh_coalesced_stale'
         | 'lock_timeout';
       rotated?: boolean;
       scope?: 'tokens' | 'all' | 'client';

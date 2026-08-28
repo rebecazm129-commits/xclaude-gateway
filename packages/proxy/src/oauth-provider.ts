@@ -21,7 +21,41 @@ export type TokenEvent =
   // 'lock_timeout' = the cross-process lock couldn't be acquired within the
   // timeout and the refresh proceeded UNLOCKED (fail-open — statu quo risk).
   | { event: 'refresh_coalesced' }
+  // 'refresh_coalesced_stale' = another process had rotated, but the token it
+  // left in the Keychain is past (or of unknown) expiry, so the coalesce was
+  // upgraded to a REAL refresh against the token endpoint using the STORED
+  // refresh token. Distinguishable in the trail from a plain coalesce.
+  | { event: 'refresh_coalesced_stale' }
   | { event: 'lock_timeout'; waitedMs: number };
+
+/** Tokens as persisted by xcg-proxy: the SDK's OAuthTokens plus our own
+ *  `obtained_at` stamp. The SDK's OAuthTokensSchema is `$strip`
+ *  (shared/auth.d.ts:145), so it drops the field on parse — only OUR writers
+ *  (saveTokens here, and refresh-fetch's persist) ever set it. */
+export type StoredTokens = OAuthTokens & { obtained_at?: number };
+
+/** Refresh this long BEFORE nominal expiry, so a token cannot die in flight
+ *  between our check and the server's. */
+export const ACCESS_TOKEN_EXPIRY_MARGIN_MS = 60_000;
+
+/**
+ * Is the stored access token still safe to hand to a caller?
+ *
+ *  - no access_token                 → no (nothing to hand over);
+ *  - no `expires_in`                 → yes: the server declared no lifetime, so
+ *    we have no basis to call it stale, and forcing a refresh on every coalesce
+ *    would defeat the cross-process single-flight the lock exists for;
+ *  - `expires_in` but no obtained_at → no: a blob written before this stamp
+ *    existed. Age unknown, so it must be refreshed for real (this is the 27/08
+ *    Notion case: expires_in 28800 = 8 h, adopted ~14 h after it was minted);
+ *  - both present                    → compare against now, minus the margin.
+ */
+export function accessTokenUsable(stored: StoredTokens | undefined, nowMs: number): boolean {
+  if (stored?.access_token === undefined) return false;
+  if (stored.expires_in === undefined) return true;
+  if (typeof stored.obtained_at !== 'number') return false;
+  return nowMs < stored.obtained_at + stored.expires_in * 1000 - ACCESS_TOKEN_EXPIRY_MARGIN_MS;
+}
 
 /** Keychain account holding a connector's OAuth tokens. Single source shared by
  *  the provider and the refresh single-flight interceptor (refresh-fetch.ts),
@@ -46,7 +80,7 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
   // se invalida en saveTokens y en invalidateCredentials('all'|'tokens').
   // clientInformation y codeVerifier NO se cachean: solo se leen durante auth(),
   // no por-request, así que el spawn ocasional es aceptable.
-  private tokensCache: { v: OAuthTokens | undefined } | null = null;
+  private tokensCache: { v: StoredTokens | undefined } | null = null;
   private lastTokensSaveAt = 0;
   // Último TokenEvent emitido y cuándo. El error real del token endpoint muere
   // dentro del SDK (auth() lo convierte en invalidateCredentials o lo traga y
@@ -115,13 +149,13 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
     await keychainSet(this.acct('client'), JSON.stringify(info));
   }
 
-  async tokens(): Promise<OAuthTokens | undefined> {
+  async tokens(): Promise<StoredTokens | undefined> {
     if (this.tokensCache === null) {
       const raw = await keychainGet(this.acct('tokens'));
-      let v: OAuthTokens | undefined;
+      let v: StoredTokens | undefined;
       if (raw != null) {
         try {
-          v = JSON.parse(raw) as OAuthTokens;
+          v = JSON.parse(raw) as StoredTokens;
         } catch {
           // Blob ilegible = credencial ausente, y se cachea como tal: sin la caché
           // el parse relanzaría desde _commonHeaders en CADA request (bucle de
@@ -136,10 +170,35 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
     const prev = this.tokensCache?.v?.refresh_token;
-    await keychainSet(this.acct('tokens'), JSON.stringify(tokens));
-    this.tokensCache = { v: tokens };
+    const stamped = await this.stampObtainedAt(tokens);
+    await keychainSet(this.acct('tokens'), JSON.stringify(stamped));
+    this.tokensCache = { v: stamped };
     this.lastTokensSaveAt = Date.now();
     this.emitEvent({ event: 'refreshed', rotated: prev !== undefined && prev !== tokens.refresh_token });
+  }
+
+  // saveTokens is the LAST writer on a refresh (refresh-fetch persists first,
+  // then the SDK parses — dropping obtained_at, since OAuthTokensSchema is
+  // $strip — and calls us), so the stamp has to be re-applied here or it never
+  // survives. It must date THIS access token, not the moment of the write: a
+  // coalesced refresh replays an older token unchanged, and stamping `now` on
+  // it would hide exactly the staleness we are trying to catch. So: same
+  // access_token as the stored blob → carry its stamp forward; anything else →
+  // this is a freshly issued token, stamp now.
+  private async stampObtainedAt(tokens: OAuthTokens): Promise<StoredTokens> {
+    let carried: number | undefined;
+    try {
+      const raw = await keychainGet(this.acct('tokens'));
+      if (raw != null) {
+        const stored = JSON.parse(raw) as StoredTokens;
+        if (stored.access_token === tokens.access_token && typeof stored.obtained_at === 'number') {
+          carried = stored.obtained_at;
+        }
+      }
+    } catch {
+      // Absent or unreadable blob: nothing to carry, stamp fresh below.
+    }
+    return { ...tokens, obtained_at: carried ?? Date.now() };
   }
 
   async saveCodeVerifier(verifier: string): Promise<void> {
@@ -185,7 +244,7 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
         let storedRt: string | undefined;
         try {
           const raw = await keychainGet(this.acct('tokens'));
-          storedRt = raw == null ? undefined : (JSON.parse(raw) as OAuthTokens).refresh_token;
+          storedRt = raw == null ? undefined : (JSON.parse(raw) as StoredTokens).refresh_token;
         } catch {
           storedRt = undefined;
         }

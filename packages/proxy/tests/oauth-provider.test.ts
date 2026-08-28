@@ -75,7 +75,9 @@ describe('KeychainOAuthProvider', () => {
       await p.saveTokens(tokens);
       expect(mocks.store.has('notion:tokens')).toBe(true);
       const got = await p.tokens();
-      expect(got).toEqual(tokens);
+      // Plus obtained_at, stamped by saveTokens (see stampObtainedAt).
+      expect(got).toMatchObject(tokens);
+      expect(typeof got?.obtained_at).toBe('number');
     });
 
     it('clientInformation persisted under "<mcp>:client"', async () => {
@@ -103,8 +105,8 @@ describe('KeychainOAuthProvider', () => {
       const b = new KeychainOAuthProvider('linear');
       await a.saveTokens({ access_token: 'A', token_type: 'Bearer' });
       await b.saveTokens({ access_token: 'B', token_type: 'Bearer' });
-      expect(await a.tokens()).toEqual({ access_token: 'A', token_type: 'Bearer' });
-      expect(await b.tokens()).toEqual({ access_token: 'B', token_type: 'Bearer' });
+      expect(await a.tokens()).toMatchObject({ access_token: 'A', token_type: 'Bearer' });
+      expect(await b.tokens()).toMatchObject({ access_token: 'B', token_type: 'Bearer' });
       expect(mocks.store.has('notion:tokens')).toBe(true);
       expect(mocks.store.has('linear:tokens')).toBe(true);
     });
@@ -217,8 +219,8 @@ describe('KeychainOAuthProvider', () => {
       const t1 = await p.tokens();
       const t2 = await p.tokens();
       const after = mocks.getCalls;
-      expect(t1).toEqual({ access_token: 'cached', token_type: 'Bearer' });
-      expect(t2).toEqual({ access_token: 'cached', token_type: 'Bearer' });
+      expect(t1).toMatchObject({ access_token: 'cached', token_type: 'Bearer' });
+      expect(t2).toMatchObject({ access_token: 'cached', token_type: 'Bearer' });
       expect(after - before).toBe(0);
     });
 
@@ -259,8 +261,13 @@ describe('KeychainOAuthProvider', () => {
       await p.saveTokens({ access_token: 'fresh', token_type: 'Bearer' });
       const t = await p.tokens();
       const after = mocks.getCalls;
-      expect(t).toEqual({ access_token: 'fresh', token_type: 'Bearer' });
-      expect(after - before).toBe(0);
+      expect(t).toMatchObject({ access_token: 'fresh', token_type: 'Bearer' });
+      // La invariante protegida aquí es "sin keychainGet POR REQUEST": tokens()
+      // sigue sirviendo de caché (0 lecturas arriba). La única lectura es la de
+      // stampObtainedAt DENTRO de saveTokens — una por refresh, no por frame —,
+      // necesaria para no re-sellar obtained_at sobre un token adoptado de otro
+      // proceso (fecharía como nuevo justo el token cuya vejez queremos ver).
+      expect(after - before).toBe(1);
     });
 
     it("invalidateCredentials('tokens') outside the recent-refresh window clears cache: next tokens() returns undefined without re-reading", async () => {
@@ -288,7 +295,7 @@ describe('KeychainOAuthProvider', () => {
       const before = mocks.getCalls;
       const t = await p.tokens();              // cache null → one keychainGet, returns fresh token
       const after = mocks.getCalls;
-      expect(t).toEqual({ access_token: 'fresh', token_type: 'Bearer' });
+      expect(t).toMatchObject({ access_token: 'fresh', token_type: 'Bearer' });
       expect(after - before).toBe(1);
     });
 
@@ -331,7 +338,7 @@ describe('KeychainOAuthProvider', () => {
 
       expect(mocks.store.has('notion:tokens')).toBe(true); // el token de A sobrevive
       expect(eventsB).toEqual([{ event: 'race_recovered', crossProcess: true }]);
-      expect(await b.tokens()).toEqual(tok('rt-new')); // caché soltada → relee el fresco
+      expect(await b.tokens()).toMatchObject(tok('rt-new')); // caché soltada → relee el fresco
     });
 
     it('negative: Keychain RT equals the failed one (real revocation) → deletes and emits invalidated', async () => {

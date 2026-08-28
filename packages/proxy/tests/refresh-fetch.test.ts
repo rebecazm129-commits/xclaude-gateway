@@ -270,8 +270,121 @@ describe('createRefreshFetch', () => {
     // Keychain value must be byte-identical afterwards (idempotent re-write);
     // the provider's own rotation detection still fires off its stale cache.
     await provider.saveTokens(synthesized);
-    expect(mocks.store.get(ACCOUNT)).toBe(JSON.stringify(rotated));
+    // The blob now also carries obtained_at (see stampObtainedAt); every OAuth
+    // field must still round-trip untouched.
+    expect(JSON.parse(mocks.store.get(ACCOUNT) as string)).toMatchObject(rotated);
     expect(events).toContainEqual({ event: 'refreshed', rotated: true });
-    expect(await provider.tokens()).toEqual(rotated);
+    expect(await provider.tokens()).toMatchObject(rotated);
+  });
+
+  // --- expiry-aware coalescing (27/08 Notion incident) -----------------------
+  // A sibling process rotated hours ago; its access token (Notion: expires_in
+  // 28800 = 8 h) was long dead by the time this process woke up and adopted it,
+  // and every subsequent call came back 401.
+
+  const HOUR = 3_600_000;
+
+  it('(g) coalesce with a FRESH stored token: no network, current behaviour', async () => {
+    const lockPath = tempLockPath();
+    const { provider, events } = makeProvider();
+    mocks.store.set(
+      ACCOUNT,
+      JSON.stringify({
+        access_token: 'at2', refresh_token: 'rt2', token_type: 'Bearer',
+        expires_in: 28800, obtained_at: Date.now() - HOUR, // 1 h old of 8 h
+      }),
+    );
+
+    let networkCalls = 0;
+    const baseFetch: FetchLike = async () => {
+      networkCalls++;
+      return jsonResponse({ access_token: 'never', token_type: 'Bearer' });
+    };
+    const refreshFetch = createRefreshFetch({ mcp: 'notion', lockPath, provider, baseFetch });
+
+    const resp = await refreshFetch(TOKEN_URL, refreshInit('rt1'));
+    expect(networkCalls).toBe(0);
+    expect((await resp.json() as { access_token: string }).access_token).toBe('at2');
+    expect(events).toContainEqual({ event: 'refresh_coalesced' });
+    expect(events).not.toContainEqual({ event: 'refresh_coalesced_stale' });
+  });
+
+  it('(h) coalesce with an EXPIRED stored token: real refresh spending the STORED rt', async () => {
+    const lockPath = tempLockPath();
+    const { provider, events } = makeProvider();
+    mocks.store.set(
+      ACCOUNT,
+      JSON.stringify({
+        access_token: 'at2', refresh_token: 'rt2', token_type: 'Bearer',
+        expires_in: 28800, obtained_at: Date.now() - 14 * HOUR, // the incident
+      }),
+    );
+
+    const sent: string[] = [];
+    const baseFetch: FetchLike = async (_url, init) => {
+      sent.push((init?.body as URLSearchParams).get('refresh_token') as string);
+      return jsonResponse({ access_token: 'at3', refresh_token: 'rt3', token_type: 'Bearer', expires_in: 28800 });
+    };
+    const refreshFetch = createRefreshFetch({ mcp: 'notion', lockPath, provider, baseFetch });
+
+    const resp = await refreshFetch(TOKEN_URL, refreshInit('rt1'));
+    // Spent rt2 (the stored one), never rt1 — ours was superseded and would be
+    // rejected as reuse.
+    expect(sent).toEqual(['rt2']);
+    expect((await resp.json() as { access_token: string }).access_token).toBe('at3');
+    expect(events).toContainEqual({ event: 'refresh_coalesced_stale' });
+    expect(events).not.toContainEqual({ event: 'refresh_coalesced' });
+    const stored = JSON.parse(mocks.store.get(ACCOUNT) as string) as Record<string, unknown>;
+    expect(stored['access_token']).toBe('at3');
+    expect(stored['refresh_token']).toBe('rt3');
+    // The lock was held for the whole thing, never re-acquired, and released.
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
+  it('(i) legacy blob with expires_in but no obtained_at: age unknown → real refresh', async () => {
+    const lockPath = tempLockPath();
+    const { provider, events } = makeProvider();
+    mocks.store.set(
+      ACCOUNT,
+      JSON.stringify({ access_token: 'at2', refresh_token: 'rt2', token_type: 'Bearer', expires_in: 28800 }),
+    );
+
+    const sent: string[] = [];
+    const baseFetch: FetchLike = async (_url, init) => {
+      sent.push((init?.body as URLSearchParams).get('refresh_token') as string);
+      return jsonResponse({ access_token: 'at3', refresh_token: 'rt3', token_type: 'Bearer' });
+    };
+    const refreshFetch = createRefreshFetch({ mcp: 'notion', lockPath, provider, baseFetch });
+
+    await refreshFetch(TOKEN_URL, refreshInit('rt1'));
+    expect(sent).toEqual(['rt2']);
+    expect(events).toContainEqual({ event: 'refresh_coalesced_stale' });
+  });
+
+  it('(j) a real refresh persists obtained_at, and saveTokens keeps it', async () => {
+    const lockPath = tempLockPath();
+    const { provider } = makeProvider();
+    mocks.store.set(
+      ACCOUNT,
+      JSON.stringify({ access_token: 'at1', refresh_token: 'rt1', token_type: 'Bearer' }),
+    );
+    const before = Date.now();
+    const baseFetch: FetchLike = async () =>
+      jsonResponse({ access_token: 'at2', refresh_token: 'rt2', token_type: 'Bearer', expires_in: 28800 });
+    const refreshFetch = createRefreshFetch({ mcp: 'notion', lockPath, provider, baseFetch });
+
+    const resp = await refreshFetch(TOKEN_URL, refreshInit('rt1'));
+    const written = JSON.parse(mocks.store.get(ACCOUNT) as string) as { obtained_at: number };
+    expect(typeof written.obtained_at).toBe('number');
+    expect(written.obtained_at).toBeGreaterThanOrEqual(before);
+
+    // The SDK strips obtained_at on parse, so saveTokens must re-stamp it —
+    // a new access token dates from now.
+    const parsed = (await resp.json()) as Record<string, unknown>;
+    delete parsed['obtained_at'];
+    await provider.saveTokens(parsed as never);
+    const after = JSON.parse(mocks.store.get(ACCOUNT) as string) as { obtained_at: number };
+    expect(typeof after.obtained_at).toBe('number');
+    expect(after.obtained_at).toBeGreaterThanOrEqual(before);
   });
 });
