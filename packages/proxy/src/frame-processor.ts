@@ -9,15 +9,8 @@ import { attachMaskSecrets } from './events.js';
 import { invertDirection, type InflightTracker } from './latency.js';
 import type { ClassifiedFrame } from './parser.js';
 import { buildDetectorInput } from './detection/engine.js';
-import {
-  credentialDetected,
-  credentialMatches,
-  dataExportWarningInbound,
-  emailSendWarning,
-  piiStructured,
-  promptInjection,
-} from './detection/detectors/index.js';
-import type { AsyncDetector, Detector, DetectorInput } from './detection/types.js';
+import { CONTENT_DETECTORS, credentialMatches } from './detection/detectors/index.js';
+import type { AsyncDetector, DetectorInput } from './detection/types.js';
 import type { ManifestStore } from './detection/manifest.js';
 import { elapsedUs } from './timing.js';
 
@@ -80,27 +73,11 @@ function extractResultText(result: unknown): string {
 // Content detectors that run inline over the extracted tools/call result text.
 // Multi-label, like the request side: each matching detector yields its own
 // mcp.detection_enrichment. Order mirrors the request chain ACTIVE_DETECTORS
-// (severity desc): credential, prompt_injection, email_send_warning,
-// data_export_warning (INBOUND variant — explicit destination required, see
-// data-export-warning.ts), pii_structured.
-//
-// NER (pii_detected) is deliberately EXCLUDED here: it is off-path/async and
-// only enqueued on the request path (severity low; routing every connector
-// result through the worker would add queue pressure for the least actionable
-// signal). Inbound PII coverage is the checksum-backed pii_structured only.
-//
-// emailSendWarning has two branches, but only its TEXT branch (imperative
-// send-language) can fire inbound: the inbound DetectorInput sets
-// toolName: undefined (below), so the TOOL-NAME branch — email_send_tool /
-// email_compose_tool, which classifies the CALLED tool's name — is inert.
-// That is correct: a tool's *result* has no tool name to classify.
-const CONTENT_DETECTORS: readonly Detector[] = [
-  credentialDetected,
-  promptInjection,
-  emailSendWarning,
-  dataExportWarningInbound,
-  piiStructured,
-];
+// (severity desc). The list itself now lives in detectors/index.ts
+// (CONTENT_DETECTORS), shared with cchook-ingest so both ingest routes
+// classify result content identically — composition and rationale (strict
+// data_export variant, no NER, inert email tool-name branch) documented
+// there.
 
 export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
   // (key -> request method): the tracker pairs by latency only, not method, so

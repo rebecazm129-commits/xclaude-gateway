@@ -20,7 +20,7 @@
 //   Baseline tool_call_allowed only on the request (emitDetections); inbound
 //   emits nothing when no detector fires, like the wrapper.
 
-import { ACTIVE_DETECTORS, credentialMatches } from './detection/detectors/index.js';
+import { ACTIVE_DETECTORS, CONTENT_DETECTORS, credentialMatches } from './detection/detectors/index.js';
 import { buildDetectorInput, emitDetections, runDetectors } from './detection/engine.js';
 import type { DetectorInput, McpRequestEnvelope, RpcId } from './detection/types.js';
 import type { Envelope } from './audit.js';
@@ -455,7 +455,7 @@ export function classify(
           paramsJson: text,
           toolName: undefined,
         };
-        for (const detection of runDetectors(input, ACTIVE_DETECTORS)) {
+        for (const detection of runDetectors(input, CONTENT_DETECTORS)) {
           // Inbound credential in the result/error text → mask it out of the
           // persisted mcp.response (env, pushed above, carries the raw
           // result/error). Reuse the same scan; the enrichment below only
@@ -463,13 +463,14 @@ export function classify(
           if (detection.category === 'credential_detected') {
             attachMaskSecrets(env, credentialMatches(text));
           }
-          // 07/07 fix, verbatim from (0h): data_export_warning is downgraded to
-          // 'low' INBOUND only (export language in a result is tool-poisoning
-          // signal, not an outbound export command); findings land on 'result'.
-          const severity = detection.category === 'data_export_warning' ? 'low' : detection.severity;
+          // Mirror of frame-processor's inbound block: CONTENT_DETECTORS runs
+          // data_export_warning's STRICT variant (explicit destination), so
+          // what fires keeps the detector's own severity — the strictness
+          // lives in the regex, not in a downgrade (the 07/07 inbound 'low'
+          // is gone here too; it had outlived the proxy's move to the strict
+          // variant and left the two routes classifying differently).
           const adjusted = {
             ...detection,
-            severity,
             findings: detection.findings.map((f) => ({ ...f, location: 'result' })),
           };
           out.push({

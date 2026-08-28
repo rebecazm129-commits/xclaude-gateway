@@ -19,3 +19,23 @@ export { credentialDetected, dataExportWarning, dataExportWarningInbound, emailS
 export { credentialMatches } from './credential.js';
 
 export const ACTIVE_DETECTORS: readonly Detector[] = [credentialDetected, promptInjection, emailSendWarning, dataExportWarning, piiStructured];
+
+// CONTENT_DETECTORS — the INBOUND chain, run over tools/call RESULT text.
+// Shared by BOTH ingest routes (the wrapper's frame-processor and the Claude
+// Code hook's cchook-ingest) so their result classification can never drift
+// apart again — the 27/08 audit found cchook still on the 07/07 broad+low
+// behavior while the proxy had moved on. It differs from ACTIVE_DETECTORS in
+// exactly one entry: data_export_warning runs its STRICT inbound variant
+// (explicit destination required — see data-export-warning.ts), so what fires
+// keeps the detector's own 'medium'; the strictness lives in the regex, not
+// in a severity downgrade. NER (pii_detected) is deliberately absent:
+// off-path/async, request-path only. emailSendWarning's tool-name branch is
+// inert inbound — callers pass toolName: undefined (a result has no tool
+// name to classify), which is correct.
+export const CONTENT_DETECTORS: readonly Detector[] = [
+  credentialDetected,
+  promptInjection,
+  emailSendWarning,
+  dataExportWarningInbound,
+  piiStructured,
+];
