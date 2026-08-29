@@ -15,7 +15,19 @@ interface PiiRule {
   // Optional post-match checksum. Receives the raw matched substring; returns
   // true to confirm the candidate. When absent, a regex match is sufficient.
   readonly validate?: (raw: string) => boolean;
+  // Optional context anchor (industry-standard "context keyword" pattern):
+  // when present, the rule only confirms if this regex matches within ±40
+  // characters of the candidate. Reserved for formats whose shape is a bare
+  // digit run indistinguishable from machine numbers (ps-aux VSZ columns,
+  // booking ids, file sizes all pass a lone mod-11 ~9% of the time — the
+  // 28/08 trail audit found 88/88 such findings were false positives). The
+  // structurally rare formats (mixed-alphabet, letter suffixes, multi-check
+  // MRZ) need no anchor: their shape already separates them.
+  readonly context?: RegExp;
 }
+
+/** Half-width of the context-anchor window around a candidate match. */
+const CONTEXT_WINDOW = 40;
 
 // --- Checksum helpers (pure) ---
 
@@ -37,10 +49,26 @@ function luhnValid(digits: string): boolean {
 
 // IBAN mod-97: move first 4 chars to the end, letters -> numbers (A=10..Z=35),
 // the resulting integer mod 97 must equal 1. Reduced piecewise to avoid BigInt.
+// Country codes from the official SWIFT IBAN Registry (release 98). A random
+// base64 blob can pass mod-97 (~1% of long alphanumeric runs) but almost
+// never behind a registered country prefix — the 28/08 trail FP started
+// "FN…", which no IBAN country uses.
+const IBAN_COUNTRIES = new Set([
+  'AD', 'AE', 'AL', 'AT', 'AZ', 'BA', 'BE', 'BG', 'BH', 'BI', 'BR', 'BY',
+  'CH', 'CR', 'CY', 'CZ', 'DE', 'DJ', 'DK', 'DO', 'EE', 'EG', 'ES', 'FI',
+  'FK', 'FO', 'FR', 'GB', 'GE', 'GI', 'GL', 'GR', 'GT', 'HN', 'HR', 'HU',
+  'IE', 'IL', 'IQ', 'IS', 'IT', 'JO', 'KW', 'KZ', 'LB', 'LC', 'LI', 'LT',
+  'LU', 'LV', 'LY', 'MC', 'MD', 'ME', 'MK', 'MN', 'MR', 'MT', 'MU', 'NI',
+  'NL', 'NO', 'OM', 'PK', 'PL', 'PS', 'PT', 'QA', 'RO', 'RS', 'RU', 'SA',
+  'SC', 'SD', 'SE', 'SI', 'SK', 'SM', 'SO', 'ST', 'SV', 'TL', 'TN', 'TR',
+  'UA', 'VA', 'VG', 'XK', 'YE',
+]);
+
 function ibanValid(raw: string): boolean {
   const s = raw.replace(/[ -]/g, '').toUpperCase();
   if (s.length < 15 || s.length > 34) return false;
   if (!/^[A-Z]{2}\d{2}[A-Z0-9]+$/.test(s)) return false;
+  if (!IBAN_COUNTRIES.has(s.slice(0, 2))) return false;
   const rearranged = s.slice(4) + s.slice(0, 4);
   let remainder = 0;
   for (const ch of rearranged) {
@@ -121,11 +149,22 @@ function nieValid(raw: string): boolean {
 function creditCardValid(raw: string): boolean {
   if (/[ -]/.test(raw)) {
     if (!/^\d{4}([ -])(?:\d{4}\1)*\d{1,4}$/.test(raw)) return false;
-  } else if (!/^\d{13,19}$/.test(raw)) {
+  } else if (!/^\d{14,19}$/.test(raw)) {
+    // Contiguous runs need 14-19 digits; 13 only with the canonical grouping
+    // above. Visa stopped issuing 13-digit PANs in the 1990s, and a bare
+    // 13-digit run in tool traffic is almost always an epoch-milliseconds
+    // timestamp or a decode value (28/08 audit: ulid decode=4102358400000 —
+    // Luhn-valid, first digit 4 — was the one FP the IIN filter let through).
     return false;
   }
   const digits = raw.replace(/[ -]/g, '');
   if (digits.length < 13 || digits.length > 19) return false;
+  // ISO/IEC 7812 major industry identifier: every real card network lives
+  // under first digit 3 (travel/entertainment: Amex, Diners, JCB), 4 (Visa),
+  // 5 (Mastercard) or 6 (Discover/Maestro). Epoch timestamps and decimal
+  // fractions start with 1-2 far more often than card numbers appear in tool
+  // traffic (28/08 audit: every trail credit_card finding was one of those).
+  if (!/^[3-6]/.test(digits)) return false;
   return luhnValid(digits);
 }
 
@@ -284,10 +323,18 @@ function nifValid(raw: string): boolean {
 
 // --- Rule table. Order is display order of findings; correctness is order-
 // independent because every rule validates its own candidate. ---
+// Obviously functional addresses: automation local-parts, RFC 2606 example/
+// invalid domains, and GitHub's synthetic commit-author host. They are real
+// email syntax but identify machinery, not people — 28/08 audit: ~160 of the
+// 793 trail email findings were these.
+const FUNCTIONAL_EMAIL =
+  /^(?:noreply|no-reply|donotreply)@|@example\.(?:com|org|net)$|@invalid$|\.invalid$|@users\.noreply\.github\.com$/i;
+
 const PII_RULES: readonly PiiRule[] = [
   {
     type: 'email',
     pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
+    validate: (raw) => !FUNCTIONAL_EMAIL.test(raw),
   },
   {
     type: 'iban',
@@ -313,6 +360,7 @@ const PII_RULES: readonly PiiRule[] = [
     type: 'uk_nhs',
     pattern: /\b\d{3}[ -]?\d{3}[ -]?\d{4}\b/g,
     validate: nhsValid,
+    context: /nhs/i,
   },
   {
     type: 'es_dni',
@@ -351,6 +399,7 @@ const PII_RULES: readonly PiiRule[] = [
     type: 'nl_bsn',
     pattern: /\b\d{9}\b/g,
     validate: bsnValid,
+    context: /bsn|burgerservicenummer/i,
   },
   {
     type: 'de_steuer_id',
@@ -361,6 +410,7 @@ const PII_RULES: readonly PiiRule[] = [
     type: 'pt_nif',
     pattern: /\b\d{9}\b/g,
     validate: nifValid,
+    context: /nif|contribuinte|fiscal/i,
   },
   {
     type: 'phone_e164',
@@ -373,9 +423,14 @@ export const piiStructured: Detector = (input): DetectorOutput | null => {
   if (paramsJson.length === 0) return null;
 
   const findings: DetectionFinding[] = [];
-  for (const { pattern, type, validate } of PII_RULES) {
+  for (const { pattern, type, validate, context } of PII_RULES) {
     for (const match of paramsJson.matchAll(pattern)) {
       if (validate !== undefined && !validate(match[0])) continue;
+      if (context !== undefined) {
+        const start = Math.max(0, (match.index ?? 0) - CONTEXT_WINDOW);
+        const window = paramsJson.slice(start, (match.index ?? 0) + match[0].length + CONTEXT_WINDOW);
+        if (!context.test(window)) continue;
+      }
       findings.push({ type, location: 'params' });
     }
   }
@@ -394,6 +449,8 @@ export const EXAMPLE_PAYLOAD: SelfTestExample = {
   expectedSeverity: 'medium',
   label: 'Structured PII',
   description: "A checksum-valid identifier (e.g. an email) embedded in a tool call argument.",
-  message: 'please reach me at alice@example.com',
+  // alice@example.com would now be excluded as a functional/example domain
+  // (FUNCTIONAL_EMAIL), so the self-test uses a personal-looking address.
+  message: 'please reach me at alice.demo@personal-corp.io',
   method: 'tools/call',
 };

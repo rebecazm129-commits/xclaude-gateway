@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { piiStructured } from '../../src/detection/detectors/pii-structured.js';
+import { NOISE_CORPUS, REAL_CORPUS } from '../fixtures/pii-structured-corpus.js';
 import type { DetectorInput } from '../../src/detection/types.js';
 
 function input(paramsJson: string): DetectorInput {
@@ -24,7 +25,9 @@ function input(paramsJson: string): DetectorInput {
 describe('piiStructured', () => {
   describe('positives', () => {
     it('detects an email and emits category/severity', () => {
-      const out = piiStructured(input('{"to":"alice@example.com"}'));
+      // example.com is now excluded as an RFC 2606 functional domain, so the
+      // positive uses a personal-looking address.
+      const out = piiStructured(input('{"to":"alice@personal-corp.io"}'));
       expect(out?.category).toBe('pii_structured');
       expect(out?.severity).toBe('medium');
       expect(
@@ -121,8 +124,10 @@ describe('piiStructured', () => {
       // 100000010 passes the Dutch elfproef AND the Portuguese NIF mod-11. The
       // detector cannot know which identifier a bare 9-digit number really is,
       // so it emits both — intentional multi-label, NOT a de-dup bug (see the
-      // rule-table note in pii-structured.ts).
-      const out = piiStructured(input('{"id":"100000010"}'));
+      // rule-table note in pii-structured.ts). Since the 28/08 context-anchor
+      // cleanup both digit-only rules also need their keyword nearby, so the
+      // payload carries both anchors, as a real bilingual form would.
+      const out = piiStructured(input('{"bsn_nif":"100000010"}'));
       expect(out?.findings).toHaveLength(2);
       expect(out?.findings.map((f) => f.type).sort()).toEqual(['nl_bsn', 'pt_nif']);
       expect(out?.findings.every((f) => f.location === 'params')).toBe(true);
@@ -239,5 +244,25 @@ describe('piiStructured', () => {
         ),
       ).toBeNull();
     });
+  });
+});
+
+describe('piiStructured — machine-number corpus (28/08 cleanup)', () => {
+  describe('NOISE_CORPUS: real-trail machine numbers yield NO finding', () => {
+    for (const text of NOISE_CORPUS) {
+      it(`silent: ${text.replace(/\n/g, ' ').slice(0, 68)}`, () => {
+        expect(piiStructured(input(text))).toBeNull();
+      });
+    }
+  });
+
+  describe('REAL_CORPUS: labelled, checksum-valid identifiers keep firing', () => {
+    for (const { text, type } of REAL_CORPUS) {
+      it(`fires ${type}: ${text.slice(0, 56)}`, () => {
+        const out = piiStructured(input(text));
+        expect(out?.category).toBe('pii_structured');
+        expect(out?.findings.some((f) => f.type === type)).toBe(true);
+      });
+    }
   });
 });
