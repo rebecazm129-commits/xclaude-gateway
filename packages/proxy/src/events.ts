@@ -16,6 +16,7 @@ export type { Direction };
 
 import type { Envelope, Writer } from './audit.js';
 import { maskCredentials } from './detection/masking.js';
+import type { CredentialMatch } from './detection/detectors/credential.js';
 import type {
   DetectionBlock,
   DetectionEnrichment,
@@ -37,18 +38,18 @@ const MASK_SECRETS = Symbol('xcg.maskSecrets');
 
 // The channel is type-agnostic (the Symbol is the contract, not the shape):
 // the wrapper attaches to EventBody, the cchook-ingest classifier to Envelope.
-/** Attach credential values to an event for masking at emit time (no-op merge
- *  if some are already attached). */
-export function attachMaskSecrets(event: object, secrets: readonly string[]): void {
+/** Attach credential matches (value + pattern type) to an event for masking
+ *  at emit time (no-op merge if some are already attached). */
+export function attachMaskSecrets(event: object, secrets: readonly CredentialMatch[]): void {
   if (secrets.length === 0) return;
-  const holder = event as { [MASK_SECRETS]?: string[] };
+  const holder = event as { [MASK_SECRETS]?: CredentialMatch[] };
   holder[MASK_SECRETS] = [...(holder[MASK_SECRETS] ?? []), ...secrets];
 }
 
 // Exported so the desktop cchook-ingester (which serializes envelopes itself,
 // outside EventSink) can read the same side channel and mask before writing.
-export function readMaskSecrets(event: object): string[] | undefined {
-  return (event as { [MASK_SECRETS]?: string[] })[MASK_SECRETS];
+export function readMaskSecrets(event: object): CredentialMatch[] | undefined {
+  return (event as { [MASK_SECRETS]?: CredentialMatch[] })[MASK_SECRETS];
 }
 
 export type EventBody =

@@ -470,7 +470,7 @@ describe('credential masking side channel (b.2)', () => {
       tool_use_id: 'toolu_req',
     });
     const req = events.find((e) => e.type === 'mcp.request')!;
-    expect(readMaskSecrets(req)).toContain(SK);
+    expect(readMaskSecrets(req)?.map((m) => m.value)).toContain(SK);
     // The response (clean) carries nothing.
     const resp = events.find((e) => e.type === 'mcp.response')!;
     expect(readMaskSecrets(resp)).toBeUndefined();
@@ -485,7 +485,7 @@ describe('credential masking side channel (b.2)', () => {
       tool_use_id: 'toolu_mcp',
     });
     const resp = events.find((e) => e.type === 'mcp.response')!;
-    expect(readMaskSecrets(resp)).toContain(SK);
+    expect(readMaskSecrets(resp)?.map((m) => m.value)).toContain(SK);
   });
 
   it('sk-fake in a native object tool_response (Bash stdout) → the response event is tagged', () => {
@@ -497,7 +497,7 @@ describe('credential masking side channel (b.2)', () => {
       tool_use_id: 'toolu_bash',
     });
     const resp = events.find((e) => e.type === 'mcp.response')!;
-    expect(readMaskSecrets(resp)).toContain(SK);
+    expect(readMaskSecrets(resp)?.map((m) => m.value)).toContain(SK);
   });
 
   it('a clean event carries no mask channel on any envelope', () => {

@@ -56,7 +56,8 @@ describe('credential masking — wrapper path', () => {
     const lines = drive(frame, KEY);
     expect(lines).toHaveLength(1);
     expect(lines[0]).not.toContain(SK);
-    expect(lines[0]).toContain(`${SK.slice(0, 10)}…[fp:`);
+    expect(lines[0]).toContain('[credential:openai_api_key fp:');
+    expect(lines[0]).not.toContain(SK.slice(0, 10)); // 29/08: full redaction
     // The detection finding is still there (type-only), and the line is valid JSON.
     const parsed = JSON.parse(lines[0]!) as { detection: { category: string } };
     expect(parsed.detection.category).toBe('credential_detected');
@@ -74,7 +75,7 @@ describe('credential masking — wrapper path', () => {
     const pf = processFrame();
     for (const ev of pf(mk(1), 'client_to_server', 100, '<l>', 1n, 1)) sink.emit(ev);
     for (const ev of pf(mk(2), 'client_to_server', 100, '<l>', 2n, 2)) sink.emit(ev);
-    const fp = (line: string): string => line.match(/\[fp:([0-9a-f]{16})\]/)![1]!;
+    const fp = (line: string): string => line.match(/ fp:([0-9a-f]{16})\]/)![1]!;
     expect(fp(w.lines[0]!)).toBe(fp(w.lines[1]!));
   });
 
@@ -106,11 +107,11 @@ describe('credential masking — wrapper path', () => {
     };
     const lines = drive(frame, KEY);
     expect(lines[0]).not.toContain(SK);
-    expect(lines[0]).toContain('[fp:');
+    expect(lines[0]).toContain('[credential:');
   });
 
   it('CROSS-SOURCE: the same secret masks to the SAME fingerprint on the wire and via a hook', () => {
-    const fpOf = (line: string): string => line.match(/\[fp:([0-9a-f]{16})\]/)![1]!;
+    const fpOf = (line: string): string => line.match(/ fp:([0-9a-f]{16})\]/)![1]!;
 
     // Wire path (b.1): frame-processor → EventSink(KEY).
     const wireLine = drive(
@@ -138,8 +139,8 @@ describe('credential masking — wrapper path', () => {
     const reqEnv = envelopes.find((e) => e.type === 'mcp.request')!;
     const hookLine = maskCredentials(JSON.stringify(reqEnv), readMaskSecrets(reqEnv)!, KEY);
 
-    expect(wireLine).toContain('[fp:');
-    expect(hookLine).toContain('[fp:');
+    expect(wireLine).toContain('[credential:');
+    expect(hookLine).toContain('[credential:');
     expect(fpOf(wireLine)).toBe(fpOf(hookLine)); // identical fingerprint → correlatable
     expect(fpOf(wireLine)).toBe(fingerprint(KEY, SK));
   });

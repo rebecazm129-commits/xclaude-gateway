@@ -39,17 +39,26 @@ export const credentialDetected: Detector = (input): DetectorOutput | null => {
   };
 };
 
+/** A matched secret plus the pattern type that recognized it. The type is the
+ *  non-secret identifier the mask prints (29/08 full-redaction change). */
+export interface CredentialMatch {
+  readonly value: string;
+  readonly type: string;
+}
+
 // Sibling of credentialDetected that returns the matched VALUES (the raw
-// secrets) instead of type-only findings — the masking path (b.1) needs the
-// exact substrings to redact from the serialized line. Same patterns, same
-// scan. The persisted findings NEVER carry these values (credentialDetected
-// above stays type+location only); this exists solely to feed maskCredentials,
-// which replaces them before anything hits disk.
-export function credentialMatches(text: string): string[] {
+// secrets) with their pattern type — the masking path (b.1) needs the exact
+// substrings to redact from the serialized line, and since 29/08 the mask
+// labels the FORMAT instead of printing a clear prefix, so the type rides
+// along. Same patterns, same scan. The persisted findings NEVER carry these
+// values (credentialDetected above stays type+location only); this exists
+// solely to feed maskCredentials, which replaces them before anything hits
+// disk.
+export function credentialMatches(text: string): CredentialMatch[] {
   if (text.length === 0) return [];
-  const matches: string[] = [];
-  for (const { pattern } of CREDENTIAL_PATTERNS) {
-    for (const m of text.matchAll(pattern)) matches.push(m[0]);
+  const matches: CredentialMatch[] = [];
+  for (const { pattern, type } of CREDENTIAL_PATTERNS) {
+    for (const m of text.matchAll(pattern)) matches.push({ value: m[0], type });
   }
   return matches;
 }

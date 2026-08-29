@@ -35,14 +35,47 @@ afterEach(() => {
   resetAuditKeyForTests();
 });
 
+// Full-redaction contract (29/08): NO character of the secret may reach the
+// masked line — the mask identifies the FORMAT (the finding's type) plus the
+// HMAC fingerprint, never a prefix of the value. One case per credential.ts
+// pattern, including the 20-char AWS id (where a 10-char prefix used to be
+// half the whole value) and a JWT.
+const FORMAT_CASES: ReadonlyArray<{ type: string; secret: string }> = [
+  { type: 'anthropic_api_key', secret: `sk-ant-api03-${'A'.repeat(40)}` },
+  { type: 'openai_api_key',    secret: `sk-proj-${'B'.repeat(40)}` },
+  { type: 'aws_access_key_id', secret: `AKIA${'C'.repeat(16)}` },
+  { type: 'github_token',      secret: `ghp_${'D'.repeat(36)}` },
+  { type: 'stripe_secret_key', secret: `sk_test_${'E'.repeat(24)}` },
+  { type: 'jwt_token',         secret: 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl' },
+];
+
+describe('maskCredentials — full redaction per format (29/08)', () => {
+  for (const { type, secret } of FORMAT_CASES) {
+    it(`${type}: no fragment of the secret survives; mask carries type + fp`, () => {
+      const line = JSON.stringify({ a: `key=${secret} end`, b: 'clean' });
+      const out = maskCredentials(line, [{ value: secret, type }], KEY);
+      expect(out).not.toContain(secret);
+      // The old 10-char clear prefix must be gone too — not even the first
+      // characters of the value may print.
+      expect(out).not.toContain(secret.slice(0, 10));
+      expect(out).not.toContain(secret.slice(0, 4));
+      expect(out).toContain(`[credential:${type} fp:${fingerprint(KEY, secret)}]`);
+      // JSON-safety: the literal substitution must leave the line parseable.
+      const parsed = JSON.parse(out) as { a: string; b: string };
+      expect(parsed.b).toBe('clean');
+      expect(parsed.a).toContain(`[credential:${type}`);
+    });
+  }
+});
+
 describe('maskCredentials', () => {
-  it('replaces EVERY occurrence with prefix + fingerprint; the secret never survives', () => {
+  it('replaces EVERY occurrence with the typed mask; the secret never survives', () => {
     const line = JSON.stringify({ a: SK, b: `text ${SK} more`, c: 'clean' });
-    const out = maskCredentials(line, [SK], KEY);
+    const out = maskCredentials(line, [{ value: SK, type: 'openai_api_key' }], KEY);
     expect(out).not.toContain(SK);
-    expect(out).toContain(`${SK.slice(0, 10)}…[fp:`);
+    expect(out).not.toContain(SK.slice(0, 10)); // 29/08: no clear prefix at all
     // Both occurrences gone.
-    expect(out.split(SK.slice(0, 10)).length - 1).toBe(2);
+    expect(out.split('[credential:openai_api_key fp:').length - 1).toBe(2);
     // Still valid JSON.
     const parsed = JSON.parse(out) as { a: string; b: string; c: string };
     expect(parsed.c).toBe('clean');
@@ -51,7 +84,7 @@ describe('maskCredentials', () => {
 
   it('distinct keys → distinct fingerprints; same key twice → same fingerprint', () => {
     const line = JSON.stringify({ a: SK, b: GH, c: SK });
-    const out = maskCredentials(line, [SK, GH], KEY);
+    const out = maskCredentials(line, [{ value: SK, type: 'openai_api_key' }, { value: GH, type: 'github_token' }], KEY);
     const parsed = JSON.parse(out) as { a: string; b: string; c: string };
     expect(parsed.a).toBe(parsed.c); // same secret → identical mask
     expect(parsed.a).not.toBe(parsed.b); // different secret → different mask
@@ -64,7 +97,7 @@ describe('maskCredentials', () => {
     const short = 'sk_live_1234567890abcdefghij';
     const long = `${short}KLMNOPQRST`;
     const line = JSON.stringify({ x: long, y: short });
-    const out = maskCredentials(line, [short, long], KEY);
+    const out = maskCredentials(line, [{ value: short, type: 'openai_api_key' }, { value: long, type: 'openai_api_key' }], KEY);
     expect(out).not.toContain(long);
     expect(out).not.toContain(short);
     const parsed = JSON.parse(out) as { x: string; y: string };

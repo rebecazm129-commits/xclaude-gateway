@@ -301,7 +301,8 @@ describe('credential masking through the ingester (b.2)', () => {
 
     const raw = rawWrapperText(d);
     expect(raw).not.toContain(SK);
-    expect(raw).toContain(`${SK.slice(0, 10)}…[fp:`);
+    expect(raw).toContain('[credential:openai_api_key fp:');
+    expect(raw).not.toContain(SK.slice(0, 10)); // 29/08: full redaction
     // Still valid JSONL and the request row still classifies as a credential.
     const req = wrapperLines(d).find((e) => e['type'] === 'mcp.request')!;
     expect((req['detection'] as Record<string, unknown>)['category']).toBe('credential_detected');
