@@ -13,7 +13,7 @@ xCLAUDE Gateway ships as a single line of releases. Only the latest published re
 
 Please report security issues **privately** — do not open a public issue, pull request, or discussion for a suspected vulnerability.
 
-Use GitHub's private reporting: open the **Security** tab of this repository and click **Report a vulnerability**. This creates a private advisory visible only to the maintainers. If you prefer email, write to **hello@xclaude.ai**.
+Use GitHub's private reporting: open the **Security** tab of this repository and click **Report a vulnerability**. This creates a private advisory visible only to the maintainers. 
 
 Where possible, include:
 - A description of the issue and its impact.
