@@ -14,9 +14,15 @@
 //              per detection (frame-processor emits detections.map(...), 0k).
 //   response/failure text → one mcp.detection_enrichment PER matching detector,
 //              direction = the response's ('server_to_client'), findings
-//              remapped to location 'result', and data_export_warning
-//              downgraded to 'low' INBOUND only (07/07 fix) — all three
-//              mirroring the frame-processor inbound block (0h) verbatim.
+//              remapped to location 'result'. The detector chain is
+//              CONTENT_DETECTORS (detectors/index.ts), SHARED with
+//              frame-processor's inbound block so the two routes cannot drift:
+//              data_export_warning runs its strict inbound variant and keeps
+//              its own 'medium'. There is NO severity downgrade here — the
+//              07/07 inbound 'low' is gone (67bcd55, 28/08); the strictness
+//              lives in the regex. A parity test over the same payload pins
+//              both routes to the same category and severity
+//              (tests/cchook-ingest.test.ts, 'route parity').
 //   Baseline tool_call_allowed only on the request (emitDetections); inbound
 //   emits nothing when no detector fires, like the wrapper.
 
