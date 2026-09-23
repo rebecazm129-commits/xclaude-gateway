@@ -83,6 +83,9 @@ export type EventBody =
       // 'refresh_coalesced'/'refresh_coalesced_stale'/'lock_timeout' ≈ el
       // single-flight actuó justo antes (los emite el interceptor vía
       // provider.noteEvent, así que cuentan aquí).
+      // 'refresh_rejected' ≈ el token endpoint rechazó el refresh; ese evento
+      // lleva el error OAuth real y suele ser el inmediatamente anterior a un
+      // 'invalidated', así que es el que más informa en este triaje.
       // Ausentes si el provider no emitió ningún evento en la sesión.
       lastTokenEvent?:
         | 'refreshed'
@@ -91,7 +94,8 @@ export type EventBody =
         | 'corrupt_blob'
         | 'refresh_coalesced'
         | 'refresh_coalesced_stale'
-        | 'lock_timeout';
+        | 'lock_timeout'
+        | 'refresh_rejected';
       lastTokenEventAgoMs?: number;
     }
   | {
@@ -150,6 +154,14 @@ export type EventBody =
       // contra el token endpoint gastando el RT almacenado (incidente 27/08).
       // 'lock_timeout': no se pudo adquirir el lock en el plazo; el refresh
       // procedió SIN él (fail-open) — waitedMs = cuánto se esperó.
+      // 'refresh_rejected': el token endpoint respondió non-2xx a un refresh.
+      // Único punto donde sobrevive el motivo real del servidor: el SDK lo
+      // convierte en invalidateCredentials y el cuerpo se pierde, de modo que
+      // hasta ahora el trail solo registraba el 'invalidated' resultante sin
+      // poder distinguir grant revocado de RT caducado. status siempre; los
+      // campos OAuth solo si el cuerpo era JSON (RFC 6749 §5.2).
+      // oauthErrorDescription es TEXTO LIBRE del servidor: el emisor le quita
+      // el refresh token y lo trunca antes de que llegue aquí.
       type: 'proxy.token';
       event:
         | 'refreshed'
@@ -158,11 +170,15 @@ export type EventBody =
         | 'corrupt_blob'
         | 'refresh_coalesced'
         | 'refresh_coalesced_stale'
-        | 'lock_timeout';
+        | 'lock_timeout'
+        | 'refresh_rejected';
       rotated?: boolean;
       scope?: 'tokens' | 'all' | 'client';
       crossProcess?: boolean;
       waitedMs?: number;
+      status?: number;
+      oauthError?: string;
+      oauthErrorDescription?: string;
     }
   | {
       type: 'mcp.request';

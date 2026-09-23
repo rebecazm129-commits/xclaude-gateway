@@ -30,6 +30,7 @@ import { refreshAuthorization } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
 
 import { createRefreshFetch } from '../src/refresh-fetch.js';
+import { EventSink } from '../src/events.js';
 import { KeychainOAuthProvider, tokensAccount } from '../src/oauth-provider.js';
 import type { TokenEvent } from '../src/oauth-provider.js';
 
@@ -386,5 +387,196 @@ describe('createRefreshFetch', () => {
     const after = JSON.parse(mocks.store.get(ACCOUNT) as string) as { obtained_at: number };
     expect(typeof after.obtained_at).toBe('number');
     expect(after.obtained_at).toBeGreaterThanOrEqual(before);
+  });
+});
+
+// --- refresh_rejected: the server's real reason for killing a grant ----------
+// Until this event existed the trail only held the resulting 'invalidated',
+// which cannot tell a revoked grant from an expired RT (the SDK collapses both
+// into invalidateCredentials('tokens') and drops the body).
+
+function oauthErrorResponse(status: number, body: unknown, json = true): Response {
+  return new Response(typeof body === 'string' ? body : JSON.stringify(body), {
+    status,
+    headers: { 'content-type': json ? 'application/json' : 'text/html' },
+  });
+}
+
+function rejectedEvent(events: TokenEvent[]): Extract<TokenEvent, { event: 'refresh_rejected' }> {
+  const e = events.find((x) => x.event === 'refresh_rejected');
+  expect(e).toBeDefined();
+  return e as Extract<TokenEvent, { event: 'refresh_rejected' }>;
+}
+
+describe('createRefreshFetch — refresh_rejected', () => {
+  it('(k) integration: a 400 invalid_grant served to the REAL SDK surfaces as refresh_rejected', async () => {
+    // Drives refreshAuthorization (the only SDK caller that posts
+    // grant_type=refresh_token) rather than a hand-rolled init, so the whole
+    // path executeTokenRequest -> our fetch -> parseErrorResponse is exercised.
+    const lockPath = tempLockPath();
+    const { provider, events } = makeProvider();
+    const baseFetch: FetchLike = async () =>
+      oauthErrorResponse(400, { error: 'invalid_grant', error_description: 'refresh token revoked' });
+    const refreshFetch = createRefreshFetch({ mcp: 'notion', lockPath, provider, baseFetch });
+
+    // The SDK converts the 400 into an InvalidGrantError and throws it.
+    await expect(
+      refreshAuthorization('https://auth.example', {
+        clientInformation: { client_id: 'cid' },
+        refreshToken: 'rt-dead',
+        fetchFn: refreshFetch,
+      }),
+    ).rejects.toThrow();
+
+    const e = rejectedEvent(events);
+    expect(e.status).toBe(400);
+    expect(e.oauthError).toBe('invalid_grant');
+    expect(e.oauthErrorDescription).toBe('refresh token revoked');
+    // And the lock was still released despite the rejection.
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
+  it('(l) 400 and 401 with an OAuth body: status and both OAuth fields', async () => {
+    for (const [status, code] of [
+      [400, 'invalid_grant'],
+      [401, 'invalid_client'],
+    ] as const) {
+      mocks.store.clear();
+      const { provider, events } = makeProvider();
+      const refreshFetch = createRefreshFetch({
+        mcp: 'notion',
+        lockPath: tempLockPath(),
+        provider,
+        baseFetch: async () =>
+          oauthErrorResponse(status, { error: code, error_description: `desc for ${code}` }),
+      });
+
+      const resp = await refreshFetch(TOKEN_URL, refreshInit('rt1'));
+      expect(resp.status).toBe(status);
+      const e = rejectedEvent(events);
+      expect(e.status).toBe(status);
+      expect(e.oauthError).toBe(code);
+      expect(e.oauthErrorDescription).toBe(`desc for ${code}`);
+    }
+  });
+
+  it('(m) non-JSON and empty bodies: the event carries status only, and nothing throws', async () => {
+    for (const body of ['<html><body>502 Bad Gateway</body></html>', '']) {
+      mocks.store.clear();
+      const { provider, events } = makeProvider();
+      const refreshFetch = createRefreshFetch({
+        mcp: 'notion',
+        lockPath: tempLockPath(),
+        provider,
+        baseFetch: async () => oauthErrorResponse(502, body, false),
+      });
+
+      const resp = await refreshFetch(TOKEN_URL, refreshInit('rt1'));
+      expect(resp.status).toBe(502);
+      const e = rejectedEvent(events);
+      expect(e.status).toBe(502);
+      expect(e.oauthError).toBeUndefined();
+      expect(e.oauthErrorDescription).toBeUndefined();
+    }
+  });
+
+  it('(n) a 10 KB error_description is truncated to 200 chars', async () => {
+    const { provider, events } = makeProvider();
+    const huge = 'x'.repeat(10 * 1024);
+    const refreshFetch = createRefreshFetch({
+      mcp: 'notion',
+      lockPath: tempLockPath(),
+      provider,
+      baseFetch: async () =>
+        oauthErrorResponse(400, { error: 'invalid_grant', error_description: huge }),
+    });
+
+    await refreshFetch(TOKEN_URL, refreshInit('rt1'));
+    const e = rejectedEvent(events);
+    expect(e.oauthErrorDescription).toHaveLength(200);
+    expect(e.oauthErrorDescription).toBe('x'.repeat(200));
+  });
+
+  it('(o) clone invariant: the returned Response body is still readable after capture', async () => {
+    // Load-bearing: the SDK's parseErrorResponse does `await response.text()`
+    // on this exact Response. If the capture consumed it, every refresh failure
+    // would turn into a body-already-used error inside the SDK.
+    const { provider, events } = makeProvider();
+    const payload = { error: 'invalid_grant', error_description: 'gone' };
+    const refreshFetch = createRefreshFetch({
+      mcp: 'notion',
+      lockPath: tempLockPath(),
+      provider,
+      baseFetch: async () => oauthErrorResponse(400, payload),
+    });
+
+    const resp = await refreshFetch(TOKEN_URL, refreshInit('rt1'));
+    expect(resp.bodyUsed).toBe(false);
+    expect(await resp.json()).toEqual(payload);
+    expect(rejectedEvent(events).oauthError).toBe('invalid_grant');
+  });
+
+  it('(p) an error_description echoing the RT never reaches the persisted line, with and without an hmacKey', async () => {
+    const RT = 'rt-secret-value-9f3a2b7c';
+    for (const hmacKey of [Buffer.from('a'.repeat(32)), null]) {
+      mocks.store.clear();
+      const lines: string[] = [];
+      const sink = new EventSink(
+        'notion',
+        [{ write: (env) => lines.push(JSON.stringify(env)), close: () => {} }],
+        'test-session',
+        hmacKey,
+      );
+      // Same wiring as main.ts: the provider's events go straight to the sink.
+      const provider = new KeychainOAuthProvider('notion', (e) => {
+        sink.emit({ type: 'proxy.token', ...e });
+      });
+      const refreshFetch = createRefreshFetch({
+        mcp: 'notion',
+        lockPath: tempLockPath(),
+        provider,
+        baseFetch: async () =>
+          oauthErrorResponse(400, {
+            error: 'invalid_grant',
+            error_description: `refresh token ${RT} was revoked`,
+          }),
+      });
+
+      await refreshFetch(TOKEN_URL, refreshInit(RT));
+
+      const line = lines.find((l) => l.includes('refresh_rejected'));
+      expect(line).toBeDefined();
+      expect(line).not.toContain(RT);
+      // The surrounding prose survives — the event is still diagnostic.
+      expect(line).toContain('invalid_grant');
+      expect(line).toContain('was revoked');
+    }
+  });
+
+  it('(q) fail-open path: an unlocked refresh reports its rejection too', async () => {
+    const lockPath = tempLockPath();
+    const { acquireRefreshLock } = await import('../src/refresh-lock.js');
+    const held = await acquireRefreshLock(lockPath, { pollMs: 5, timeoutMs: 200 });
+    expect(held.acquired).toBe(true);
+
+    const { provider, events } = makeProvider();
+    const refreshFetch = createRefreshFetch({
+      mcp: 'notion',
+      lockPath,
+      provider,
+      baseFetch: async () =>
+        oauthErrorResponse(400, { error: 'invalid_grant', error_description: 'unlocked path' }),
+      lockOptions: { pollMs: 10, timeoutMs: 50 },
+    });
+
+    const resp = await refreshFetch(TOKEN_URL, refreshInit('rt1'));
+    expect(resp.status).toBe(400);
+    expect(events.some((e) => e.event === 'lock_timeout')).toBe(true);
+    const e = rejectedEvent(events);
+    expect(e.status).toBe(400);
+    expect(e.oauthError).toBe('invalid_grant');
+    expect(e.oauthErrorDescription).toBe('unlocked path');
+
+    if (held.acquired) await held.release();
   });
 });

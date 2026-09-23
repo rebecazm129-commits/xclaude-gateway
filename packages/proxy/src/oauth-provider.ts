@@ -26,7 +26,19 @@ export type TokenEvent =
   // upgraded to a REAL refresh against the token endpoint using the STORED
   // refresh token. Distinguishable in the trail from a plain coalesce.
   | { event: 'refresh_coalesced_stale' }
-  | { event: 'lock_timeout'; waitedMs: number };
+  | { event: 'lock_timeout'; waitedMs: number }
+  // 'refresh_rejected' = the token endpoint answered non-2xx to a refresh.
+  // This is the ONLY place the server's real reason survives: the SDK turns it
+  // into parseErrorResponse → InvalidGrantError → invalidateCredentials, and by
+  // the time we see 'invalidated' the body is gone (see the lastEmitted note
+  // below). status is always present; the OAuth fields only when the body was
+  // JSON. oauthErrorDescription is redacted and truncated by the emitter.
+  | {
+      event: 'refresh_rejected';
+      status: number;
+      oauthError?: string;
+      oauthErrorDescription?: string;
+    };
 
 /** Tokens as persisted by xcg-proxy: the SDK's OAuthTokens plus our own
  *  `obtained_at` stamp. The SDK's OAuthTokensSchema is `$strip`
