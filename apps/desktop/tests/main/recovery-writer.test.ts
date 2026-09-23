@@ -10,6 +10,8 @@ import {
   APP_EVENTS_FILENAME,
   CCHOOK_REMOVED_TYPE,
   CONNECTOR_RECOVERED_TYPE,
+  RELOGIN_NOTIFIED_TYPE,
+  writeReloginNotified,
 } from '../../src/main/recovery-writer.js';
 import { parseAuditContent } from '../../src/main/detection-reader.js';
 
@@ -100,5 +102,60 @@ describe('writeCchookRemoved', () => {
     expect(parsed.events).toEqual([]);
     expect(parsed.authSignals).toEqual([]);
     expect(parsed.outcomes?.size ?? 0).toBe(0);
+  });
+});
+
+describe('writeReloginNotified (B4)', () => {
+  it('appends a well-formed app.relogin_notified envelope', async () => {
+    const dir = join(tmpDir, 'notified');
+    writeReloginNotified(
+      { mcp: 'stripe', lastFailureTs: '2026-09-08T05:08:12.557Z', shown: true },
+      dir,
+    );
+    const content = await readFile(join(dir, APP_EVENTS_FILENAME), 'utf8');
+    const lines = content.trim().split('\n');
+    expect(lines).toHaveLength(1);
+    const ev = JSON.parse(lines[0]!);
+    expect(ev).toMatchObject({
+      v: 1,
+      session: 'desktop',
+      mcp: 'stripe',
+      type: RELOGIN_NOTIFIED_TYPE,
+      lastFailureTs: '2026-09-08T05:08:12.557Z',
+      shown: true,
+    });
+    expect(typeof ev.id).toBe('string');
+    expect(() => new Date(ev.ts).toISOString()).not.toThrow();
+  });
+
+  it('records shown:false too — a platform that refuses notifications used to be a silent branch', async () => {
+    const dir = join(tmpDir, 'notified-false');
+    writeReloginNotified({ mcp: 'notion', lastFailureTs: 'T', shown: false }, dir);
+    const content = await readFile(join(dir, APP_EVENTS_FILENAME), 'utf8');
+    expect(JSON.parse(content.trim()).shown).toBe(false);
+  });
+
+  it('one line per call, appended', async () => {
+    const dir = join(tmpDir, 'notified-many');
+    writeReloginNotified({ mcp: 'a', lastFailureTs: 'T', shown: true }, dir);
+    writeReloginNotified({ mcp: 'b', lastFailureTs: 'T', shown: true }, dir);
+    const content = await readFile(join(dir, APP_EVENTS_FILENAME), 'utf8');
+    expect(content.trim().split('\n')).toHaveLength(2);
+  });
+
+  it('is inert for the reader: no detection event, no auth signal, no outcome', async () => {
+    const dir = join(tmpDir, 'notified-inert');
+    writeReloginNotified({ mcp: 'stripe', lastFailureTs: 'T', shown: true }, dir);
+    const content = await readFile(join(dir, APP_EVENTS_FILENAME), 'utf8');
+    const parsed = parseAuditContent(content);
+    expect(parsed.events).toEqual([]);
+    expect(parsed.authSignals).toEqual([]);
+    expect(parsed.outcomes?.size ?? 0).toBe(0);
+  });
+
+  it('never throws on an unwritable directory', () => {
+    expect(() =>
+      writeReloginNotified({ mcp: 'x', lastFailureTs: 'T', shown: true }, '/proc/nonexistent/xcg'),
+    ).not.toThrow();
   });
 });

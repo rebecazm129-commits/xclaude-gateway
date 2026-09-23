@@ -66,6 +66,48 @@ export function writeRecoveryMarkerAfterConnect(
   write(name);
 }
 
+// Event type recording that a re-login notification was DISPLAYED — or that the
+// platform refused to show one (shown:false). Until this existed nothing in the
+// trail said whether the user was ever told: during the 08-15/09 stripe outage
+// we could prove the alert state existed but not whether a single notification
+// fired, because Notification.show() leaves no trace. Inert for the detection
+// pipeline, like the purge and cchook markers: not proxy.error, not mcp.*, not
+// the recovery type — tests/main/recovery-writer.test.ts pins that.
+export const RELOGIN_NOTIFIED_TYPE = 'app.relogin_notified';
+
+export interface ReloginNotifiedFields {
+  mcp: string;
+  lastFailureTs: string;
+  shown: boolean;
+}
+
+// Appends ONE marker per notification decision. Same durability model and
+// best-effort contract as the other markers (v:1, randomUUID, session:'desktop',
+// append-only, never throws). `mcp` is the connector the alert is about, so the
+// marker is greppable per connector alongside its oauth_failed lines.
+export function writeReloginNotified(
+  fields: ReloginNotifiedFields,
+  dir: string = DEFAULT_WRAPPERS_DIR,
+): void {
+  const envelope = {
+    v: 1,
+    id: randomUUID(),
+    ts: new Date().toISOString(),
+    session: 'desktop',
+    mcp: fields.mcp,
+    type: RELOGIN_NOTIFIED_TYPE,
+    lastFailureTs: fields.lastFailureTs,
+    shown: fields.shown,
+  };
+  const filePath = join(dir, APP_EVENTS_FILENAME);
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    appendFileSync(filePath, `${JSON.stringify(envelope)}\n`, { mode: 0o600 });
+  } catch (err) {
+    console.error(`writeReloginNotified: failed to append ${filePath}:`, err);
+  }
+}
+
 // Event type the retention reader (readLastPurgeMarker) consumes to surface the
 // last automatic purge in Settings. Inert for the detection pipeline: it matches
 // none of readAudit's guards (not proxy.error, not mcp.*, not the recovery

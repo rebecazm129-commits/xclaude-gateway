@@ -60,14 +60,61 @@ export function resolveTrayIconPath(opts: {
   return join(here, '..', '..', '..', '..', 'build', 'xclaude-tray-icon.png');
 }
 
-// Pure menu template (click handlers injected). When `counts` is given, an
-// "N flagged (24h)" item leads the menu (same open action); without it the menu
-// is identical to before. Extracted so it's unit-testable.
-export function buildTrayMenuTemplate(onOpen: () => void, counts?: TrayCounts): MenuItemConstructorOptions[] {
+export interface TrayMenuState {
+  counts?: TrayCounts;
+  /** How many connectors currently need re-login (audit.authAlerts.length).
+   *  0 or undefined hides the line entirely. */
+  authAlertCount?: number;
+  /** Current OS value, read fresh by the caller — never a cached boolean. */
+  openAtLogin?: boolean;
+  /** Toggle handler; omitted in contexts with no login-item support. */
+  onToggleOpenAtLogin?: (next: boolean) => void;
+}
+
+// Pure menu template (click handlers injected). Extracted so it's unit-testable.
+//
+// Four groups, separated:
+//   1. status  — what is wrong or worth a look (re-login first, then flagged)
+//   2. setting — open at login
+//   3. action  — open the window
+//   4. quit
+// The status group leads because the menu is the one surface that reaches the
+// user with the window closed, and re-login leads within it: it is the only
+// line that means something is BROKEN.
+export function buildTrayMenuTemplate(
+  onOpen: () => void,
+  state: TrayMenuState = {},
+): MenuItemConstructorOptions[] {
   const template: MenuItemConstructorOptions[] = [];
-  if (counts) {
-    template.push({ label: `${counts.flagged24h} flagged (24h)`, click: onOpen });
+
+  const alerts = state.authAlertCount ?? 0;
+  if (alerts > 0) {
+    template.push({
+      label: alerts === 1 ? '1 connector needs re-login' : `${alerts} connectors need re-login`,
+      click: onOpen,
+    });
   }
+  if (state.counts) {
+    template.push({ label: `${state.counts.flagged24h} flagged (24h)`, click: onOpen });
+  }
+  // Only separate when the status group actually produced something, so a menu
+  // with nothing to report never opens on a stray rule.
+  if (template.length > 0) template.push({ type: 'separator' });
+
+  if (state.onToggleOpenAtLogin) {
+    const current = state.openAtLogin ?? false;
+    const toggle = state.onToggleOpenAtLogin;
+    template.push(
+      {
+        label: 'Open at login',
+        type: 'checkbox',
+        checked: current,
+        click: () => toggle(!current),
+      },
+      { type: 'separator' },
+    );
+  }
+
   template.push(
     { label: 'Open xCLAUDE Gateway', click: onOpen },
     { type: 'separator' },
@@ -99,11 +146,15 @@ export function createTray(onOpen: () => void): void {
   tray.setContextMenu(Menu.buildFromTemplate(buildTrayMenuTemplate(onOpen)));
 }
 
-// Updates the live Tray from fresh counts: no menu-bar title (the tray shows
-// only the logo, never a number), and a rebuilt context menu
-// with the "N flagged (24h)" line. No-op until createTray() has run.
-export function updateTrayCounts(counts: TrayCounts): void {
+// Updates the live Tray: no menu-bar title (the tray shows only the logo, never
+// a number), and a rebuilt context menu. No-op until createTray() has run.
+//
+// A macOS context menu set with setContextMenu is STATIC — there is no
+// "about to open" hook to refresh it from, so `openAtLogin` is re-read from the
+// OS on every rebuild (the 60s tray tick, and immediately after any toggle)
+// rather than cached in a module variable. See the note in index.ts.
+export function updateTrayMenu(state: TrayMenuState): void {
   if (!tray || !onOpenAction) return;
   tray.setTitle('');
-  tray.setContextMenu(Menu.buildFromTemplate(buildTrayMenuTemplate(onOpenAction, counts)));
+  tray.setContextMenu(Menu.buildFromTemplate(buildTrayMenuTemplate(onOpenAction, state)));
 }

@@ -64,6 +64,12 @@ export interface XcgApi {
   openAuditFolder(): Promise<void>;
   /** App version (package.json), for the Settings About section. */
   appVersion(): Promise<string>;
+  /** Current OS login-item state. Read on every panel open — never cached:
+   *  macOS System Settings can change it behind the app's back. */
+  openAtLogin(): Promise<boolean>;
+  /** Sets the login item and returns what the OS holds AFTERWARDS, which is not
+   *  necessarily what was requested. */
+  setOpenAtLogin(value: boolean): Promise<boolean>;
   /** Open an http(s) URL in the system browser (never navigates the renderer). */
   openExternalUrl(url: string): Promise<void>;
 }

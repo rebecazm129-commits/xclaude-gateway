@@ -1,24 +1,38 @@
 // Pure transition logic for connector re-login notifications. Decides which
-// connectors just ENTERED the "needs re-login" state, so the main process
-// notifies once per transition. First evaluation seeds without notifying.
+// connectors carry a failure that has NOT been announced yet.
+//
+// Keyed by (mcp → lastFailureTs). The previous shape was a Set of connector
+// names plus a `seeded` flag, both living in process memory: the first pass
+// after every launch adopted whatever was already alerting and notified
+// nothing. A failure that began while the app was closed was therefore never
+// announced — not then, and not on any later launch. That is the 08-15/09
+// stripe outage. Persisting the map (relogin-state.ts) and comparing the
+// TIMESTAMP gives all three behaviours at once:
+//   cold start with an unseen failure  → notify
+//   restart with the same failure      → silent
+//   new failure after a recovery       → notify again
+
+export interface ReloginAlert {
+  mcp: string;
+  lastFailureTs: string;
+}
+
 export interface ReloginTransition {
-  toNotify: string[];
-  nextNotified: Set<string>;
-  nextSeeded: boolean;
+  toNotify: ReloginAlert[];
+  nextNotified: Map<string, string>;
 }
 
 export function computeReloginTransitions(
-  prevNotified: Set<string>,
-  currentMcps: Set<string>,
-  seeded: boolean,
+  prevNotified: ReadonlyMap<string, string>,
+  current: readonly ReloginAlert[],
 ): ReloginTransition {
-  // First pass: adopt whatever is already alerting; notify nothing.
-  if (!seeded) {
-    return { toNotify: [], nextNotified: new Set(currentMcps), nextSeeded: true };
+  const toNotify: ReloginAlert[] = [];
+  // Mirrors `current`, so a connector that recovered drops out of the record
+  // and a later re-failure is announced even if its timestamp repeated.
+  const nextNotified = new Map<string, string>();
+  for (const alert of current) {
+    nextNotified.set(alert.mcp, alert.lastFailureTs);
+    if (prevNotified.get(alert.mcp) !== alert.lastFailureTs) toNotify.push(alert);
   }
-  // Steady state: notify connectors alerting now that weren't accounted for.
-  // nextNotified mirrors `current`, so recovered connectors drop out (a later
-  // re-failure notifies again) and still-alerting ones don't repeat.
-  const toNotify = [...currentMcps].filter((mcp) => !prevNotified.has(mcp));
-  return { toNotify, nextNotified: new Set(currentMcps), nextSeeded: true };
+  return { toNotify, nextNotified };
 }

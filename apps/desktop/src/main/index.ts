@@ -72,10 +72,11 @@ import { runConfigConnect } from './connect-handler.js';
 import { runLoginProcess } from './login-runner.js';
 import { seedStoredClient } from '@xcg/proxy/credentials';
 import { seedClientWarnings } from './seed-client-warnings.js';
-import { createTray, computeTrayCounts, updateTrayCounts } from './tray.js';
+import { createTray, computeTrayCounts, updateTrayMenu } from './tray.js';
 import { computeReloginTransitions } from './relogin-notify.js';
+import { readNotified, writeNotified, type NotifiedMap } from './relogin-state.js';
 import { isAllowedNavigation } from './navigation-guard.js';
-import { writeRecoveryMarkerAfterConnect } from './recovery-writer.js';
+import { writeRecoveryMarkerAfterConnect, writeReloginNotified } from './recovery-writer.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -201,7 +202,7 @@ ipcMain.handle('cchook:dismiss-vanished', (): void => {
 // ConnectorInspector (not yet migrated to detection:page).
 ipcMain.handle('detection:list', async (): Promise<DetectionListResult> => {
   const audit = await auditStore.get();
-  updateTrayCounts(computeTrayCounts(audit.events, Date.now()));
+  refreshTray(computeTrayCounts(audit.events, Date.now()), audit.authAlerts.length);
   return { ...audit, retention: retentionBanner() };
 });
 
@@ -216,7 +217,7 @@ ipcMain.handle(
     // Tray counts over the FULL store set, independent of filter/limit (the
     // second get() is coalesced with getPage's internal one — no extra disk).
     const full = await auditStore.get();
-    updateTrayCounts(computeTrayCounts(full.events, Date.now()));
+    refreshTray(computeTrayCounts(full.events, Date.now()), full.authAlerts.length);
     return { ...page, retention: retentionBanner() };
   },
 );
@@ -597,45 +598,105 @@ async function runRetentionSweep(): Promise<void> {
     console.error('[xcg] retention sweep failed:', err);
   }
 }
-// Re-login notification dedupe (slice C): same module-state pattern as
-// trayRefreshHandle. notifiedRelogin = connectors currently accounted for as
-// alerting; reloginSeeded = whether the first evaluation has run (the first
-// pass seeds these without notifying).
-let notifiedRelogin = new Set<string>();
-let reloginSeeded = false;
+// Re-login notification state. Loaded from disk once (lazily, so a slow or
+// failing read never blocks app.whenReady) and written back after every pass
+// that changes it. Unlike the previous in-memory Set there is no "seed silently
+// on first pass" step: a failure this install has not announced gets announced,
+// whenever the app happens to open.
+let notifiedRelogin: NotifiedMap | null = null;
+
+/** Reads the OS login-item state. Never cached — macOS System Settings can
+ *  change it behind our back, so every surface re-reads it on display. */
+function isOpenAtLogin(): boolean {
+  try {
+    return app.getLoginItemSettings().openAtLogin;
+  } catch {
+    return false;
+  }
+}
+
+function setOpenAtLogin(next: boolean): boolean {
+  try {
+    app.setLoginItemSettings({ openAtLogin: next });
+  } catch (err) {
+    console.error('[xcg] setLoginItemSettings failed:', err);
+  }
+  // Report what the OS actually holds now, not what we asked for.
+  return isOpenAtLogin();
+}
+
+function refreshTray(counts: { flagged24h: number; critical24h: number }, authAlertCount: number): void {
+  updateTrayMenu({
+    counts,
+    authAlertCount,
+    openAtLogin: isOpenAtLogin(),
+    onToggleOpenAtLogin: (next) => {
+      setOpenAtLogin(next);
+      // Rebuild immediately so the checkmark reflects the OS, not the click.
+      refreshTray(counts, authAlertCount);
+    },
+  });
+}
+
+// One notification pass. Announces every alert whose lastFailureTs this install
+// has not recorded, appends an app.relogin_notified marker for each decision
+// (the trail had no way to tell "never notified" from "notified and missed"),
+// and persists the map.
+function runReloginPass(alerts: readonly { mcp: string; lastFailureTs: string }[]): void {
+  if (notifiedRelogin === null) notifiedRelogin = readNotified(BASE_DIR);
+  const { toNotify, nextNotified } = computeReloginTransitions(notifiedRelogin, alerts);
+  const supported = Notification.isSupported();
+  for (const alert of toNotify) {
+    if (supported) {
+      const n = new Notification({
+        title: `${alert.mcp} needs re-login`,
+        body: 'Authorization expired. Reconnect it in xCLAUDE Gateway and restart Claude Desktop.',
+      });
+      n.on('click', () => openWindow());
+      n.show();
+    }
+    // shown:false is recorded too — a platform that refuses notifications used
+    // to be a silent branch.
+    writeReloginNotified(
+      { mcp: alert.mcp, lastFailureTs: alert.lastFailureTs, shown: supported },
+      WRAPPERS_DIR,
+    );
+  }
+  const changed =
+    toNotify.length > 0 ||
+    nextNotified.size !== notifiedRelogin.size ||
+    [...nextNotified].some(([mcp, ts]) => notifiedRelogin?.get(mcp) !== ts);
+  notifiedRelogin = nextNotified;
+  if (changed) writeNotified(nextNotified, BASE_DIR);
+}
 
 void app.whenReady().then(() => {
   bootstrapStableSymlink();
-  createWindow();
+  // Launched by the login item → tray only, no window. wasOpenedAtLogin is the
+  // documented macOS signal; if it ever reports false for a real login start
+  // the cost is a window the user did not ask for, never a missing tray.
+  let openedAtLogin = false;
+  try {
+    openedAtLogin = app.getLoginItemSettings().wasOpenedAtLogin;
+  } catch {
+    openedAtLogin = false;
+  }
+  if (!openedAtLogin) createWindow();
   createTray(openWindow);
   // First recurring loop in the MAIN process: a 60s backstop so the tray count
   // stays fresh even with no renderer polling (all windows closed). KNOWN loose
   // end — this and the renderer's usePolledDetections (2s) are candidates to
   // collapse into a single source-of-truth poll later.
-  trayRefreshHandle = setInterval(() => {
+  const trayAndReloginPass = (): void => {
     void auditStore.get().then((audit) => {
-      updateTrayCounts(computeTrayCounts(audit.events, Date.now()));
-      // Re-login transitions: notify once when a connector enters the alert set.
-      const currentMcps = new Set(audit.authAlerts.map((a) => a.mcp));
-      const { toNotify, nextNotified, nextSeeded } = computeReloginTransitions(
-        notifiedRelogin,
-        currentMcps,
-        reloginSeeded,
-      );
-      notifiedRelogin = nextNotified;
-      reloginSeeded = nextSeeded;
-      if (Notification.isSupported()) {
-        for (const mcp of toNotify) {
-          const n = new Notification({
-            title: `${mcp} needs re-login`,
-            body: 'Authorization expired. Reconnect it in xCLAUDE Gateway and restart Claude Desktop.',
-          });
-          n.on('click', () => openWindow());
-          n.show();
-        }
-      }
+      refreshTray(computeTrayCounts(audit.events, Date.now()), audit.authAlerts.length);
+      runReloginPass(audit.authAlerts);
     });
-  }, TRAY_REFRESH_MS);
+  };
+  // Once now, then on the interval: a cold start that already has an unseen
+  // failure must not wait a full minute to say so.
+  trayAndReloginPass();
+  trayRefreshHandle = setInterval(trayAndReloginPass, TRAY_REFRESH_MS);
   // Retention: one deferred sweep after the first audit read, then a daily
   // interval. Never runs on the renderer's 2s poll. mode 'never' (default) is a
   // no-op for deletion — the pass only refreshes the cached directory size.
@@ -674,6 +735,21 @@ ipcMain.handle('system:open-audit-folder', async (): Promise<void> => {
 });
 
 // App version for the Settings About section (package.json via Electron).
+// Login item. No persistence of our own: macOS is the source of truth, and the
+// user can flip it from System Settings > General > Login Items without telling
+// us. Both handlers return what getLoginItemSettings reports AFTER the change,
+// so the UI can never drift from the OS.
+ipcMain.handle('prefs:open-at-login', (): boolean => isOpenAtLogin());
+
+ipcMain.handle('prefs:set-open-at-login', (_event, params: { value: unknown }): boolean => {
+  const actual = setOpenAtLogin(params?.value === true);
+  // Keep the tray checkmark in step with the panel.
+  void auditStore.get().then((audit) => {
+    refreshTray(computeTrayCounts(audit.events, Date.now()), audit.authAlerts.length);
+  });
+  return actual;
+});
+
 ipcMain.handle('system:version', (): string => {
   return app.getVersion();
 });

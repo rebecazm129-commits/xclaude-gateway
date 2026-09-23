@@ -76,6 +76,11 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
   const [actionState, setActionState] = useState<ActionState>('idle');
   const [lastAction, setLastAction] = useState<LastAction>(null);
   const [retention, setRetention] = useState<RetentionStatus | null>(null);
+  // null until the first read resolves. Re-read every time the panel mounts (it
+  // unmounts on close), never persisted here: macOS owns this value and the
+  // user can flip it from System Settings without the app hearing about it.
+  const [openAtLogin, setOpenAtLogin] = useState<boolean | null>(null);
+  const [loginBusy, setLoginBusy] = useState(false);
   const [pendingMode, setPendingMode] = useState<PurgeMode | null>(null);
   const [pendingEstimate, setPendingEstimate] = useState<number | null>(null);
   const [applying, setApplying] = useState(false);
@@ -95,6 +100,35 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
   useEffect(() => {
     drawerRef.current?.focus();
   }, []);
+
+  // Login-item state, re-read on every open. Deliberately NOT cached across
+  // opens: System Settings > General > Login Items can change it behind us, and
+  // a stale toggle would lie about the OS.
+  useEffect(() => {
+    let cancelled = false;
+    void window.xcg
+      .openAtLogin()
+      .then((v) => {
+        if (!cancelled) setOpenAtLogin(v);
+      })
+      .catch(() => {
+        if (!cancelled) setOpenAtLogin(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function handleToggleOpenAtLogin(next: boolean): void {
+    if (loginBusy) return;
+    setLoginBusy(true);
+    void window.xcg
+      .setOpenAtLogin(next)
+      // The handler returns what the OS holds AFTER the change, not the request.
+      .then((actual) => setOpenAtLogin(actual))
+      .catch(() => undefined)
+      .finally(() => setLoginBusy(false));
+  }
 
   // Retention status is fetched once when the drawer opens (not on any poll).
   useEffect(() => {
@@ -264,6 +298,30 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
       </div>
 
       <div className={styles['body']}>
+        <div className={styles['sectionLabel']}>Startup</div>
+        <div className={styles['startupBox']}>
+          <div className={styles['startupText']}>
+            <span className={styles['startupLabel']}>Open xCLAUDE at login</span>
+            <span className={styles['startupCaption']}>
+              Runs in the menu bar so it can alert you when a connector needs re-login.
+            </span>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={openAtLogin === true}
+            aria-label="Open xCLAUDE at login"
+            className={
+              openAtLogin === true ? `${styles['switch']} ${styles['switchOn']}` : styles['switch']
+            }
+            disabled={openAtLogin === null || loginBusy}
+            onClick={() => handleToggleOpenAtLogin(openAtLogin !== true)}
+          >
+            <span className={styles['switchKnob']} />
+          </button>
+        </div>
+
+        <div className={`${styles['sectionLabel']} ${styles['sectionDivider']}`}>Configuration</div>
         {statusOk !== null ? (
           <p className={styles['path']}>
             <span className={styles['pathLabel']}>Config file:</span>{' '}
