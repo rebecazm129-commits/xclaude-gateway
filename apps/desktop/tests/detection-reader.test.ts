@@ -389,7 +389,7 @@ describe('readAudit — authAlerts', () => {
   function oauthFail(id: string, mcp: string, ts: string, message = 'reauth required'): Record<string, unknown> {
     return { v: 1, id, ts, session: 's', mcp, type: 'proxy.error', kind: 'oauth_failed', message };
   }
-  function liveReq(id: string, mcp: string, ts: string): Record<string, unknown> {
+  function mcpRequest(id: string, mcp: string, ts: string): Record<string, unknown> {
     return {
       v: 1, id, ts, session: 's', mcp, type: 'mcp.request', direction: 'client_to_server',
       rpcId: 1, method: 'tools/call', params: {}, bytes: 10, overheadUs: 5,
@@ -414,10 +414,17 @@ describe('readAudit — authAlerts', () => {
     ]);
   });
 
-  it('b) oauth_failed followed by a later mcp.request (same mcp) → no alert', async () => {
-    const dir = await write('auth-b', oauthFail('f1', 'notion', iso(-2 * HOUR)), liveReq('r1', 'notion', iso(-HOUR)));
+  it('b) oauth_failed followed by a later mcp.request → alert SURVIVES', async () => {
+    // Inverted on 23/09. This case used to assert "no alert": any mcp.* counted
+    // as proof the credential worked, so a request cancelled the alert. That is
+    // what kept the 08-15/09 stripe outage silent for seven days — 184
+    // `initialize` requests, 183 error responses, zero successful calls, and no
+    // warning. A request is an attempt; only an answered call proves liveness.
+    const dir = await write('auth-b', oauthFail('f1', 'notion', iso(-2 * HOUR)), mcpRequest('r1', 'notion', iso(-HOUR)));
     const { authAlerts } = await readAudit(dir, NOW);
-    expect(authAlerts).toEqual([]);
+    expect(authAlerts).toEqual([
+      { mcp: 'notion', lastFailureTs: iso(-2 * HOUR), message: 'reauth required' },
+    ]);
   });
 
   it('c) oauth_failed older than 24h → no alert', async () => {
@@ -427,7 +434,7 @@ describe('readAudit — authAlerts', () => {
   });
 
   it('d) two connectors, one down one healthy → only the down one', async () => {
-    const dir = await write('auth-d', oauthFail('f1', 'notion', iso(-HOUR)), liveReq('r1', 'linear', iso(-HOUR)));
+    const dir = await write('auth-d', oauthFail('f1', 'notion', iso(-HOUR)), mcpRequest('r1', 'linear', iso(-HOUR)));
     const { authAlerts } = await readAudit(dir, NOW);
     expect(authAlerts.map((a) => a.mcp)).toEqual(['notion']);
   });
@@ -463,14 +470,87 @@ describe('readAudit — authAlerts', () => {
     ]);
   });
 
-  it('i) both live traffic and recovery after failure → no alert (later signal wins)', async () => {
+  function errResp(id: string, mcp: string, ts: string, rpcId = 1): Record<string, unknown> {
+    // What a dead connector actually produces: the proxy answers the forward
+    // failure with an `error` field. 183 of these in the 08-15/09 stripe outage.
+    return {
+      v: 1, id, ts, session: 's', mcp, type: 'mcp.response', direction: 'server_to_client',
+      rpcId, error: { code: -32001, message: 'forward failed' }, bytes: 10, overheadUs: 5, latencyMs: 3,
+    };
+  }
+  function okResp(id: string, mcp: string, ts: string, rpcId = 1): Record<string, unknown> {
+    return {
+      v: 1, id, ts, session: 's', mcp, type: 'mcp.response', direction: 'server_to_client',
+      rpcId, result: {}, bytes: 10, overheadUs: 5, latencyMs: 3,
+    };
+  }
+
+  it('i) both a successful response and a recovery marker after failure → no alert (later signal wins)', async () => {
+    // Carried a mcpRequest until 23/09; that is no longer a liveness signal, so
+    // the case collapsed into a duplicate of (f). okResp restores the original
+    // intent: two positive signals, the later one decides.
     const dir = await write(
       'auth-i',
       oauthFail('f1', 'stripe', iso(-3 * HOUR)),
       recovered('rec1', 'stripe', iso(-2 * HOUR)),
-      liveReq('r1', 'stripe', iso(-HOUR)),
+      okResp('o1', 'stripe', iso(-HOUR)),
     );
     const { authAlerts } = await readAudit(dir, NOW);
+    expect(authAlerts).toEqual([]);
+  });
+
+  // --- 'live' narrowed to a SUCCESSFUL response (23/09) --------------------
+  // Until now any mcp.* counted as proof the credential worked, so the very
+  // traffic that was failing cancelled the alert. See the AuthSignal doc.
+
+  it('j) oauth_failed followed by an ERROR response → alert survives', async () => {
+    const dir = await write('auth-j', oauthFail('f1', 'stripe', iso(-2 * HOUR)), errResp('e1', 'stripe', iso(-HOUR)));
+    const { authAlerts } = await readAudit(dir, NOW);
+    expect(authAlerts).toEqual([
+      { mcp: 'stripe', lastFailureTs: iso(-2 * HOUR), message: 'reauth required' },
+    ]);
+  });
+
+  it('k) oauth_failed followed by a CLEAN response → alert clears', async () => {
+    const dir = await write('auth-k', oauthFail('f1', 'stripe', iso(-2 * HOUR)), okResp('o1', 'stripe', iso(-HOUR)));
+    const { authAlerts } = await readAudit(dir, NOW);
+    expect(authAlerts).toEqual([]);
+  });
+
+  it('m) an idle connector with no failure never alerts', async () => {
+    const dir = await write('auth-m', okResp('o1', 'linear', iso(-30 * HOUR)));
+    const { authAlerts } = await readAudit(dir, NOW);
+    expect(authAlerts).toEqual([]);
+  });
+
+  it('n) regression: the 08-15/09 stripe outage keeps the alert up for the whole window', async () => {
+    // Minimal imitation of the real trail: every wake-up retries, the
+    // initialize fails, the proxy answers with an error, and a fresh
+    // oauth_failed lands. Repeated every 12 h for 7 days. In the real trail
+    // this shape produced 369 "live" signals and zero successful calls.
+    const DAY = 24 * HOUR;
+    const start = -7 * DAY;
+    const events: Record<string, unknown>[] = [];
+    const beats: number[] = [];
+    for (let t = start, i = 0; t <= -HOUR; t += 12 * HOUR, i++) {
+      beats.push(t);
+      events.push(oauthFail(`f${i}`, 'stripe', iso(t)));
+      events.push(mcpRequest(`r${i}`, 'stripe', iso(t + 60_000)));
+      events.push(errResp(`e${i}`, 'stripe', iso(t + 120_000), i));
+    }
+    const dir = await write('auth-n', ...events);
+
+    // Evaluated at every beat: the alert must never drop out. Before the fix
+    // each error response superseded its own failure and the alert vanished.
+    for (const t of beats) {
+      const at = NOW + t + 5 * 60_000; // 5 min after that beat's error response
+      const { authAlerts } = await readAudit(dir, at);
+      expect(authAlerts.map((a) => a.mcp)).toEqual(['stripe']);
+    }
+
+    // And it clears the moment one call actually succeeds.
+    const dirOk = await write('auth-n-ok', ...events, okResp('ok', 'stripe', iso(-30 * 60_000)));
+    const { authAlerts } = await readAudit(dirOk, NOW);
     expect(authAlerts).toEqual([]);
   });
 });

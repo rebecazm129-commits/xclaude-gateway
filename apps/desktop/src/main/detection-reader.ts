@@ -90,6 +90,11 @@ export async function listJsonlFiles(dir: string): Promise<string[]> {
 // A single auth-relevant signal extracted from one JSONL line. The AuditStore
 // caches these per file so assembleAudit can rebuild the auth-alert maps without
 // re-reading disk. mcp/ts always present; message only for 'fail'.
+//   'fail'     = proxy.error kind=oauth_failed.
+//   'live'     = an mcp.response with NO `error` and no isInterrupt, i.e. a call
+//                the connector actually answered. Narrowed on 23/09: it used to
+//                be any mcp.*, which let failing traffic pass as proof of life.
+//   'recovery' = the desktop-written marker after a successful reconnect.
 export interface AuthSignal {
   mcp: string;
   ts: string;
@@ -214,9 +219,11 @@ export function parseAuditContent(content: string): ParsedFile {
     ) {
       continue;
     }
-    // Auth-signal extraction. A single mcp.request line yields BOTH a 'live'
-    // signal here AND a detection event below — exactly as the original
-    // interleaved loop did (it fell through to the detection guards).
+    // Auth-signal extraction. A line can yield BOTH a signal here AND a
+    // detection event below — exactly as the original interleaved loop did (it
+    // fell through to the detection guards). Until 23/09 the 'live' branch was
+    // the mcp.request one; it is now the successful-response one, so a request
+    // line contributes only its detection event.
     // Lines with source 'claude-code' are EXCLUDED (F1.2 v2 point 4c): tool
     // traffic observed via Claude Code hooks says nothing about the Gateway
     // connector's auth state — an mcp named 'notion' here must not mark the
@@ -235,7 +242,16 @@ export function parseAuditContent(content: string): ParsedFile {
             kind: 'fail',
             message: typeof obj['message'] === 'string' ? obj['message'] : '',
           });
-        } else if (typeof ty === 'string' && ty.startsWith('mcp.')) {
+        } else if (ty === 'mcp.response' && obj['error'] === undefined && obj['isInterrupt'] !== true) {
+          // Only a SUCCESSFUL response proves the credential still works.
+          // Until 23/09 any mcp.* counted, which silently cancelled the alert
+          // with the very traffic that was failing: during the stripe outage
+          // of 08-15/09 the trail holds 184 `initialize` requests, 183
+          // responses ALL carrying `error`, and 2 notifications/cancelled —
+          // 369 "live" signals and not one successful call in seven days, so
+          // the connector never stayed in authAlerts long enough to be
+          // announced. A request is an attempt, a notification is not an
+          // answer, and an error response is the opposite of proof.
           authSignals.push({ mcp, ts, kind: 'live' });
         } else if (ty === CONNECTOR_RECOVERED_TYPE) {
           // Desktop-written positive signal after a successful reconnect.

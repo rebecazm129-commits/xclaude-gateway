@@ -217,18 +217,22 @@ describe('getCchookStatus (F1.3c)', () => {
 });
 
 describe('auth-signal source guard (detection-reader)', () => {
+  // Vehicle for the source guard: a SUCCESSFUL mcp.response, which is what
+  // produces a 'live' signal since 23/09. It used to be an mcp.request; after
+  // the narrowing that would yield no signal at all, and both cases below
+  // would pass even with the source guard deleted — green and testing nothing.
   const base = {
     v: 1,
     id: '01JZZZZZZZZZZZZZZZZZZZZZZZ',
     ts: '2026-07-15T10:00:00.000Z',
     session: 'S',
     mcp: 'notion',
-    type: 'mcp.request',
-    direction: 'client_to_server',
+    type: 'mcp.response',
+    direction: 'server_to_client',
     rpcId: 'r1',
-    method: 'tools/call',
-    params: { name: 't', arguments: {} },
-    detection: { category: 'tool_call_allowed', severity: 'low', findings: [] },
+    result: {},
+    bytes: 10,
+    overheadUs: 5,
   };
 
   it("synthesized line (source: 'claude-code') does NOT produce a live signal", () => {
