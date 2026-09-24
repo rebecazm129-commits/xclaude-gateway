@@ -71,21 +71,34 @@ function snap(label) {
   });
 }
 
-/** Differing pixels between two BGRA buffers, and where the first one is. */
+/**
+ * Differing pixels between two BGRA buffers, and the box they fall in.
+ *
+ * The box is what makes a non-zero result readable: "1175 px in a 54x13 band
+ * at the top" is a new tab label, while the same count spread over the whole
+ * window is a layout shift. Without it every difference looks the same.
+ */
 function comparePixels(a, b, width) {
-  if (a.length !== b.length) return { differing: -1, first: null };
+  if (a.length !== b.length) return { differing: -1, box: null };
   let differing = 0;
-  let first = null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -1;
+  let maxY = -1;
   for (let i = 0; i < a.length; i += 4) {
     if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2] || a[i + 3] !== b[i + 3]) {
       differing += 1;
-      if (first === null) {
-        const p = i / 4;
-        first = { x: p % width, y: Math.floor(p / width) };
-      }
+      const p = i / 4;
+      const x = p % width;
+      const y = Math.floor(p / width);
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
     }
   }
-  return { differing, first };
+  const box = differing === 0 ? null : { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+  return { differing, box };
 }
 
 function diff() {
@@ -112,7 +125,7 @@ function diff() {
     const meta = JSON.parse(readFileSync(join(beforeDir, `${stem}.json`), 'utf8'));
     const a = readFileSync(join(beforeDir, `${stem}.bitmap`));
     const b = readFileSync(afterBitmap);
-    const { differing, first } = comparePixels(a, b, meta.width);
+    const { differing, box } = comparePixels(a, b, meta.width);
     if (differing === -1) {
       report.push(`  ${stem}: SIZE CHANGED (${a.length} vs ${b.length} bytes)`);
       worst = Number.POSITIVE_INFINITY;
@@ -124,7 +137,7 @@ function diff() {
     report.push(
       differing === 0
         ? `  ${stem}: identical (${total} px)`
-        : `  ${stem}: ${differing} px differ (${pct}%), first at ${first.x},${first.y}` +
+        : `  ${stem}: ${differing} px differ (${pct}%) in a ${box.w}x${box.h} box at ${box.x},${box.y}` +
           `\n      before: ${join(beforeDir, `${stem}.png`)}\n      after:  ${join(afterDir, `${stem}.png`)}`,
     );
   }
