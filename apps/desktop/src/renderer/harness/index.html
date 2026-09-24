@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Enforced by the browser, not by discipline: the harness page may not
+         open a socket of any kind. Every value it renders comes from an
+         in-memory fixture, so nothing legitimate needs the network. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+    />
+    <title>xCLAUDE Gateway — renderer harness</title>
+  </head>
+  <body>
+    <div id="harness-root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

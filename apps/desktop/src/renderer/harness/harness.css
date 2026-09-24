@@ -1,0 +1,40 @@
+/* Harness chrome only — never shipped. Deliberately unlike the product's own
+   styling so a screenshot cannot be mistaken for the real app. */
+.harnessBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: #16233a;
+  color: #cfe0ff;
+  font: 11px/1.4 ui-sans-serif, system-ui, sans-serif;
+}
+.harnessTag {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #4d8bff;
+  color: #04122b;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.harnessPick {
+  flex: none;
+  font-size: 11px;
+}
+.harnessNote {
+  min-width: 0;
+  opacity: 0.85;
+}
+/* The app assumes it owns the window; give it a fixed viewport-sized box so
+   scroll behaviour matches the real frame rather than growing the page. */
+.harnessFrame {
+  height: calc(100vh - 30px);
+  overflow: hidden;
+  display: flex;
+}
+.harnessFrame > * {
+  flex: 1;
+  min-width: 0;
+}
