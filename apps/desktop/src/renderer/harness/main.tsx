@@ -20,6 +20,14 @@ const scenario = scenarioById(params.get('scenario'));
 // effect pass.
 window.xcg = buildFakeApi(scenario);
 
+// Land on the tab the scenario is about, through the same key the app reads —
+// no test-only prop on App, and the tab persistence stays exercised.
+try {
+  if (scenario.tab !== undefined) window.localStorage.setItem('xcg:lastTab', scenario.tab);
+} catch {
+  // Private mode: the app falls back to its own default, which is fine here.
+}
+
 function Bar(): JSX.Element {
   return (
     <div className="harnessBar">

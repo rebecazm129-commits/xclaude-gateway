@@ -10,7 +10,8 @@
 // module, no Node builtin (the renderer build guard rejects those anyway).
 
 import type { XcgApi, BaselineHistoryEntry } from '../lib/xcgApi.js';
-import { pageFor, statusFor, type Scenario } from './fixtures.js';
+import { fakePage } from './fake-page.js';
+import { statusFor, type Scenario } from './fixtures.js';
 
 const never = async (): Promise<never> => {
   // A harness click that reaches one of these means the component wants a real
@@ -29,7 +30,10 @@ export function buildFakeApi(s: Scenario): XcgApi {
       authAlerts: [...s.authAlerts],
       retention: s.retention,
     }),
-    listDetectionPage: async () => pageFor(s),
+    // Filters for real: a toolbar whose chips move without moving the list is
+    // worse than no harness at all — it looks like it works. See fake-page.ts
+    // for which axes are replicated and what that costs.
+    listDetectionPage: async ({ filter }) => fakePage(s, filter),
     detectionDetail: async () => null,
     exportAudit: never,
     retentionStatus: async () => ({

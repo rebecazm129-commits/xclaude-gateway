@@ -11,7 +11,6 @@ import type { IpcConfigEntry, StatusResult } from '@xcg/shared/config';
 
 import type {
   ConnectorAuthAlert,
-  DetectionPageResult,
   DetectionRowSlim,
   EnrichableEvent,
   RetentionBannerInfo,
@@ -20,6 +19,9 @@ import type { BaselineHistoryEntry } from '../lib/xcgApi.js';
 
 export interface Scenario {
   id: string;
+  /** Which tab to land on. The harness writes it to the same localStorage key
+   *  the app reads, so no component needs a test-only prop. */
+  tab?: 'setup' | 'detections' | 'claude-code';
   label: string;
   /** What to look at, printed above the app frame. */
   note: string;
@@ -130,7 +132,7 @@ function manyRows(n: number): DetectionRowSlim[] {
     type: 'mcp.request' as const,
     category: CATS[i % CATS.length]!,
     severity: SEVS[i % SEVS.length]!,
-    source: (i % 3 === 2 ? 'claude-code' : 'wrapper') as DetectionRowSlim['source'],
+    source: (i % 3 === 2 ? 'claude-code' : 'gateway') as DetectionRowSlim['source'],
     toolName: ['search', 'create_page', 'list_charges', 'send_email', 'export_rows'][i % 5]!,
     method: 'tools/call',
     outcome: i % 9 === 0 ? ('error' as const) : ('ok' as const),
@@ -161,9 +163,36 @@ const THIRTY = manyRows(30);
 
 // --- scenarios ---------------------------------------------------------------
 
+/** Rows shaped for the Claude Code tab: a source, a session and a project, so
+ *  the session separators and the Status / Session / Project chips have
+ *  something real to show. */
+function ccRows(n: number): DetectionRowSlim[] {
+  const base = Date.parse('2026-09-24T12:00:00.000Z');
+  const sessions = ['4f21c8a0-1111-4aaa-9000-000000000001', '9b30d7e1-2222-4bbb-9000-000000000002'];
+  const projects = ['xclaude-gateway', 'notes'];
+  return Array.from({ length: n }, (_, i) => ({
+    id: `cc-${String(i).padStart(3, '0')}`,
+    ts: new Date(base - i * 11 * 60_000).toISOString(),
+    mcp: 'claude-code',
+    type: 'mcp.request' as const,
+    category: i % 4 === 0 ? CATS[i % CATS.length]! : 'tool_call_allowed',
+    severity: SEVS[i % SEVS.length]!,
+    source: 'claude-code' as DetectionRowSlim['source'],
+    toolName: ['Read', 'Edit', 'Bash', 'Grep', 'WebFetch'][i % 5]!,
+    method: 'tools/call',
+    ccSession: sessions[i < 7 ? 0 : 1]!,
+    project: projects[i < 7 ? 0 : 1]!,
+    argsSummary: ['src/renderer/App.tsx', 'pnpm -r test', 'detection-reader.ts', 'src/**/*.tsx'][i % 4]!,
+    outcome: i % 6 === 0 ? ('error' as const) : ('ok' as const),
+  }));
+}
+
+const CC = ccRows(14);
+
 export const SCENARIOS: readonly Scenario[] = [
   {
     id: 'baseline',
+    tab: 'setup',
     label: 'Connector card · baseline history',
     note:
       'Setup → pick notion, then stripe. Each card lists all five baseline kinds. ' +
@@ -178,7 +207,43 @@ export const SCENARIOS: readonly Scenario[] = [
     hookVanishedTs: null,
   },
   {
+    id: 'detections-tab',
+    tab: 'detections',
+    label: 'Detections tab · baseline for comparison',
+    note:
+      'The Detections tab as it is TODAY, before the shared-skeleton refactor. Fix this in your ' +
+      'memory or a screenshot: the five cards, the search box and time segments, the Severity / ' +
+      'Category / Source chips, the column header (Time · Severity · Category · MCP · Tool), the ' +
+      'rows, the detail drawer, and the footer reading "Export 30 events".',
+    entries: TWO_CONNECTORS,
+    events: rowsToEvents(THIRTY),
+    rows: THIRTY,
+    authAlerts: [],
+    baseline: BASELINE_BOTH,
+    retention: null,
+    hookVanishedTs: null,
+  },
+  {
+    id: 'claude-code-tab',
+    tab: 'claude-code',
+    label: 'Claude Code tab · baseline for comparison',
+    note:
+      'The Claude Code tab as it is TODAY. Look at the "Flagged only" chip — it is the one piece ' +
+      'this step actually rewrote (same markup, same classes, now a ToggleChip component). Check ' +
+      'it toggles, that the pressed style is unchanged, and that the tooltip still reads "Show ' +
+      'only calls that triggered a detection". Then the session separators, the Status chip, the ' +
+      'column header (Time · Severity · Tool · Details) and the footer.',
+    entries: TWO_CONNECTORS,
+    events: rowsToEvents(CC),
+    rows: CC,
+    authAlerts: [],
+    baseline: BASELINE_BOTH,
+    retention: null,
+    hookVanishedTs: null,
+  },
+  {
     id: 'detections-scroll',
+    tab: 'detections',
     label: 'Detections · tall notice + 30 rows',
     note:
       'Detections tab. A hook-removed notice and a log-size banner sit above the list, ' +
@@ -200,25 +265,6 @@ export const SCENARIOS: readonly Scenario[] = [
   },
 ];
 
-export function pageFor(s: Scenario): DetectionPageResult {
-  const counts: Record<Severity, number> = { low: 0, medium: 0, high: 0, critical: 0 };
-  for (const r of s.rows) counts[r.severity] += 1;
-  return {
-    rows: s.rows,
-    total: s.rows.length,
-    totalMatching: s.rows.length,
-    severityCounts: counts,
-    categoryFilteredTotal: s.rows.length,
-    nextCursor: null,
-    facets: {
-      tools: [...new Set(s.rows.map((r) => r.toolName).filter((t): t is string => t !== undefined))],
-      ccSessions: [],
-      projects: [],
-    },
-    authAlerts: [...s.authAlerts],
-    retention: s.retention,
-  };
-}
 
 export function scenarioById(id: string | null): Scenario {
   return SCENARIOS.find((s) => s.id === id) ?? SCENARIOS[0]!;
