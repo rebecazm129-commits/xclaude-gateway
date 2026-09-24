@@ -32,6 +32,7 @@ import {
   type BaselineEvent,
 } from './manifest-sections.js';
 import { readBaselineV2, type SectionName } from './manifest-v2.js';
+import type { Attention } from '@xcg/shared';
 
 export interface SectionObservation {
   section: SectionName;
@@ -41,6 +42,8 @@ export interface SectionObservation {
   /** The snapshot hashes before and after. Absent on a seed, where there is no
    *  "before" to point at. */
   snapshot?: { before: string | null; after: string };
+  /** A heuristic's opinion that a human should look. */
+  attention?: Attention;
   /** Lifecycle facts. Never a detection, never counted. */
   events: BaselineEvent[];
 }
@@ -110,6 +113,7 @@ export function createSectionStore(baseDir: string, opts: SectionStoreOptions): 
       ...(outcome.change !== undefined && nextHash !== null
         ? { snapshot: { before: priorHash, after: nextHash } }
         : {}),
+      ...(outcome.attention !== undefined ? { attention: outcome.attention } : {}),
       events: outcome.events,
     };
   }

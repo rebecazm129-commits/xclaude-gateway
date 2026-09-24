@@ -223,7 +223,7 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
                 snapshot: obs.snapshot ?? null,
                 changes: obs.change.changes,
                 findings: obs.change.findings,
-                attention: { level: 'normal' },
+                attention: obs.attention ?? { level: 'normal' },
                 overheadUs: elapsedUs(tsObservedNs),
               });
             }

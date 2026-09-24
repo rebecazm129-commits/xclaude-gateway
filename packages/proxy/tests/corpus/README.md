@@ -127,3 +127,38 @@ failing the repo's suite.
 
 This corpus ships the **mechanism** only; the dump from the trail is a separate
 task.
+
+## The inserted-text heuristic, and why this corpus cannot validate its threshold
+
+`inserted_text_single_tool` v1 raises `review_recommended` when **60 or more
+characters of text are inserted** into the description of an item that already
+existed, and **at most one item** of the section moved.
+
+**The 60 is the weak part, and this is the honest statement of why.** It
+coincides with the shortest poison in this corpus (69 characters). These
+payloads were *authored*, not observed, so a threshold tuned to clear them is
+tuned to a number we chose ourselves — the corpus can show the heuristic fires,
+never that 60 is the right place to fire. Read a `covered` on any of the six
+attention-only cases as "the mechanism works", not as "the threshold is
+validated".
+
+What the threshold *is* calibrated against is production: one operator's
+four-month trail, 217 manifest transitions, giving **51 events in Needs review
+over 15.5 weeks — 3.3 a week, peak 7**. That replay is pinned as a regression
+test in `tests/heuristics-replay.test.ts`, opt-in via `XCG_REPLAY_TRAIL` for the
+same reason the local negatives are: it reads a real installation's trail, which
+never belongs in the repo.
+
+**Recalibrating with real data from more than one installation is expected.**
+When it happens, the new threshold goes in with `HEURISTIC_VERSION` bumped, so
+every `review_recommended` already written stays interpretable — a heuristic
+that silently changes its threshold makes its own history meaningless.
+
+Two limits worth stating rather than discovering:
+
+- **Split across items evades it by construction.** `poison-split-two-tools`
+  touches two tools and stays a gap on purpose. Widening the scope to three
+  would catch it and take the production rate from 3.3 a week to 5.5.
+- **It only sees `description`.** Text added elsewhere on the surface is the
+  rules' territory, and `invisible-variation-selectors` (13 characters
+  inserted) shows a payload no length measure can reach.

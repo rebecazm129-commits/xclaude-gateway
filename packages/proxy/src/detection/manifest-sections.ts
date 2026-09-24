@@ -10,14 +10,19 @@
 // classifier ships has nothing to compare against on that day.
 
 
+import type { Attention, ConnectorChangeEntry } from '@xcg/shared';
+
 import {
+  buildManifest,
   canonicalizeCollection,
   canonicalize,
   reportChanges,
   type ChangeReport,
   type Manifest,
+  type ToolDef,
 } from './manifest.js';
 import { planMigration } from './manifest-migrate.js';
+import { attentionFor, descriptionsOf } from './heuristics.js';
 import {
   SECURITY_PROJECTION_VERSION,
   emptyBaseline,
@@ -59,6 +64,9 @@ export interface BaselineEvent {
 }
 
 export interface SectionOutcome {
+  /** A heuristic's opinion that a human should look. Computed from the STORED
+   *  snapshot, which is the only place the previous text exists. */
+  attention?: Attention;
   /** What moved and what a rule made of it. Absent when nothing moved. A
    *  report with no findings is the normal case, and is not a detection. */
   change?: ChangeReport;
@@ -104,6 +112,66 @@ function freshSection(
     last_changed_generation: generation,
     recent_wire_hashes: [wire],
   };
+}
+
+const itemsOf = (snapshot: unknown): Record<string, unknown>[] => {
+  if (snapshot === null || typeof snapshot !== 'object') return [];
+  const items = Array.isArray(snapshot) ? snapshot : (snapshot as Record<string, unknown>)['items'];
+  if (!Array.isArray(items)) return [];
+  return items.filter((x): x is Record<string, unknown> => x !== null && typeof x === 'object');
+};
+
+const nameOf = (item: Record<string, unknown>): string | null => {
+  for (const key of ['name', 'uri', 'uriTemplate']) {
+    const v = item[key];
+    if (typeof v === 'string') return v;
+  }
+  return null;
+};
+
+/** What moved between two stored snapshots of one section. */
+function changeBetween(
+  section: SectionName,
+  before: unknown,
+  after: unknown,
+): ChangeReport | null {
+  const prevItems = itemsOf(before);
+  const nextItems = itemsOf(after);
+  if (section === 'tools') {
+    // The full classifier: same rules, same grading, same frozen v1 shape.
+    // A stored item with no name is not a tool the v1 algorithm can express,
+    // so it is dropped rather than coerced.
+    const asTools = (items: Record<string, unknown>[]): ToolDef[] =>
+      items.filter((i) => typeof i['name'] === 'string') as unknown as ToolDef[];
+    const prevTools = asTools(prevItems);
+    const nextTools = asTools(nextItems);
+    return reportChanges(buildManifest(prevTools), buildManifest(nextTools), nextTools);
+  }
+  // Generic item diff. No rule reads these sections yet, so no findings — the
+  // change is recorded as the fact it is.
+  const prev = new Map<string, Record<string, unknown>>();
+  for (const i of prevItems) {
+    const n = nameOf(i);
+    if (n !== null) prev.set(n, i);
+  }
+  const next = new Map<string, Record<string, unknown>>();
+  for (const i of nextItems) {
+    const n = nameOf(i);
+    if (n !== null) next.set(n, i);
+  }
+  const changes: ConnectorChangeEntry[] = [];
+  for (const name of [...new Set([...prev.keys(), ...next.keys()])].sort()) {
+    const p = prev.get(name);
+    const n = next.get(name);
+    if (p === undefined) changes.push({ kind: 'item_added', target: name });
+    else if (n === undefined) changes.push({ kind: 'item_removed', target: name });
+    else if (p['description'] !== n['description']) {
+      changes.push({ kind: 'description_changed', target: name, path: '$.description' });
+    } else if (JSON.stringify(p) !== JSON.stringify(n)) {
+      changes.push({ kind: 'schema_changed', target: name });
+    }
+  }
+  return changes.length > 0 ? { changes, findings: [] } : null;
 }
 
 export interface ObserveDeps {
@@ -206,8 +274,28 @@ export function observeSection(
   const wire = hashOf(snapshot);
   if (wire === existing.wire_hash) return { ...(change !== undefined ? { change } : {}), events };
 
-  // Wire moved: advance the baseline. Classifying the change is the rules'
-  // job, not this layer's.
+  // Wire moved: say what moved, then advance the baseline.
+  //
+  // `tools` goes through the full classifier, which is the only section that
+  // has one: it rebuilds both v1-shaped manifests from the snapshots and runs
+  // the same rules the frozen path ran. The other four sections get an item
+  // diff and NO findings, because no rule reads them yet — recording the
+  // surface before judging it is the right order, and a baseline that only
+  // starts the day the classifier ships has nothing to compare against.
+  change = changeBetween(section, existing.snapshot, snapshot) ?? change;
+
+  // The heuristic reads the PREVIOUS snapshot — the only place the old text
+  // exists, and the reason the v2 baseline stores snapshots at all.
+  const beforeDesc = descriptionsOf(existing.snapshot);
+  const afterDesc = descriptionsOf(snapshot);
+  let moved = 0;
+  for (const [name, after] of afterDesc) {
+    const before = beforeDesc.get(name);
+    if (before === undefined || before !== after) moved += 1;
+  }
+  for (const name of beforeDesc.keys()) if (!afterDesc.has(name)) moved += 1;
+  const attention = attentionFor({ affectedItems: moved, before: beforeDesc, after: afterDesc });
+
   baseline.sections[section] = {
     ...existing,
     state: 'current',
@@ -218,5 +306,9 @@ export function observeSection(
     recent_wire_hashes: pushRecent(existing.recent_wire_hashes, wire),
   };
   writeBaselineV2(deps.baseDir, baseline, now);
-  return { ...(change !== undefined ? { change } : {}), events };
+  return {
+    ...(change !== undefined ? { change } : {}),
+    ...(attention.level === 'review_recommended' ? { attention } : {}),
+    events,
+  };
 }

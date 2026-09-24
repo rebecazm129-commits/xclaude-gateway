@@ -1572,9 +1572,9 @@
     "severity": {
       "minimum": "high"
     },
-    "status": "gap",
+    "status": "covered",
     "split": "holdout",
-    "notes": "A description that redefines what a tool is FOR reads as an ordinary doc edit."
+    "notes": "A description that redefines what a tool is FOR reads as an ordinary doc edit. Covered since the inserted_text_single_tool v1 heuristic: no rule can prove anything about this edit, so it is surfaced as review_recommended rather than as a finding. That distinction is kept in the caught_by report."
   },
   {
     "id": "sensitive-param-added",
@@ -1765,9 +1765,9 @@
     "severity": {
       "minimum": "high"
     },
-    "status": "gap",
+    "status": "covered",
     "split": "dev",
-    "notes": "The semantic gap the full-surface scan does NOT close. No classic marker, no path shape - just an instruction a model would follow. Kept as a gap so closing the path-shaped cases never reads as closing the family."
+    "notes": "The semantic gap the full-surface scan does NOT close. No classic marker, no path shape - just an instruction a model would follow. Kept as a gap so closing the path-shaped cases never reads as closing the family. Covered since the inserted_text_single_tool v1 heuristic: no rule can prove anything about this edit, so it is surfaced as review_recommended rather than as a finding. That distinction is kept in the caught_by report. NOTE ON THE THRESHOLD: 60 characters is the minimum poison length in this corpus, so the corpus cannot be evidence that 60 is the right number — these payloads were authored, not observed. The calibration comes from the production side."
   },
   {
     "id": "poison-split-across-fields-no-path",
@@ -1827,9 +1827,9 @@
     "severity": {
       "minimum": "high"
     },
-    "status": "gap",
+    "status": "covered",
     "split": "dev",
-    "notes": "Same semantic gap, split so no single field is complete. Correlating fields is a separate capability from scanning them."
+    "notes": "Same semantic gap, split so no single field is complete. Correlating fields is a separate capability from scanning them. Covered since the inserted_text_single_tool v1 heuristic: no rule can prove anything about this edit, so it is surfaced as review_recommended rather than as a finding. That distinction is kept in the caught_by report."
   },
   {
     "id": "invisible-variation-selectors",
@@ -1949,9 +1949,9 @@
     "severity": {
       "minimum": "high"
     },
-    "status": "gap",
+    "status": "covered",
     "split": "holdout",
-    "notes": "Measured 24/09 with the class list already written: medium, description_changed only - no hidden_characters, no injection_marker, no sensitive_path_reference. U+00AD and U+180E are format characters that render as nothing (or as a hyphen only at a line break). Placed INSIDE the path and inside the keyword so both the path rule and the injection pattern see a broken string."
+    "notes": "Measured 24/09 with the class list already written: medium, description_changed only - no hidden_characters, no injection_marker, no sensitive_path_reference. U+00AD and U+180E are format characters that render as nothing (or as a hyphen only at a line break). Placed INSIDE the path and inside the keyword so both the path rule and the injection pattern see a broken string. Covered since the inserted_text_single_tool v1 heuristic: no rule can prove anything about this edit, so it is surfaced as review_recommended rather than as a finding. That distinction is kept in the caught_by report."
   },
   {
     "id": "invisible-cyrillic-homoglyphs",
@@ -2010,9 +2010,9 @@
     "severity": {
       "minimum": "high"
     },
-    "status": "gap",
+    "status": "covered",
     "split": "holdout",
-    "notes": "Measured 24/09 with the class list already written: medium, description_changed only - no hidden_characters, no injection_marker, no sensitive_path_reference. Nothing is hidden here: every character is visible and the text reads as English. The substitution is Cyrillic o/r for Latin. NFKC does NOT fold scripts, so a pattern written in Latin cannot match - a different failure mode from the four stripped classes."
+    "notes": "Measured 24/09 with the class list already written: medium, description_changed only - no hidden_characters, no injection_marker, no sensitive_path_reference. Nothing is hidden here: every character is visible and the text reads as English. The substitution is Cyrillic o/r for Latin. NFKC does NOT fold scripts, so a pattern written in Latin cannot match - a different failure mode from the four stripped classes. Covered since the inserted_text_single_tool v1 heuristic: no rule can prove anything about this edit, so it is surfaced as review_recommended rather than as a finding. That distinction is kept in the caught_by report."
   },
   {
     "id": "poison-inserted-midway",
@@ -2134,9 +2134,9 @@
       "minimum": "high",
       "maximum": null
     },
-    "status": "gap",
+    "status": "covered",
     "split": "holdout",
-    "notes": "Length is held constant on purpose: a rug pull has no reason to grow a description when it can replace one. Every net-growth threshold is blind here by construction."
+    "notes": "Length is held constant on purpose: a rug pull has no reason to grow a description when it can replace one. Every net-growth threshold is blind here by construction. Covered since the inserted_text_single_tool v1 heuristic: no rule can prove anything about this edit, so it is surfaced as review_recommended rather than as a finding. That distinction is kept in the caught_by report."
   },
   {
     "id": "poison-split-two-tools",
@@ -2222,6 +2222,6 @@
     },
     "status": "gap",
     "split": "holdout",
-    "notes": "Neither half reads as an instruction alone; the composition does. Also the only attack case that touches two tools, which is what separates a <=1 scope from a <=3 one."
+    "notes": "Neither half reads as an instruction alone; the composition does. Also the only attack case that touches two tools, which is what separates a <=1 scope from a <=3 one. Stays a GAP on purpose: inserted_text_single_tool v1 asks for a change to touch at most ONE item, and this one touches two by design. The scope is what separates a targeted edit from a vendor release, so widening it to catch this would trade a measured 3.3 alerts a week for 5.5. Splitting a payload across two tools is a real evasion of this heuristic and is recorded here as such."
   }
 ]

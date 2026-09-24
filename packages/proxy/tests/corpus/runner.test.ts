@@ -14,7 +14,8 @@
 
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { buildManifest, diffManifest } from '../../src/detection/manifest.js';
+import { buildManifest, diffManifest, toolDeltas } from '../../src/detection/manifest.js';
+import { attentionFor, descriptionsOf } from '../../src/detection/heuristics.js';
 import { RULE_IDS, RULE_VERSIONS } from '../../src/detection/rules.js';
 import type { DetectionBlock } from '@xcg/shared';
 import {
@@ -33,6 +34,24 @@ function run(f: Fixture): DetectionBlock | null {
   return diffManifest(buildManifest(base), buildManifest(next), next);
 }
 
+/** Does the inserted-text heuristic ask for a look at this case?
+ *
+ *  A case the heuristic raises is surfaced to the user in Needs review, so it
+ *  IS handled — but by a different mechanism than a rule, and the report says
+ *  which. A heuristic can never manufacture a finding, only attention. */
+function raisesAttention(f: Fixture): boolean {
+  const base = f.baseline?.tools ?? [];
+  const next = f.changed?.tools ?? [];
+  if (next.length === 0) return false;
+  return (
+    attentionFor({
+      affectedItems: toolDeltas(buildManifest(base), buildManifest(next), next).length,
+      before: descriptionsOf(base),
+      after: descriptionsOf(next),
+    }).level === 'review_recommended'
+  );
+}
+
 const types = (d: DetectionBlock | null): string[] => (d?.findings ?? []).map((x) => x.type);
 
 /** Which of the acceptable mechanisms actually caught this case, if any.
@@ -49,9 +68,14 @@ function caughtBy(f: Fixture, det: DetectionBlock | null): string[] {
   return f.expected_findings.filter((t) => seen.includes(t));
 }
 
-/** Did the detector do the RIGHT thing for this case? */
+/** Did the product do the RIGHT thing for this case?
+ *
+ *  Surfacing is the question, not which mechanism did it: a rule proving
+ *  something and a heuristic asking for a look both put the case in front of
+ *  the user. The caught_by report keeps them distinguishable. */
 function correct(f: Fixture, det: DetectionBlock | null): boolean {
   if (f.malicious) {
+    if (raisesAttention(f)) return true;
     const min = f.severity.minimum;
     if (min == null) return det !== null;
     if (det === null || !atLeast(det.severity, min)) return false;
@@ -77,7 +101,8 @@ function describeCollection(name: string, cases: Fixture[]): void {
         const det = run(f);
         const ok = correct(f, det);
         const by = caughtBy(f, det);
-        if (by.length > 0) caughtByReport.push(`${f.id} <- ${by.join(' + ')}`);
+        const mech = [...by, ...(raisesAttention(f) ? ['attention:inserted_text_single_tool'] : [])];
+        if (mech.length > 0) caughtByReport.push(`${f.id} <- ${mech.join(' + ')}`);
         if (f.status === 'covered') {
           tally.covered += 1;
           expect(
