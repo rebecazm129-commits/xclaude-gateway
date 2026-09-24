@@ -104,6 +104,40 @@ describe('observeSection — first sight', () => {
   });
 });
 
+describe('observeSection — pagination', () => {
+  it('a paginated first sight warns and seeds NOTHING', () => {
+    const d = deps();
+    const out = observeSection(d, 'notion', 'tools', {
+      tools: [{ name: 'a' }],
+      nextCursor: 'page2',
+    });
+    expect(kinds(out)).toEqual(['snapshot_incomplete']);
+    expect(out.change).toBeUndefined();
+    expect(readBaselineV2(d.baseDir, 'notion').kind).toBe('absent');
+  });
+
+  it('a paginated read of a tracked section leaves the baseline untouched', () => {
+    const d = deps();
+    observeSection(d, 'notion', 'tools', { tools: [{ name: 'a' }, { name: 'b' }] });
+    const before = readBaselineV2(d.baseDir, 'notion');
+    if (before.kind !== 'ok') throw new Error('expected ok');
+    const hash = before.baseline.sections.tools!.wire_hash;
+    // One page of a catalogue that has more: recording it would look like a
+    // mass removal now and a mass addition on the next full read.
+    const out = observeSection(d, 'notion', 'tools', { tools: [{ name: 'a' }], nextCursor: 'p2' });
+    expect(kinds(out)).toEqual(['snapshot_incomplete']);
+    const after = readBaselineV2(d.baseDir, 'notion');
+    if (after.kind !== 'ok') throw new Error('expected ok');
+    expect(after.baseline.sections.tools!.wire_hash).toBe(hash);
+  });
+
+  it('an empty cursor is not pagination', () => {
+    const d = deps();
+    const out = observeSection(d, 'notion', 'tools', { tools: [{ name: 'a' }], nextCursor: '' });
+    expect(kinds(out)).toEqual(['section_initialized']);
+  });
+});
+
 describe('observeSection — steady state', () => {
   it('an unchanged section emits nothing', () => {
     const d = deps();

@@ -623,18 +623,18 @@ function manifestFileName(mcp: string): string {
   return `${safe}.${sha256(mcp).slice(0, 12)}.json`;
 }
 
-export function createManifestStore(
-  baseDir: string,
-  opts: ManifestStoreOptions = {},
-): ManifestStore {
-  const now = opts.now ?? ((): string => new Date().toISOString());
-  const dir = join(baseDir, 'manifests');
-  const pathFor = (mcp: string): string => join(dir, manifestFileName(mcp));
+/** The v1 baseline file for one connector. Exposed so the v2 path can keep the
+ *  old file alive during the two-published-version window without duplicating
+ *  the FROZEN algorithm: the same reader, the same writer, the same bytes. */
+export interface V1BaselineFile {
+  read(mcp: string): Manifest | null;
+  write(mcp: string, manifest: Manifest): void;
+}
 
-  function readBaseline(mcp: string): Manifest | null {
+function readV1File(path: string): Manifest | null {
     let raw: string;
     try {
-      raw = readFileSync(pathFor(mcp), 'utf8');
+      raw = readFileSync(path, 'utf8');
     } catch {
       return null; // absent
     }
@@ -674,18 +674,23 @@ export function createManifestStore(
       map[k] = sh !== undefined ? { d, s, sh } : { d, s };
     }
     return { hash, tools: map };
-  }
+}
 
-  function writeBaseline(mcp: string, manifest: Manifest): void {
+function writeV1File(
+  dir: string,
+  path: string,
+  mcp: string,
+  manifest: Manifest,
+  updatedAt: string,
+): void {
     const payload: StoredManifest = {
       v: MANIFEST_VERSION,
       mcp,
       hash: manifest.hash,
       tools: manifest.tools,
-      updatedAt: now(),
+      updatedAt: updatedAt,
     };
-    const path = pathFor(mcp);
-    try {
+        try {
       mkdirSync(dir, { recursive: true, mode: 0o700 });
       if (!existsSync(path)) {
         // Cold-start seed: writeAtomic requires an existing target (it stats
@@ -704,7 +709,20 @@ export function createManifestStore(
       // case the baseline lags and the same change re-alerts next time.
       console.error(`manifest store: failed to write ${path}:`, err);
     }
-  }
+}
+
+export function createManifestStore(
+  baseDir: string,
+  opts: ManifestStoreOptions = {},
+): ManifestStore {
+  const now = opts.now ?? ((): string => new Date().toISOString());
+  const dir = join(baseDir, 'manifests');
+  const pathFor = (mcp: string): string => join(dir, manifestFileName(mcp));
+
+  const readBaseline = (mcp: string): Manifest | null => readV1File(pathFor(mcp));
+
+  const writeBaseline = (mcp: string, manifest: Manifest): void =>
+    writeV1File(dir, pathFor(mcp), mcp, manifest, now());
 
   function checkAndUpdate(mcp: string, result: unknown): ManifestOutcome {
     const tools = extractTools(result);
@@ -733,4 +751,26 @@ export function createManifestStore(
   }
 
   return { checkAndUpdate };
+}
+
+/**
+ * The v1 file, read and written with the frozen algorithm and nothing else.
+ *
+ * WHY THIS EXISTS. v2 owns the baseline now, but a user who downgrades must
+ * land on a v1 file that still describes their connectors — otherwise the old
+ * build reseeds silently and the first real change after the downgrade goes
+ * unreported. Keeping it written for a minimum of two published versions is
+ * what makes the downgrade safe; after that it can stop.
+ */
+export function createV1BaselineFile(
+  baseDir: string,
+  opts: ManifestStoreOptions = {},
+): V1BaselineFile {
+  const now = opts.now ?? ((): string => new Date().toISOString());
+  const dir = join(baseDir, 'manifests');
+  const pathFor = (mcp: string): string => join(dir, manifestFileName(mcp));
+  return {
+    read: (mcp) => readV1File(pathFor(mcp)),
+    write: (mcp, manifest) => writeV1File(dir, pathFor(mcp), mcp, manifest, now()),
+  };
 }

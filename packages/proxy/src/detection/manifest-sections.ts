@@ -65,6 +65,14 @@ export interface SectionOutcome {
   events: BaselineEvent[];
 }
 
+/** Does this result declare more pages? A non-empty nextCursor means the
+ *  collection in hand is partial. */
+export function isPaginated(result: unknown): boolean {
+  if (result === null || typeof result !== 'object') return false;
+  const cursor = (result as Record<string, unknown>)['nextCursor'];
+  return typeof cursor === 'string' && cursor !== '';
+}
+
 /** Canonical snapshot of a section result, or null when the shape is not what
  *  the section expects (a malformed result must not overwrite a good
  *  baseline). */
@@ -126,6 +134,18 @@ export function observeSection(
   result: unknown,
 ): SectionOutcome {
   const events: BaselineEvent[] = [];
+
+  // A paginated result is ONE PAGE, not the surface. Advancing the baseline on
+  // it would record a catalogue with most of its items missing, and the next
+  // full read would then look like a mass addition. Report that the auditor
+  // could not assemble the snapshot and leave the baseline exactly as it was.
+  // No connector in the 4-month corpus paginates tools/list (0 of 2875), but
+  // the spec allows it and a rug pull has an obvious incentive to use it.
+  if (isPaginated(result)) {
+    events.push({ event: 'snapshot_incomplete', section });
+    return { events };
+  }
+
   const snapshot = snapshotOf(section, result);
   // A result that does not carry the section's collection is not evidence of
   // anything: leaving the baseline untouched is the only safe reading.
