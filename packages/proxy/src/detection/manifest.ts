@@ -311,12 +311,39 @@ const IMPERATIVE =
 // `nextTools` carries the live (raw) tool defs so the injection scan and the
 // informational scans can read the NEW description in the clear — the
 // baseline only ever stores hashes.
-export function diffManifest(
+// --- the split: what MOVED vs what a RULE made of it ------------------------
+//
+// These two are kept apart because they answer different questions and the
+// facts model (shared/connector-change.ts) reports them separately: changes
+// are statements about the connector, findings are judgements by a versioned
+// security rule. diffManifest below is now only the merge of the two, kept so
+// the existing tool_manifest_changed output stays byte-identical.
+//
+// ORDER IS PART OF THE CONTRACT. Per tool, facts come first and rules after —
+// which is exactly the order the single function used to produce, because
+// sensitive_param_added always followed surface_added, and surface_added and
+// schema_changed are mutually exclusive.
+
+/** One tool's delta between two manifests. Unchanged tools produce none. */
+export type ToolDelta =
+  | { kind: 'added'; name: string; def?: ToolDef }
+  | { kind: 'removed'; name: string }
+  | {
+      kind: 'changed';
+      name: string;
+      prev: ToolSig;
+      next: ToolSig;
+      def?: ToolDef;
+      /** The NEW description in the clear; the baseline only stores hashes. */
+      desc: string;
+    };
+
+/** Every tool that moved, in stable name order. */
+export function toolDeltas(
   prev: Manifest,
   next: Manifest,
   nextTools?: readonly ToolDef[],
-): DetectionBlock | null {
-  if (prev.hash === next.hash) return null;
+): ToolDelta[] {
   const descByName = new Map<string, string>();
   const defByName = new Map<string, ToolDef>();
   if (nextTools !== undefined) {
@@ -325,75 +352,132 @@ export function diffManifest(
       defByName.set(t.name, t);
     }
   }
-  const findings: DetectionFinding[] = [];
-  let high = false;
-  let medium = false;
+  const deltas: ToolDelta[] = [];
   const names = new Set([...Object.keys(prev.tools), ...Object.keys(next.tools)]);
   for (const name of [...names].sort()) {
     const p = prev.tools[name];
     const n = next.tools[name];
+    const def = defByName.get(name);
     if (p === undefined && n !== undefined) {
-      findings.push({ type: 'tool_added', location: name });
-      // A brand-new tool is judged by the same rule as a grown one: what it
-      // can RECEIVE. Without the live def (nextTools absent) there is no
-      // schema to read, so it stays low rather than guessing.
-      const def = defByName.get(name);
-      const sensitive =
-        def === undefined ? [] : surfaceOf(def).filter(isSensitiveParamName).sort();
-      for (const s of sensitive) {
-        findings.push({ type: 'sensitive_param_added', location: `${name}.${s}` });
-      }
-      if (sensitive.length > 0) high = true;
-      // A new tool has no history to diff, so its whole surface is scanned.
-      // Low by default; high on a sensitive parameter, an injection marker or
-      // a path-shaped credential reference.
-      if (def !== undefined) {
-        const scan = scanToolSurface(def, name);
-        findings.push(...scan.findings);
-        if (scan.high) high = true;
-        if (scan.medium) medium = true;
-      }
+      deltas.push({ kind: 'added', name, ...(def !== undefined ? { def } : {}) });
     } else if (p !== undefined && n === undefined) {
-      findings.push({ type: 'tool_removed', location: name });
-    } else if (p !== undefined && n !== undefined) {
-      const desc = descByName.get(name) ?? '';
-      if (p.d !== n.d) {
-        findings.push({ type: 'description_changed', location: name });
-        medium = true;
-        // Informational only. The baseline stores hashes, not text, so these
-        // say "present in the NEW description", never "newly introduced".
-        // Both were pure documentation prose across the whole corpus.
-        if (EXTERNAL_URL.test(desc)) findings.push({ type: 'external_url', location: name });
-        if (IMPERATIVE.test(desc)) findings.push({ type: 'imperative_language', location: name });
+      deltas.push({ kind: 'removed', name });
+    } else if (p !== undefined && n !== undefined && (p.d !== n.d || p.s !== n.s)) {
+      deltas.push({
+        kind: 'changed',
+        name,
+        prev: p,
+        next: n,
+        ...(def !== undefined ? { def } : {}),
+        desc: descByName.get(name) ?? '',
+      });
+    }
+  }
+  return deltas;
+}
+
+export interface ChangeScanResult {
+  findings: DetectionFinding[];
+  medium: boolean;
+}
+
+/**
+ * What MOVED on one tool. Facts and informational annotations only — never a
+ * security judgement, so this can never raise severity above medium.
+ */
+export function describeChanges(delta: ToolDelta): ChangeScanResult {
+  const findings: DetectionFinding[] = [];
+  let medium = false;
+  if (delta.kind === 'added') {
+    findings.push({ type: 'tool_added', location: delta.name });
+  } else if (delta.kind === 'removed') {
+    findings.push({ type: 'tool_removed', location: delta.name });
+  } else {
+    if (delta.prev.d !== delta.next.d) {
+      findings.push({ type: 'description_changed', location: delta.name });
+      medium = true;
+      // Informational only. The baseline stores hashes, not text, so these say
+      // "present in the NEW description", never "newly introduced". Both were
+      // pure documentation prose across the whole corpus.
+      if (EXTERNAL_URL.test(delta.desc)) {
+        findings.push({ type: 'external_url', location: delta.name });
       }
-      if (p.s !== n.s) {
-        const added = addedSurface(p.sh, n.sh);
-        if (added.length > 0) {
-          findings.push({ type: 'surface_added', location: name });
-          medium = true;
-          const sensitive = added.filter(isSensitiveParamName);
-          if (sensitive.length > 0) {
-            // location carries the parameter, not the tool: it IS the finding.
-            for (const s of sensitive.sort()) {
-              findings.push({ type: 'sensitive_param_added', location: `${name}.${s}` });
-            }
-            high = true;
-          }
-        } else {
-          findings.push({ type: 'schema_changed', location: name });
-          medium = true;
-        }
-      }
-      // Anything changed on this tool → scan its whole new surface, not just
-      // the description. A schema-only edit can carry the instruction.
-      const def = defByName.get(name);
-      if (def !== undefined && (p.d !== n.d || p.s !== n.s)) {
-        const scan = scanToolSurface(def, name);
-        findings.push(...scan.findings);
-        if (scan.high) high = true;
-        if (scan.medium) medium = true;
+      if (IMPERATIVE.test(delta.desc)) {
+        findings.push({ type: 'imperative_language', location: delta.name });
       }
     }
+    if (delta.prev.s !== delta.next.s) {
+      if (addedSurface(delta.prev.sh, delta.next.sh).length > 0) {
+        findings.push({ type: 'surface_added', location: delta.name });
+      } else {
+        findings.push({ type: 'schema_changed', location: delta.name });
+      }
+      medium = true;
+    }
+  }
+  return { findings, medium };
+}
+
+export interface RuleScanResult {
+  findings: DetectionFinding[];
+  high: boolean;
+  medium: boolean;
+}
+
+/**
+ * What a SECURITY rule makes of one tool's delta.
+ *
+ * A brand-new tool is judged by the same question as a grown one: what it can
+ * RECEIVE. Without the live def there is no schema to read, so it says nothing
+ * rather than guessing.
+ */
+export function scanRules(delta: ToolDelta): RuleScanResult {
+  const findings: DetectionFinding[] = [];
+  let high = false;
+  let medium = false;
+
+  if (delta.kind === 'removed') return { findings, high, medium };
+
+  const sensitive =
+    delta.kind === 'added'
+      ? delta.def === undefined
+        ? []
+        : surfaceOf(delta.def).filter(isSensitiveParamName).sort()
+      : addedSurface(delta.prev.sh, delta.next.sh).filter(isSensitiveParamName).sort();
+  for (const s of sensitive) {
+    // location carries the parameter, not the tool: it IS the finding.
+    findings.push({ type: 'sensitive_param_added', location: `${delta.name}.${s}` });
+  }
+  if (sensitive.length > 0) high = true;
+
+  // Anything moved on this tool → scan its whole NEW surface, not just the
+  // description. A schema-only edit can carry the instruction.
+  if (delta.def !== undefined) {
+    const scan = scanToolSurface(delta.def, delta.name);
+    findings.push(...scan.findings);
+    if (scan.high) high = true;
+    if (scan.medium) medium = true;
+  }
+  return { findings, high, medium };
+}
+
+export function diffManifest(
+  prev: Manifest,
+  next: Manifest,
+  nextTools?: readonly ToolDef[],
+): DetectionBlock | null {
+  if (prev.hash === next.hash) return null;
+  const findings: DetectionFinding[] = [];
+  let high = false;
+  let medium = false;
+  for (const delta of toolDeltas(prev, next, nextTools)) {
+    const changed = describeChanges(delta);
+    findings.push(...changed.findings);
+    if (changed.medium) medium = true;
+    const ruled = scanRules(delta);
+    findings.push(...ruled.findings);
+    if (ruled.high) high = true;
+    if (ruled.medium) medium = true;
   }
   if (findings.length === 0) return null;
   const severity: Severity = high ? 'high' : medium ? 'medium' : 'low';
