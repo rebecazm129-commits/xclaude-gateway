@@ -1,6 +1,8 @@
 .row {
   display: grid;
-  grid-template-columns: 130px 90px 160px 180px 1fr;
+  /* Inherited from the container — see ColumnHeader.tsx. The header and
+     the row cannot disagree, because there is only one declaration. */
+  grid-template-columns: var(--xcg-columns);
   align-items: center;
   padding: 6px 16px;
   border-bottom: var(--kraft-hairline) solid var(--kraft-border);

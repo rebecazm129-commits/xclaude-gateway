@@ -2,9 +2,9 @@
    column header). The .timeFilterSpacer is NOT here: ClaudeCode.tsx imports
    it from Detections.module.css directly (commit 5f — one physical rule,
    zero drift). The multi-row toolbar band below flows the other way:
-   Detections.tsx imports it since the toolbar parity (22/07). The
-   .columnHeader grid must stay in sync with ClaudeCodeRow.module.css's
-   .row. */
+   Detections.tsx imports it since the toolbar parity (22/07). The column
+   grid is no longer here either: it lives once in ColumnHeader.tsx and the
+   row inherits it, so there is nothing left to keep in sync by hand. */
 
 /* Flagged-only toggle chip — FilterDropdown trigger grammar (pill, hairline,
    same type scale) with an accent state when active. */
@@ -200,22 +200,4 @@
   min-height: 0;
 }
 
-.columnHeader {
-  display: grid;
-  grid-template-columns: 130px 90px 180px 1fr;
-  align-items: center;
-  padding: 8px 16px;
-  gap: 20px;
-  background: var(--kraft-filter-bg);
-  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
-  box-sizing: border-box;
-}
 
-.columnHeaderCell {
-  font-family: var(--kraft-font-ui);
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--kraft-ink-soft);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}

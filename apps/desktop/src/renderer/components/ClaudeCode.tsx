@@ -10,6 +10,7 @@ import type {
 } from '../../shared/types.js';
 
 import { AuditFooter } from './AuditFooter.js';
+import { CLAUDE_CODE_COLUMNS, ColumnHeader, columnsStyle } from './ColumnHeader.js';
 import { CATEGORY_OPTIONS, SEVERITY_OPTIONS } from './Detections.js';
 import { useListView } from '../hooks/useListView.js';
 import { ClaudeCodeRow } from './ClaudeCodeRow.js';
@@ -437,13 +438,8 @@ export function ClaudeCode(): JSX.Element {
           </div>
         )
       ) : (
-        <div className={styles['listContainer']}>
-          <div className={styles['columnHeader']}>
-            <span className={styles['columnHeaderCell']}>Time</span>
-            <span className={styles['columnHeaderCell']}>Severity</span>
-            <span className={styles['columnHeaderCell']}>Tool</span>
-            <span className={styles['columnHeaderCell']}>Details</span>
-          </div>
+        <div className={styles['listContainer']} style={columnsStyle(CLAUDE_CODE_COLUMNS)}>
+          <ColumnHeader columns={CLAUDE_CODE_COLUMNS} />
           <div className={styles['listViewport']} ref={listViewportRef}>
             <FixedSizeList
               height={listHeight}

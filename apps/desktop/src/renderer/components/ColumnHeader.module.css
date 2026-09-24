@@ -1,0 +1,23 @@
+/* Header styling, moved verbatim from Detections.module.css (.columnHeader /
+   .columnHeaderCell). Claude Code had a byte-identical copy apart from the
+   track list, which is now the inherited --xcg-columns. */
+
+.columnHeader {
+  display: grid;
+  grid-template-columns: var(--xcg-columns);
+  align-items: center;
+  padding: 8px 16px;
+  gap: 20px;
+  background: var(--kraft-filter-bg);
+  border-bottom: var(--kraft-hairline) solid var(--kraft-border);
+  box-sizing: border-box;
+}
+
+.columnHeaderCell {
+  font-family: var(--kraft-font-ui);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--kraft-ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}

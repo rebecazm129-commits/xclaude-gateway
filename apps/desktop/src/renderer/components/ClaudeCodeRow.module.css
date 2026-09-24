@@ -1,9 +1,11 @@
 /* Claude Code row — same visual grammar as DetectionRow.module.css (tokens,
    heights, hover), Detections' column order: Time · [badge] · Tool ·
-   Details. Keep the grid in sync with ClaudeCode.module.css's .columnHeader. */
+   Details. The grid comes from ColumnHeader.tsx, inherited. */
 .row {
   display: grid;
-  grid-template-columns: 130px 90px 180px 1fr;
+  /* Inherited from the container — see ColumnHeader.tsx. The header and
+     the row cannot disagree, because there is only one declaration. */
+  grid-template-columns: var(--xcg-columns);
   align-items: center;
   padding: 6px 16px;
   border-bottom: var(--kraft-hairline) solid var(--kraft-border);

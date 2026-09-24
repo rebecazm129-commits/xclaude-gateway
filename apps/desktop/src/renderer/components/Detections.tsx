@@ -13,6 +13,7 @@ import type {
 import { SOURCE_LABELS } from './detections-format.js';
 
 import { AuditFooter } from './AuditFooter.js';
+import { ColumnHeader, DETECTION_COLUMNS, columnsStyle } from './ColumnHeader.js';
 import { DateRangePicker } from './DateRangePicker.js';
 import { DetailDrawer } from './DetailDrawer.js';
 import { DetectionRow } from './DetectionRow.js';
@@ -363,14 +364,8 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
           </div>
         )
       ) : (
-        <div className={styles['listContainer']}>
-          <div className={styles['columnHeader']}>
-            <span className={styles['columnHeaderCell']}>Time</span>
-            <span className={styles['columnHeaderCell']}>Severity</span>
-            <span className={styles['columnHeaderCell']}>Category</span>
-            <span className={styles['columnHeaderCell']}>MCP</span>
-            <span className={styles['columnHeaderCell']}>Tool</span>
-          </div>
+        <div className={styles['listContainer']} style={columnsStyle(DETECTION_COLUMNS)}>
+          <ColumnHeader columns={DETECTION_COLUMNS} />
           <div className={styles['listViewport']} ref={listViewportRef}>
             <FixedSizeList
               ref={listRef}
