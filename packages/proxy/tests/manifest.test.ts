@@ -199,7 +199,12 @@ describe('grading (F-A): surface, injection, migration, corpus', () => {
     const n = buildManifest([tool('send', 'd', { properties: { body: {}, bcc: {} } })]);
     const det = diffManifest(o, n);
     expect(det?.severity).toBe('high');
-    expect(det?.findings).toContainEqual({ type: 'sensitive_param_added', location: 'send.bcc' });
+    expect(det?.findings).toContainEqual({
+      type: 'sensitive_param_added',
+      rule_id: 'sensitive_param_added',
+      rule_version: 1,
+      location: 'send.bcc',
+    });
   });
 
   it('new required entry, neutral name → medium, surface_added', () => {
@@ -214,7 +219,12 @@ describe('grading (F-A): surface, injection, migration, corpus', () => {
     const n = buildManifest([tool('send', 'd', { properties: { to: {} }, required: ['to'] })]);
     const det = diffManifest(o, n);
     expect(det?.severity).toBe('high');
-    expect(det?.findings).toContainEqual({ type: 'sensitive_param_added', location: 'send.to' });
+    expect(det?.findings).toContainEqual({
+      type: 'sensitive_param_added',
+      rule_id: 'sensitive_param_added',
+      rule_version: 1,
+      location: 'send.to',
+    });
   });
 
   it('new NESTED property (smuggled via anyOf), neutral name → medium', () => {
@@ -243,7 +253,12 @@ describe('grading (F-A): surface, injection, migration, corpus', () => {
     ]);
     const det = diffManifest(o, n);
     expect(det?.severity).toBe('high');
-    expect(det?.findings).toContainEqual({ type: 'sensitive_param_added', location: 'q.webhook_url' });
+    expect(det?.findings).toContainEqual({
+      type: 'sensitive_param_added',
+      rule_id: 'sensitive_param_added',
+      rule_version: 1,
+      location: 'q.webhook_url',
+    });
   });
 
   it('property REMOVED (surface shrinks) → medium, schema_changed', () => {
@@ -273,6 +288,8 @@ describe('grading (F-A): surface, injection, migration, corpus', () => {
     expect(det?.findings.map((f) => f.type)).toEqual(['description_changed', 'injection_marker']);
     expect(det?.findings).toContainEqual({
       type: 'injection_marker',
+      rule_id: 'injection_marker',
+      rule_version: 1,
       location: 'send',
       path: '$.description',
       rule: 'injection_pattern',
@@ -353,7 +370,12 @@ describe('grading (F-A): surface, injection, migration, corpus', () => {
       const n = buildManifest([tool(t, 'd', schemaWith('keep', p))]);
       const det = diffManifest(o, n, [tool(t, 'd', schemaWith('keep', p))]);
       expect(det?.severity, `${t}.${p}`).toBe('high');
-      expect(det?.findings).toContainEqual({ type: 'sensitive_param_added', location: `${t}.${p}` });
+      expect(det?.findings).toContainEqual({
+        type: 'sensitive_param_added',
+        rule_id: 'sensitive_param_added',
+        rule_version: 1,
+        location: `${t}.${p}`,
+      });
     }
   });
 
@@ -375,7 +397,12 @@ describe('grading (F-A): surface, injection, migration, corpus', () => {
     const det = diffManifest(buildManifest(before), buildManifest(risky), risky);
     expect(det?.severity).toBe('high');
     expect(det?.findings).toContainEqual({ type: 'tool_added', location: 'b' });
-    expect(det?.findings).toContainEqual({ type: 'sensitive_param_added', location: 'b.webhook_url' });
+    expect(det?.findings).toContainEqual({
+      type: 'sensitive_param_added',
+      rule_id: 'sensitive_param_added',
+      rule_version: 1,
+      location: 'b.webhook_url',
+    });
   });
 
   it('tool_added without the live defs cannot read a schema, so it stays low', () => {
@@ -523,6 +550,8 @@ describe('createManifestStore', () => {
     ]);
     expect(out.detection?.findings).toContainEqual({
       type: 'injection_marker',
+      rule_id: 'injection_marker',
+      rule_version: 1,
       location: 'send',
       path: '$.description',
       rule: 'injection_pattern',

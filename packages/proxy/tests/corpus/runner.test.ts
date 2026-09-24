@@ -15,6 +15,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { buildManifest, diffManifest } from '../../src/detection/manifest.js';
+import { RULE_IDS, RULE_VERSIONS } from '../../src/detection/rules.js';
 import type { DetectionBlock } from '@xcg/shared';
 import {
   ATTACK,
@@ -111,6 +112,52 @@ describe('corpus/out_of_scope', () => {
       expect(f.would_be_seen_by, `${f.id} must record which detector could see it`).toBeTruthy();
     });
   }
+});
+
+// Every judgement the corpus produces must say WHICH rule made it and at what
+// version. Checked here rather than per case because it is an invariant of the
+// detector, not a property of any one fixture: a rule added later without a
+// stamp fails this the first time any case reaches it.
+describe('corpus/rule stamping', () => {
+  const SECURITY = new Set<string>(RULE_IDS);
+  // These never raise severity, so they are evidence, not judgements, and must
+  // stay unversioned — stamping them would imply a rule that can be tuned.
+  const INFORMATIONAL = new Set(['external_url', 'imperative_language', 'external_ref']);
+
+  const everyFinding = [...ATTACK, ...NEGATIVES, ...LOCAL]
+    .flatMap((f) => (run(f)?.findings ?? []).map((x) => ({ id: f.id, finding: x })));
+
+  it('the corpus actually exercises the rules (otherwise this suite proves nothing)', () => {
+    const stamped = everyFinding.filter((x) => SECURITY.has(x.finding.type));
+    expect(stamped.length, 'no security finding in the whole corpus').toBeGreaterThan(0);
+  });
+
+  it('every security finding carries a matching rule_id and a real rule_version', () => {
+    for (const { id, finding } of everyFinding) {
+      if (!SECURITY.has(finding.type)) continue;
+      expect(finding.rule_id, `${id}: ${finding.type} has no rule_id`).toBe(finding.type);
+      expect(finding.rule_version, `${id}: ${finding.type} has no rule_version`).toBe(
+        RULE_VERSIONS[finding.rule_id!],
+      );
+      expect(finding.rule_version, `${id}: rule_version must be a real version`).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('informational findings carry neither — they are evidence, not judgements', () => {
+    for (const { id, finding } of everyFinding) {
+      if (!INFORMATIONAL.has(finding.type)) continue;
+      expect(finding.rule_id, `${id}: ${finding.type} must not be stamped`).toBeUndefined();
+      expect(finding.rule_version, `${id}: ${finding.type} must not be versioned`).toBeUndefined();
+    }
+  });
+
+  it('shape findings carry neither either — a change is a fact, not a verdict', () => {
+    const SHAPE = new Set(['tool_added', 'tool_removed', 'description_changed', 'surface_added', 'schema_changed']);
+    for (const { id, finding } of everyFinding) {
+      if (!SHAPE.has(finding.type)) continue;
+      expect(finding.rule_id, `${id}: ${finding.type} must not be stamped`).toBeUndefined();
+    }
+  });
 });
 
 afterAll(() => {

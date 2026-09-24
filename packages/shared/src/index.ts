@@ -15,6 +15,8 @@ export type RpcId = string | number | null;
 // proxy (motor de detección) y el desktop (reader del dashboard); fuente
 // única aquí para que no se dupliquen ni se desincronicen.
 
+import type { RuleId } from './connector-change.js';
+
 export type Severity = 'low' | 'medium' | 'high' | 'critical';
 
 // CANONICAL COUNT (product copy depends on it): 8 categories = 7 RISK
@@ -51,6 +53,12 @@ export interface DetectionFinding {
   codepoint?: string;
   /** How many occurrences at this path. */
   count?: number;
+  /** WHICH security rule produced this finding, and at what version. Present
+   *  only on security findings: informational ones (external_url,
+   *  imperative_language, external_ref) never raise severity and are not
+   *  versioned. Optional and additive — historical trail lines predate both. */
+  rule_id?: RuleId;
+  rule_version?: number;
 }
 
 // The facts model for connector changes (connector_change / review_status).

@@ -18,6 +18,7 @@ import type { DetectionBlock, DetectionFinding, Severity } from '@xcg/shared';
 import { injectionFindings } from './detectors/prompt-injection.js';
 import { isSensitiveParamName } from './detectors/sensitive-params.js';
 import { HIDDEN_CLASS_SEVERITY, hiddenCharacterHits } from './detectors/text-normalize.js';
+import { ruleStamp } from './rules.js';
 import { externalRefs, sensitivePathHits, walkSurface } from './detectors/surface-scan.js';
 
 export const MANIFEST_VERSION = 1;
@@ -210,7 +211,13 @@ function scanToolSurface(
     .filter((e) => injectionFindings(e.normalized).length > 0)
     .map((e) => e.path);
   for (const path of injectionPaths.slice(0, MAX_SURFACE_FINDINGS)) {
-    findings.push({ type: 'injection_marker', location: name, path, rule: 'injection_pattern' });
+    findings.push({
+      type: 'injection_marker',
+      ...ruleStamp('injection_marker'),
+      location: name,
+      path,
+      rule: 'injection_pattern',
+    });
     high = true;
   }
 
@@ -219,6 +226,7 @@ function scanToolSurface(
   for (const hit of sensitivePathHits(entries).slice(0, MAX_SURFACE_FINDINGS)) {
     findings.push({
       type: 'sensitive_path_reference',
+      ...ruleStamp('sensitive_path_reference'),
       location: name,
       path: hit.path,
       rule: hit.rule,
@@ -236,6 +244,7 @@ function scanToolSurface(
     for (const hit of hiddenCharacterHits(e.raw)) {
       findings.push({
         type: 'hidden_characters',
+        ...ruleStamp('hidden_characters'),
         location: name,
         path: e.path,
         rule: hit.cls,
@@ -446,7 +455,11 @@ export function scanRules(delta: ToolDelta): RuleScanResult {
       : addedSurface(delta.prev.sh, delta.next.sh).filter(isSensitiveParamName).sort();
   for (const s of sensitive) {
     // location carries the parameter, not the tool: it IS the finding.
-    findings.push({ type: 'sensitive_param_added', location: `${delta.name}.${s}` });
+    findings.push({
+      type: 'sensitive_param_added',
+      ...ruleStamp('sensitive_param_added'),
+      location: `${delta.name}.${s}`,
+    });
   }
   if (sensitive.length > 0) high = true;
 
