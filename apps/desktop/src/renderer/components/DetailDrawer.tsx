@@ -2,20 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { Category, DetectionDetail, DetectionFinding, DetectionRowSlim } from '../../shared/types.js';
 import { Badge } from './Badge.js';
-import { PAIRED_SOURCE_LABELS, SOURCE_LABELS } from './detections-format.js';
+import { PAIRED_SOURCE_LABELS, SOURCE_LABELS, categoryLabel } from './detections-format.js';
 
 import styles from './DetailDrawer.module.css';
-
-const CATEGORY_LABELS: Record<Category, string> = {
-  credential_detected: 'Credential leak',
-  prompt_injection: 'Prompt injection',
-  email_send_warning: 'Email send',
-  data_export_warning: 'Data export',
-  tool_call_allowed: 'Tool call',
-  pii_detected: 'PII detected',
-  pii_structured: 'Structured PII',
-  tool_manifest_changed: 'Tool manifest changed',
-};
 
 const MONTH_SHORT: readonly string[] = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -157,7 +146,7 @@ export function DetailDrawer({ row, onClose }: DetailDrawerProps): JSX.Element {
         <span className={styles['timestamp']}>{formatTimestamp(row.ts)}</span>
         <Badge severity={row.severity} />
         <span id={headingId} className={styles['category']}>
-          {CATEGORY_LABELS[row.category]}
+          {categoryLabel(row.category, row.method)}
         </span>
         <button
           className={styles['closeButton']}

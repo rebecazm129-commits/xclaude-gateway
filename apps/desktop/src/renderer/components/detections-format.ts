@@ -37,6 +37,22 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   tool_manifest_changed: 'Tool manifest changed',
 };
 
+// Baseline rows whose method is NOT tools/call used to render as "Tool call".
+// That is a lie on 6,132 rows of the production trail (initialize 2,705,
+// tools/list 2,177, resources/list 661, prompts/list 588, resources/read 1),
+// and it degrades silently: in the 2026-07-28 compatibility probe the new
+// discovery RPC `server/discover` also came through labelled "Tool call".
+//
+// The method has its own column already (DetectionRow: row.toolName ?? row.method),
+// so repeating it here would duplicate rather than inform. This names the CLASS
+// of row truthfully instead: a protocol call that was observed and not flagged.
+export function categoryLabel(category: Category, method?: string): string {
+  if (category === 'tool_call_allowed' && method !== undefined && method !== 'tools/call') {
+    return 'Protocol call';
+  }
+  return CATEGORY_LABELS[category];
+}
+
 const MONTH_SHORT: readonly string[] = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',

@@ -25,6 +25,39 @@ function row(over: Partial<DetectionRowSlim> = {}): DetectionRowSlim {
   };
 }
 
+// The 08-15/09 trail audit found 6,132 baseline rows whose method is not
+// tools/call rendering as "Tool call": initialize, tools/list, resources/list,
+// prompts/list, resources/read — and, in the 2026-07-28 probe, server/discover.
+describe('DetectionRow — category label for baseline rows', () => {
+  const baseline = (method: string): DetectionRowSlim =>
+    row({ type: 'mcp.request', category: 'tool_call_allowed', method, rpcId: 1, direction: 'client_to_server' } as Partial<DetectionRowSlim>);
+
+  it('a real tools/call still reads "Tool call"', () => {
+    render(<DetectionRow row={{ ...baseline('tools/call'), toolName: 'search' }} selected={false} onClick={() => {}} />);
+    expect(screen.getByText('Tool call')).toBeTruthy();
+  });
+
+  for (const m of ['initialize', 'tools/list', 'resources/list', 'prompts/list', 'resources/read', 'server/discover']) {
+    it(`a ${m} baseline row does NOT read "Tool call"`, () => {
+      render(<DetectionRow row={baseline(m)} selected={false} onClick={() => {}} />);
+      expect(screen.queryByText('Tool call')).toBeNull();
+      expect(screen.getByText('Protocol call')).toBeTruthy();
+      // The method keeps its own column — the label must not duplicate it.
+      expect(screen.getByText(m)).toBeTruthy();
+    });
+  }
+
+  it('a row with no method at all falls back to the category label', () => {
+    render(<DetectionRow row={row({ category: 'tool_call_allowed' })} selected={false} onClick={() => {}} />);
+    expect(screen.getByText('Tool call')).toBeTruthy();
+  });
+
+  it('non-baseline categories are never relabelled, whatever the method', () => {
+    render(<DetectionRow row={row({ type: 'mcp.request', category: 'credential_detected', method: 'initialize', rpcId: 1, direction: 'client_to_server' } as Partial<DetectionRowSlim>)} selected={false} onClick={() => {}} />);
+    expect(screen.getByText('Credential leak')).toBeTruthy();
+  });
+});
+
 describe('DetectionRow — tool column', () => {
   it('shows the tool name for a request row (never [NER])', () => {
     render(

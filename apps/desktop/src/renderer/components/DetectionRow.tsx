@@ -2,7 +2,7 @@ import type { KeyboardEvent } from 'react';
 
 import type { DetectionRowSlim } from '../../shared/types.js';
 import { Badge } from './Badge.js';
-import { CATEGORY_LABELS, PAIRED_SOURCE_LABELS, enrichmentToolLabel, formatTimestamp } from './detections-format.js';
+import { PAIRED_SOURCE_LABELS, categoryLabel, enrichmentToolLabel, formatTimestamp } from './detections-format.js';
 
 import styles from './DetectionRow.module.css';
 
@@ -35,7 +35,7 @@ export function DetectionRow({ row, selected, onClick }: DetectionRowProps): JSX
       <span className={styles['timestamp']}>{formatTimestamp(row.ts)}</span>
       <Badge severity={row.severity} />
       <span className={styles['category']}>
-        {CATEGORY_LABELS[row.category]}
+        {categoryLabel(row.category, row.method)}
       </span>
       <span className={styles['mcp']}>
         {row.mcp}
