@@ -38,6 +38,13 @@ export type Category =
 export interface DetectionFinding {
   type: string;
   location?: string;
+  /** JSON path of the surface entry that produced the finding, e.g.
+   *  `$.inputSchema.properties.query.description`. Optional and additive:
+   *  historical trail lines predate it. */
+  path?: string;
+  /** WHICH rule matched (ssh_private_key, dotenv, injection_pattern…). The
+   *  finding explains what raised it and where, never a verdict. */
+  rule?: string;
 }
 
 export interface DetectionBlock {

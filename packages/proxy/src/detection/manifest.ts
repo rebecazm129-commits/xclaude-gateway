@@ -17,6 +17,8 @@ import type { DetectionBlock, DetectionFinding, Severity } from '@xcg/shared';
 
 import { injectionFindings } from './detectors/prompt-injection.js';
 import { isSensitiveParamName } from './detectors/sensitive-params.js';
+import { hasHiddenCharacters } from './detectors/text-normalize.js';
+import { externalRefs, sensitivePathHits, walkSurface } from './detectors/surface-scan.js';
 
 export const MANIFEST_VERSION = 1;
 
@@ -143,6 +145,57 @@ export function buildManifest(tools: readonly ToolDef[]): Manifest {
   return { hash: sha256(JSON.stringify(canonical)), tools: map };
 }
 
+// Full-surface scan of one tool definition. Returns the findings it produces
+// and whether any of them justifies high.
+//
+// Replaces the single-string scan that read only `description`: the 24/09 probe
+// showed an instruction in inputSchema.properties.<p>.description, in a vendor
+// field, or in a default came out as a bare schema_changed. The walker is
+// schema-agnostic on purpose (see surface-scan.ts).
+function scanToolSurface(tool: ToolDef, name: string): { findings: DetectionFinding[]; high: boolean } {
+  const entries = walkSurface(tool);
+  const findings: DetectionFinding[] = [];
+  let high = false;
+
+  // Injection markers anywhere on the surface, matched on the normalized view.
+  const injectionPaths = entries
+    .filter((e) => injectionFindings(e.normalized).length > 0)
+    .map((e) => e.path);
+  for (const path of injectionPaths.slice(0, MAX_SURFACE_FINDINGS)) {
+    findings.push({ type: 'injection_marker', location: name, path, rule: 'injection_pattern' });
+    high = true;
+  }
+
+  // Path-shaped references to credential files. The rule id says WHICH shape
+  // matched and the path says WHERE, so the finding explains itself.
+  for (const hit of sensitivePathHits(entries).slice(0, MAX_SURFACE_FINDINGS)) {
+    findings.push({
+      type: 'sensitive_path_reference',
+      location: name,
+      path: hit.path,
+      rule: hit.rule,
+    });
+    high = true;
+  }
+
+  // Evidence only: hidden characters and external refs never raise severity on
+  // their own. An external $ref is RECORDED and never resolved.
+  for (const e of entries) {
+    if (e.kind === 'value' && hasHiddenCharacters(e.raw)) {
+      findings.push({ type: 'hidden_characters', location: name, path: e.path });
+      break;
+    }
+  }
+  for (const ref of externalRefs(entries).slice(0, MAX_SURFACE_FINDINGS)) {
+    findings.push({ type: 'external_ref', location: name, path: ref.path, rule: 'not_resolved' });
+  }
+  return { findings, high };
+}
+
+// A poisoned manifest can carry an unbounded number of matches; the findings
+// list is evidence, not an inventory.
+const MAX_SURFACE_FINDINGS = 10;
+
 // Every property/required name a tool declares, at any nesting depth.
 function surfaceOf(tool: ToolDef): string[] {
   const sh = toolShape(tool);
@@ -227,18 +280,21 @@ export function diffManifest(
         findings.push({ type: 'sensitive_param_added', location: `${name}.${s}` });
       }
       if (sensitive.length > 0) high = true;
+      // A new tool has no history to diff, so its whole surface is scanned.
+      // Low by default; high on a sensitive parameter, an injection marker or
+      // a path-shaped credential reference.
+      if (def !== undefined) {
+        const scan = scanToolSurface(def, name);
+        findings.push(...scan.findings);
+        if (scan.high) high = true;
+      }
     } else if (p !== undefined && n === undefined) {
       findings.push({ type: 'tool_removed', location: name });
     } else if (p !== undefined && n !== undefined) {
       const desc = descByName.get(name) ?? '';
       if (p.d !== n.d) {
-        if (injectionFindings(desc).length > 0) {
-          findings.push({ type: 'injection_marker', location: name });
-          high = true;
-        } else {
-          findings.push({ type: 'description_changed', location: name });
-          medium = true;
-        }
+        findings.push({ type: 'description_changed', location: name });
+        medium = true;
         // Informational only. The baseline stores hashes, not text, so these
         // say "present in the NEW description", never "newly introduced".
         // Both were pure documentation prose across the whole corpus.
@@ -262,6 +318,14 @@ export function diffManifest(
           findings.push({ type: 'schema_changed', location: name });
           medium = true;
         }
+      }
+      // Anything changed on this tool → scan its whole new surface, not just
+      // the description. A schema-only edit can carry the instruction.
+      const def = defByName.get(name);
+      if (def !== undefined && (p.d !== n.d || p.s !== n.s)) {
+        const scan = scanToolSurface(def, name);
+        findings.push(...scan.findings);
+        if (scan.high) high = true;
       }
     }
   }

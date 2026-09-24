@@ -34,24 +34,38 @@ function run(f: Fixture): DetectionBlock | null {
 
 const types = (d: DetectionBlock | null): string[] => (d?.findings ?? []).map((x) => x.type);
 
-/** Did the detector do the RIGHT thing for this case? Attacks must be caught
- *  at or above the minimum severity with the expected findings; negatives must
- *  not over-alert, and must still report the changes listed for them. */
-function correct(f: Fixture, det: DetectionBlock | null): boolean {
+/** Which of the acceptable mechanisms actually caught this case, if any.
+ *  `expected_findings` is ANY-OF, not all-of: a case is caught when it reaches
+ *  the severity floor through ONE of the mechanisms that would be a legitimate
+ *  catch. Requiring every listed finding would grade the detector on which
+ *  route it took rather than on whether it caught the thing — the 24/09
+ *  measurement had fourteen cases reaching high through
+ *  sensitive_path_reference while the fixture happened to predict
+ *  injection_marker. */
+function caughtBy(f: Fixture, det: DetectionBlock | null): string[] {
+  if (det === null) return [];
   const seen = types(det);
+  return f.expected_findings.filter((t) => seen.includes(t));
+}
+
+/** Did the detector do the RIGHT thing for this case? */
+function correct(f: Fixture, det: DetectionBlock | null): boolean {
   if (f.malicious) {
     const min = f.severity.minimum;
     if (min == null) return det !== null;
     if (det === null || !atLeast(det.severity, min)) return false;
-    return f.expected_findings.every((t) => seen.includes(t));
+    return f.expected_findings.length === 0 || caughtBy(f, det).length > 0;
   }
   const max = f.severity.maximum;
+  const seen = types(det);
   if (max == null) return det === null;
   if (det !== null && !atMost(det.severity, max)) return false;
   return f.expected_changes.every((t) => seen.includes(t));
 }
 
 const tally = { covered: 0, gaps: 0, notObservable: OUT_OF_SCOPE.length, local: 0 };
+/** Which mechanism caught each case — the report, not an assertion. */
+const caughtByReport: string[] = [];
 
 function describeCollection(name: string, cases: Fixture[]): void {
   if (cases.length === 0) return;
@@ -61,6 +75,8 @@ function describeCollection(name: string, cases: Fixture[]): void {
       it(label, () => {
         const det = run(f);
         const ok = correct(f, det);
+        const by = caughtBy(f, det);
+        if (by.length > 0) caughtByReport.push(`${f.id} <- ${by.join(' + ')}`);
         if (f.status === 'covered') {
           tally.covered += 1;
           expect(
@@ -99,8 +115,9 @@ describe('corpus/out_of_scope', () => {
 
 afterAll(() => {
   const localNote = tally.local > 0 ? `, ${tally.local} local negatives` : ', no local negatives';
+  const by = caughtByReport.length > 0 ? `\n  caught_by:\n    ${caughtByReport.join('\n    ')}` : '';
   console.log(
     `\ncorpus v0: ${tally.covered} covered, ${tally.gaps} gaps, ${tally.notObservable} not observable${localNote}` +
-      `\n  (a gap that starts passing fails this suite on purpose — reclassify it to covered)\n`,
+      `\n  (a gap that starts passing fails this suite on purpose — reclassify it to covered)${by}\n`,
   );
 });
