@@ -22,9 +22,15 @@ interface AuditFooterProps {
   readonly total: number;
   /** Filtered count — the export target size. */
   readonly totalMatching: number;
+  /** What the rows ARE, singular. The footer says "Export 12 changes" on a
+   *  view of connector changes and "Export 12 events" everywhere else; calling
+   *  a change an event would be the footer disagreeing with the column above
+   *  it. Defaults to the existing wording, so the two views that predate this
+   *  read exactly as they did. */
+  readonly noun?: string;
 }
 
-export function AuditFooter({ filter, total, totalMatching }: AuditFooterProps): JSX.Element {
+export function AuditFooter({ filter, total, totalMatching, noun = 'event' }: AuditFooterProps): JSX.Element {
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ count: number } | { error: string } | null>(null);
 
@@ -73,7 +79,7 @@ export function AuditFooter({ filter, total, totalMatching }: AuditFooterProps):
       <div className={styles['exportGroup']}>
         {exportResult !== null && 'count' in exportResult && (
           <span className={styles['exportStatus']}>
-            Exported {exportResult.count} event{exportResult.count === 1 ? '' : 's'}
+            Exported {exportResult.count} {noun}{exportResult.count === 1 ? '' : 's'}
           </span>
         )}
         {exportResult !== null && 'error' in exportResult && (
@@ -91,7 +97,7 @@ export function AuditFooter({ filter, total, totalMatching }: AuditFooterProps):
             ? 'Exporting…'
             : exportResult !== null
               ? 'Export…'
-              : `Export ${totalMatching} event${totalMatching === 1 ? '' : 's'}`}
+              : `Export ${totalMatching} ${noun}${totalMatching === 1 ? '' : 's'}`}
         </button>
       </div>
     </div>
