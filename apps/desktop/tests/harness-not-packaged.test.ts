@@ -54,15 +54,32 @@ describe('harness isolation', () => {
   });
 
   it('no harness module imports anything from the main process', () => {
+    // Matched against IMPORT STATEMENTS, not against the file as a string. The
+    // substring version failed the day a fixture used 'src/renderer/App.tsx'
+    // as sample data — a path in a string is not a dependency, and a guard
+    // that cannot tell the difference gets loosened by whoever it blocks next.
+    const IMPORT_RE = /(?:^|\n)\s*import\s[^;]*?from\s+['"]([^'"]+)['"]/g;
+    const FORBIDDEN = [
+      { test: (spec: string) => spec.includes('/main/'), why: 'the main process' },
+      { test: (spec: string) => spec.startsWith('node:'), why: 'a Node builtin' },
+      { test: (spec: string) => spec === 'electron' || spec.startsWith('electron/'), why: 'electron' },
+    ];
     for (const file of [
       'src/renderer/harness/main.tsx',
       'src/renderer/harness/fake-api.ts',
+      'src/renderer/harness/fake-page.ts',
       'src/renderer/harness/fixtures.ts',
     ]) {
       const src = read(file);
-      expect(src, file).not.toContain('/main/');
-      expect(src, file).not.toContain('node:');
-      expect(src, file).not.toContain('electron');
+      const specs = [...src.matchAll(IMPORT_RE)].map((m) => m[1]!);
+      // A file with no imports at all would pass vacuously; every harness
+      // module has some, and asserting it keeps the regex honest.
+      expect(specs.length, `${file}: no imports matched — the regex is wrong`).toBeGreaterThan(0);
+      for (const spec of specs) {
+        for (const rule of FORBIDDEN) {
+          expect(rule.test(spec), `${file} imports ${rule.why}: ${spec}`).toBe(false);
+        }
+      }
     }
   });
 });
