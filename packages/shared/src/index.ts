@@ -53,6 +53,12 @@ export interface DetectionFinding {
   count?: number;
 }
 
+// The facts model for connector changes (connector_change / review_status).
+// Lives in its own module because it is a different contract from the
+// per-tool-call detection block above: changes are facts, findings are rule
+// judgements, and neither is a Category.
+export * from './connector-change.js';
+
 export interface DetectionBlock {
   category: Category;
   severity: Severity;
