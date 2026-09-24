@@ -1,0 +1,711 @@
+[
+  {
+    "id": "prose-rewrite-description",
+    "title": "A vendor rewrites a tool description with no change of meaning",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "doc_edit",
+    "observable": "manifest",
+    "baseline": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send a message to the channel.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "changed": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Post a message into the selected channel.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "malicious": false,
+    "expected_changes": [
+      "description_changed"
+    ],
+    "expected_findings": [],
+    "severity": {
+      "maximum": "medium"
+    },
+    "status": "covered",
+    "split": "dev",
+    "notes": "The single most common real change: 258 description_changed findings in four months of production traffic."
+  },
+  {
+    "id": "retype-string-to-number",
+    "title": "A parameter is retyped with no new surface",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "typing_edit",
+    "observable": "manifest",
+    "baseline": {
+      "tools": [
+        {
+          "name": "wait",
+          "description": "Wait.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "seconds": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "changed": {
+      "tools": [
+        {
+          "name": "wait",
+          "description": "Wait.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "seconds": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "malicious": false,
+    "expected_changes": [
+      "schema_changed"
+    ],
+    "expected_findings": [],
+    "severity": {
+      "maximum": "medium"
+    },
+    "status": "covered",
+    "split": "dev",
+    "notes": "Typing edits must never reach high: they add no way for data to flow in."
+  },
+  {
+    "id": "key-reorder-no-semantic-change",
+    "title": "Object keys arrive in a different order",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "serialisation",
+    "observable": "manifest",
+    "baseline": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "changed": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send.",
+          "inputSchema": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "malicious": false,
+    "expected_changes": [],
+    "expected_findings": [],
+    "severity": {
+      "maximum": null
+    },
+    "status": "covered",
+    "split": "dev",
+    "notes": "canonicalize (manifest.ts:30-39) sorts keys recursively, so key order must produce NO detection at all."
+  },
+  {
+    "id": "enum-reorder",
+    "title": "Enum members arrive in a different order",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "serialisation",
+    "observable": "manifest",
+    "baseline": {
+      "tools": [
+        {
+          "name": "move",
+          "description": "Move.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string",
+                "enum": [
+                  "inbox",
+                  "archive",
+                  "trash"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "changed": {
+      "tools": [
+        {
+          "name": "move",
+          "description": "Move.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string",
+                "enum": [
+                  "trash",
+                  "inbox",
+                  "archive"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "malicious": false,
+    "expected_changes": [
+      "schema_changed"
+    ],
+    "expected_findings": [],
+    "severity": {
+      "maximum": "medium"
+    },
+    "status": "covered",
+    "split": "dev",
+    "notes": "Deliberately NOT a no-op: arrays keep their order in canonicalize because an enum's order is part of the contract. It must be reported, and it must stay medium."
+  },
+  {
+    "id": "title-added",
+    "title": "A tool gains a title field",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "metadata_edit",
+    "observable": "manifest",
+    "baseline": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send a message to the channel.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "changed": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send a message to the channel.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          },
+          "title": "Send message"
+        }
+      ]
+    },
+    "malicious": false,
+    "expected_changes": [],
+    "expected_findings": [],
+    "severity": {
+      "maximum": null
+    },
+    "status": "covered",
+    "split": "dev",
+    "notes": "title is not part of toolSig, so it produces no detection. Recorded so a v2 hash change makes the consequence visible."
+  },
+  {
+    "id": "outputschema-added",
+    "title": "A tool gains an outputSchema",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "metadata_edit",
+    "observable": "manifest",
+    "baseline": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send a message to the channel.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "changed": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send a message to the channel.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "malicious": false,
+    "expected_changes": [],
+    "expected_findings": [],
+    "severity": {
+      "maximum": null
+    },
+    "status": "covered",
+    "split": "dev",
+    "notes": "Same: outside toolSig today. The 4-month replay measured outputSchema at +9 firings if hashed."
+  },
+  {
+    "id": "tool-added-neutral-params",
+    "title": "A release adds a tool with ordinary parameters",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "release",
+    "observable": "manifest",
+    "baseline": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send a message to the channel.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "changed": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send a message to the channel.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "draft",
+          "description": "Create a draft.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "malicious": false,
+    "expected_changes": [
+      "tool_added"
+    ],
+    "expected_findings": [],
+    "severity": {
+      "maximum": "low"
+    },
+    "status": "covered",
+    "split": "dev",
+    "notes": "A manifest that only grows is a release, not an attack."
+  },
+  {
+    "id": "tool-removed",
+    "title": "A release removes a deprecated tool",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "release",
+    "observable": "manifest",
+    "baseline": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send a message to the channel.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "legacy_send",
+          "description": "Deprecated.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "changed": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send a message to the channel.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "malicious": false,
+    "expected_changes": [
+      "tool_removed"
+    ],
+    "expected_findings": [],
+    "severity": {
+      "maximum": "low"
+    },
+    "status": "covered",
+    "split": "dev",
+    "notes": "Shrinking is a release too."
+  },
+  {
+    "id": "pagination-second-page",
+    "title": "A paginated tools/list delivers its second page",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "pagination",
+    "observable": "manifest",
+    "baseline": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send a message to the channel.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "draft",
+          "description": "Create a draft.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "changed": {
+      "tools": [
+        {
+          "name": "archive",
+          "description": "Archive an item.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "malicious": false,
+    "expected_changes": [],
+    "expected_findings": [],
+    "severity": {
+      "maximum": null
+    },
+    "status": "gap",
+    "split": "dev",
+    "notes": "A second page looks like a wholly different manifest: every tool of page 1 reads as removed and every tool of page 2 as added. The correct behaviour is NO detection at all (pages must be accumulated before hashing), so maximum is null and the case is a gap: today it emits tool_added/tool_removed at low. Pagination is unused in the current corpus (zero nextCursor in four months) but the blind spot is real; manifest v2 accumulates pages before hashing."
+  },
+  {
+    "id": "meta-changed",
+    "title": "A tool's _meta block changes between releases",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "metadata_edit",
+    "observable": "manifest",
+    "baseline": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          },
+          "_meta": {
+            "build": "1"
+          }
+        }
+      ]
+    },
+    "changed": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          },
+          "_meta": {
+            "build": "2"
+          }
+        }
+      ]
+    },
+    "malicious": false,
+    "expected_changes": [],
+    "expected_findings": [],
+    "severity": {
+      "maximum": null
+    },
+    "status": "covered",
+    "split": "dev",
+    "notes": "_meta is outside toolSig. The replay measured it at +2 firings if hashed."
+  },
+  {
+    "id": "annotations-benign-change",
+    "title": "A benign annotation changes (title, idempotentHint)",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "metadata_edit",
+    "observable": "manifest",
+    "baseline": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          },
+          "annotations": {
+            "title": "Send",
+            "idempotentHint": false
+          }
+        }
+      ]
+    },
+    "changed": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          },
+          "annotations": {
+            "title": "Send message",
+            "idempotentHint": true
+          }
+        }
+      ]
+    },
+    "malicious": false,
+    "expected_changes": [],
+    "expected_findings": [],
+    "severity": {
+      "maximum": null
+    },
+    "status": "covered",
+    "split": "dev",
+    "notes": "Deliberately NOT readOnlyHint or destructiveHint: those two are attack cases in the corpus. This pins that a v2 hash covering annotations must still ignore the cosmetic ones."
+  },
+  {
+    "id": "identical-manifest-twice",
+    "title": "The same manifest is served twice",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "release",
+    "observable": "manifest",
+    "baseline": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send a message to the channel.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "changed": {
+      "tools": [
+        {
+          "name": "send",
+          "description": "Send a message to the channel.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "malicious": false,
+    "expected_changes": [],
+    "expected_findings": [],
+    "severity": {
+      "maximum": null
+    },
+    "status": "covered",
+    "split": "dev",
+    "notes": "Two sessions of the same connector see the same manifest: the hash must match and nothing may be emitted."
+  }
+]

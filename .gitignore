@@ -29,3 +29,8 @@ spike/
 
 # Local manual backups (e.g. apps/desktop/dist_0.6.0_manual.bak/).
 *.bak/
+
+# Corpus negatives derived from the operator's own trail: real vendor tool
+# names, descriptions and schemas tied to one installation. The mechanism that
+# loads them is in packages/proxy/tests/corpus; the data never enters the repo.
+corpus-local/

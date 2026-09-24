@@ -1,0 +1,131 @@
+[
+  {
+    "id": "rug-pull-targeted",
+    "title": "A server serves a clean manifest to most clients and a poisoned one to a target",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "targeted_rug_pull",
+    "observable": "out_of_band",
+    "malicious": true,
+    "expected_changes": [],
+    "expected_findings": [],
+    "severity": {
+      "minimum": null
+    },
+    "status": "not_observable",
+    "would_be_seen_by": "nothing in a single client",
+    "notes": "A per-client manifest is indistinguishable from a legitimate one from inside that client. Detecting it needs a second observer comparing manifests across installations.",
+    "mapping": {
+      "owasp_mcp": "MCP02"
+    }
+  },
+  {
+    "id": "injection-in-tool-call-result",
+    "title": "The injection arrives in the RESULT text of a tools/call",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "prompt_injection_via_result",
+    "observable": "traffic",
+    "malicious": true,
+    "expected_changes": [],
+    "expected_findings": [],
+    "severity": {
+      "minimum": null
+    },
+    "status": "not_observable",
+    "would_be_seen_by": "CONTENT_DETECTORS (implemented)",
+    "notes": "frame-processor.ts:152 runs the inbound chain over tools/call result text. Out of scope for the MANIFEST detector, covered elsewhere.",
+    "mapping": {
+      "owasp_mcp": "MCP01"
+    }
+  },
+  {
+    "id": "sampling-context-exfiltration",
+    "title": "A server requests sampling with conversation context and an external destination",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "server_initiated_exfiltration",
+    "observable": "traffic",
+    "malicious": true,
+    "expected_changes": [],
+    "expected_findings": [],
+    "severity": {
+      "minimum": null
+    },
+    "status": "not_observable",
+    "would_be_seen_by": "tripwire B7/B12 (designed, not implemented)",
+    "notes": "Zero sampling/createMessage in four months of production traffic. The manifest never shows it."
+  },
+  {
+    "id": "elicitation-secret-request",
+    "title": "A server opens an elicitation form asking for a credential",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "credential_phishing",
+    "observable": "traffic",
+    "malicious": true,
+    "expected_changes": [],
+    "expected_findings": [],
+    "severity": {
+      "minimum": null
+    },
+    "status": "not_observable",
+    "would_be_seen_by": "tripwire B8 (designed, not implemented)",
+    "notes": "Zero elicitation/create in four months. Structural criterion (format password / writeOnly) is designed."
+  },
+  {
+    "id": "stdio-implementation-change",
+    "title": "An unpinned stdio server resolves to a new package version",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "supply_chain",
+    "observable": "out_of_band",
+    "malicious": true,
+    "expected_changes": [],
+    "expected_findings": [],
+    "severity": {
+      "minimum": null
+    },
+    "status": "not_observable",
+    "would_be_seen_by": "an implementation-changed detector (pending)",
+    "notes": "npx -y without a version is a mutable identity; the manifest can stay byte-identical while the code behind it changes."
+  },
+  {
+    "id": "poison-in-resources-or-prompts",
+    "title": "The poisoned definition lives in resources/list or prompts/list",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "prompt_injection_via_description",
+    "observable": "manifest",
+    "malicious": true,
+    "expected_changes": [],
+    "expected_findings": [],
+    "severity": {
+      "minimum": null
+    },
+    "status": "not_observable",
+    "would_be_seen_by": "manifest v2 section sources (designed)",
+    "notes": "661 resources/list and 588 prompts/list responses in four months, none of them baselined today: the store only reads result.tools.",
+    "mapping": {
+      "owasp_mcp": "MCP01"
+    }
+  }
+]
