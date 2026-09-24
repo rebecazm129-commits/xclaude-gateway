@@ -153,6 +153,54 @@ describe('observeSection — steady state', () => {
     expect(out.events).toEqual([]);
   });
 
+  // THE INVARIANT THIS FILE WAS MISSING. Advancing the baseline and reporting
+  // the change are two halves of one act: advance without reporting and the
+  // change is swallowed forever, because the next comparison starts from the
+  // new state. That is exactly how the store shipped in 7729678 — `change` was
+  // only ever set on the migration path — and no test failed, because the one
+  // below only checked that the hash moved.
+  it('advancing the baseline WITHOUT reporting the change is a defect, in every section', () => {
+    for (const [section, before, after] of [
+      ['tools', { tools: [{ name: 't', description: 'a' }] }, { tools: [{ name: 't', description: 'b' }] }],
+      ['resources', { resources: [{ uri: 'file:///a' }] }, { resources: [{ uri: 'file:///b' }] }],
+      ['prompts', { prompts: [{ name: 'p', description: 'a' }] }, { prompts: [{ name: 'p', description: 'b' }] }],
+      [
+        'resource_templates',
+        { resourceTemplates: [{ uriTemplate: 'file:///{a}' }] },
+        { resourceTemplates: [{ uriTemplate: 'file:///{b}' }] },
+      ],
+    ] as const) {
+      const d = deps();
+      observeSection(d, 'notion', section, before);
+      const first = readBaselineV2(d.baseDir, 'notion');
+      if (first.kind !== 'ok') throw new Error('expected ok');
+      const hash = first.baseline.sections[section]!.wire_hash;
+
+      const out = observeSection(d, 'notion', section, after);
+      const read = readBaselineV2(d.baseDir, 'notion');
+      if (read.kind !== 'ok') throw new Error('expected ok');
+      const moved = read.baseline.sections[section]!.wire_hash !== hash;
+
+      expect(moved, `${section}: the baseline should have advanced`).toBe(true);
+      expect(
+        out.change,
+        `${section}: the baseline advanced but nothing was reported — the change is now unrecoverable`,
+      ).toBeDefined();
+      expect(out.change?.changes.length, `${section}: reported an empty change`).toBeGreaterThan(0);
+    }
+  });
+
+  it('every advancing observation reports at least one change entry', () => {
+    // Stated separately from the loop above so the failure message says which
+    // half broke: reported nothing, or reported nothing useful.
+    const d = deps();
+    observeSection(d, 'notion', 'tools', { tools: [{ name: 'a', description: 'x' }] });
+    const out = observeSection(d, 'notion', 'tools', {
+      tools: [{ name: 'a', description: 'x' }, { name: 'b', description: 'y' }],
+    });
+    expect(out.change?.changes).toEqual([{ kind: 'item_added', target: 'b' }]);
+  });
+
   it('a wire change advances the baseline and records the previous hash', () => {
     const d = deps();
     observeSection(d, 'notion', 'resources', { resources: [{ uri: 'file:///a' }] });
