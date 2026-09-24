@@ -17,7 +17,7 @@ import type { DetectionBlock, DetectionFinding, Severity } from '@xcg/shared';
 
 import { injectionFindings } from './detectors/prompt-injection.js';
 import { isSensitiveParamName } from './detectors/sensitive-params.js';
-import { hasHiddenCharacters } from './detectors/text-normalize.js';
+import { HIDDEN_CLASS_SEVERITY, hiddenCharacterHits } from './detectors/text-normalize.js';
 import { externalRefs, sensitivePathHits, walkSurface } from './detectors/surface-scan.js';
 
 export const MANIFEST_VERSION = 1;
@@ -152,10 +152,14 @@ export function buildManifest(tools: readonly ToolDef[]): Manifest {
 // showed an instruction in inputSchema.properties.<p>.description, in a vendor
 // field, or in a default came out as a bare schema_changed. The walker is
 // schema-agnostic on purpose (see surface-scan.ts).
-function scanToolSurface(tool: ToolDef, name: string): { findings: DetectionFinding[]; high: boolean } {
+function scanToolSurface(
+  tool: ToolDef,
+  name: string,
+): { findings: DetectionFinding[]; high: boolean; medium: boolean } {
   const entries = walkSurface(tool);
   const findings: DetectionFinding[] = [];
   let high = false;
+  let medium = false;
 
   // Injection markers anywhere on the surface, matched on the normalized view.
   const injectionPaths = entries
@@ -178,18 +182,34 @@ function scanToolSurface(tool: ToolDef, name: string): { findings: DetectionFind
     high = true;
   }
 
-  // Evidence only: hidden characters and external refs never raise severity on
-  // their own. An external $ref is RECORDED and never resolved.
+  // Invisible characters, graded by class (text-normalize.ts explains why):
+  // tag characters and bidi controls are high on their own, zero-width and
+  // ANSI are medium. The finding names the class, the codepoint and how many,
+  // so the reader can tell a stray joiner from a payload.
+  let hidden = 0;
   for (const e of entries) {
-    if (e.kind === 'value' && hasHiddenCharacters(e.raw)) {
-      findings.push({ type: 'hidden_characters', location: name, path: e.path });
-      break;
+    if (hidden >= MAX_SURFACE_FINDINGS) break;
+    for (const hit of hiddenCharacterHits(e.raw)) {
+      findings.push({
+        type: 'hidden_characters',
+        location: name,
+        path: e.path,
+        rule: hit.cls,
+        codepoint: hit.codepoint,
+        count: hit.count,
+      });
+      hidden += 1;
+      if (HIDDEN_CLASS_SEVERITY[hit.cls] === 'high') high = true;
+      else medium = true;
     }
   }
+
+  // Evidence only: an external $ref is RECORDED, never resolved, and never
+  // raises severity on its own.
   for (const ref of externalRefs(entries).slice(0, MAX_SURFACE_FINDINGS)) {
     findings.push({ type: 'external_ref', location: name, path: ref.path, rule: 'not_resolved' });
   }
-  return { findings, high };
+  return { findings, high, medium };
 }
 
 // A poisoned manifest can carry an unbounded number of matches; the findings
@@ -287,6 +307,7 @@ export function diffManifest(
         const scan = scanToolSurface(def, name);
         findings.push(...scan.findings);
         if (scan.high) high = true;
+        if (scan.medium) medium = true;
       }
     } else if (p !== undefined && n === undefined) {
       findings.push({ type: 'tool_removed', location: name });
@@ -326,6 +347,7 @@ export function diffManifest(
         const scan = scanToolSurface(def, name);
         findings.push(...scan.findings);
         if (scan.high) high = true;
+        if (scan.medium) medium = true;
       }
     }
   }

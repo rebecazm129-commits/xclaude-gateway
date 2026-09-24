@@ -56,19 +56,59 @@ turns green because a field was omitted.
 | `expected_findings` | finding types that make it a *catch* (attacks) |
 | `severity.minimum` | attacks: the floor a catch must reach |
 | `severity.maximum` | negatives: the ceiling; `null` means no detection at all |
-| `status`, `split`, `notes` | coverage, dev/holdout, and why |
+| `status`, `split`, `notes` | coverage, dev/holdout (see the split rule below), and why |
 | `would_be_seen_by` | `out_of_scope` only |
 
 ## dev / holdout
 
-The split is **by `technique`, not by fixture**. Tuning the detector against
-one case would otherwise make its twin in the holdout pass for free, and the
-holdout would stop measuring anything. Roughly 60/40 by case count.
+The split is **by VARIANT within a family**, not by family and not at random.
 
-Dev families: `prompt_injection_via_description`, `prompt_injection_via_schema`,
-`constraint_relaxation`, `sensitive_surface`.
-Holdout families: `invisible_characters`, `annotation_tampering`,
-`tool_shadowing`.
+Two things have to be true at once. A family must be **workable**: if every
+variant of `invisible_characters` sat in the holdout, touching that family at
+all would mean opening it. And a family must stay **measurable**: if tuning
+against one variant made its siblings pass for free, the holdout would measure
+nothing.
+
+Variants of the same family exercise *different mechanisms*, which is what
+makes the split meaningful. Zero-width padding and a bidi override are both
+"invisible characters", but one pads a string and the other lies about reading
+order — closing the first does not close the second. So one or two variants of
+each family sit in dev and the rest are held out:
+
+| Family | dev | holdout |
+|---|---|---|
+| `invisible_characters` | zero-width, ANSI | variation selectors, soft hyphen / U+180E, Cyrillic homoglyphs |
+| `annotation_tampering` | `readOnlyHint` | `destructiveHint` |
+| `tool_shadowing` | exact name | paraphrase |
+
+### The first `invisible_characters` holdout was burned
+
+Its original holdout was bidi override, tag characters and the HTML comment.
+All three are now `covered` — and that number means **nothing as a measure of
+generalisation**, because the class list in `text-normalize.ts` was written
+with those exact ranges in front of it. `U+202A-U+202E` and
+`U+E0000-U+E007F` are in the detector because those cases were on screen. A
+holdout you can read while writing the rule is a dev set with extra steps.
+
+They stay in the corpus as regression tests, which is what they are honestly
+good for. The holdout was replaced with three variants written afterwards,
+each probing a mechanism the four implemented classes do not cover:
+
+| Variant | Why it is not a rerun of the burned set |
+|---|---|
+| variation selectors (`U+FE00-FE0F`, `U+E0100-E01EF`) | a fifth invisible class — tests whether the rule generalises past its enumerated ranges |
+| soft hyphen `U+00AD` + `U+180E` **inside** a path and a keyword | not hiding text but BREAKING a string, so the path rule and the injection pattern see something that is not there |
+| Cyrillic homoglyphs (`ignоre`) | nothing is invisible at all: every character renders, NFKC does not fold scripts, and a Latin pattern cannot match |
+
+All three measured `medium` / `description_changed` on the day they were
+written: three fresh gaps. That is the number worth tracking.
+
+**Known imbalance.** `prompt_injection_via_description`,
+`prompt_injection_via_schema`, `constraint_relaxation` and `sensitive_surface`
+are currently all-dev. They were written before this rule and have not been
+re-split; doing so would hold out cases the detector already covers, which
+measures nothing useful today. They should be split the same way when new
+variants are added to them.
 
 ## Local negatives, never committed
 

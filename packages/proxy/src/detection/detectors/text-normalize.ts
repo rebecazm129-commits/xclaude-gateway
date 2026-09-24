@@ -1,5 +1,5 @@
-// Analysis view of a string. The ORIGINAL is always kept as evidence - this is
-// only what the patterns are matched against.
+// Analysis view of a string, and the classification of what was hidden in it.
+// The ORIGINAL is always kept as evidence - normalisation only feeds matchers.
 //
 // Three transformations, all aimed at text that reads clean to a human and
 // differently to a matcher:
@@ -14,25 +14,78 @@
 //            changing what a machine consumes; removing them makes the matcher
 //            see the same sequence the model will.
 
-/** Zero-width, bidi controls and Unicode tag characters. */
-const INVISIBLE_SOURCE =
-  '[\\u200B-\\u200D\\u2060\\uFEFF\\u202A-\\u202E\\u2066-\\u2069]|[\\u{E0000}-\\u{E007F}]';
-/** CSI / SGR escape sequences. */
-const ANSI_SOURCE = '\\u001B\\[[0-9;]*[A-Za-z]';
+export type HiddenClass = 'tag_characters' | 'bidi_control' | 'zero_width' | 'ansi_escape';
 
-// Built fresh per call rather than kept as module-level /g literals: a global
-// regex carries lastIndex across .test() calls and would silently skip every
-// other match.
-const invisibleRe = (): RegExp => new RegExp(INVISIBLE_SOURCE, 'gu');
-const ansiRe = (): RegExp => new RegExp(ANSI_SOURCE, 'gu');
+/** Severity each class justifies on its own.
+ *
+ *  HIGH for tag characters and bidi controls. Tag characters have no
+ *  legitimate use in a tool manifest whatsoever - the block exists to carry
+ *  out-of-band data, and a run of them IS a hidden payload. Bidi overrides and
+ *  isolates actively lie about reading order: the text a reviewer sees and the
+ *  text a model consumes are different strings, which is the whole mechanism.
+ *
+ *  MEDIUM for zero-width and ANSI. Both are invisible, but both turn up by
+ *  accident: zero-width joiners ride along in emoji and copied rich text, and
+ *  ANSI sequences leak in from terminal output captured into documentation.
+ *  Worth reporting, not worth waking someone up on their own. */
+export const HIDDEN_CLASS_SEVERITY: Record<HiddenClass, 'high' | 'medium'> = {
+  tag_characters: 'high',
+  bidi_control: 'high',
+  zero_width: 'medium',
+  ansi_escape: 'medium',
+};
 
-export function normalizeForAnalysis(text: string): string {
-  return text.normalize('NFKC').replace(invisibleRe(), '').replace(ansiRe(), '');
+interface ClassPattern {
+  cls: HiddenClass;
+  source: string;
 }
 
-/** True when the analysis view differs from the original - i.e. the string
- *  carries characters a reader cannot see. Reported as evidence, never as a
- *  verdict on its own. */
+const PATTERNS: readonly ClassPattern[] = [
+  { cls: 'tag_characters', source: '[\\u{E0000}-\\u{E007F}]' },
+  { cls: 'bidi_control', source: '[\\u202A-\\u202E\\u2066-\\u2069]' },
+  { cls: 'zero_width', source: '[\\u200B-\\u200D\\u2060\\uFEFF]' },
+  { cls: 'ansi_escape', source: '\\u001B\\[[0-9;]*[A-Za-z]' },
+];
+
+// Built fresh per call rather than kept as module-level /g literals: a global
+// regex carries lastIndex across calls and would silently skip every other
+// match.
+const re = (source: string): RegExp => new RegExp(source, 'gu');
+
+export function normalizeForAnalysis(text: string): string {
+  let out = text.normalize('NFKC');
+  for (const { source } of PATTERNS) out = out.replace(re(source), '');
+  return out;
+}
+
+export interface HiddenCharacterHit {
+  cls: HiddenClass;
+  /** The first codepoint of this class seen in the string, as `U+202E`. */
+  codepoint: string;
+  /** How many characters of this class the string carries. An ANSI sequence
+   *  counts as one occurrence, not one per byte. */
+  count: number;
+}
+
+const codepointOf = (s: string): string => {
+  const cp = s.codePointAt(0) ?? 0;
+  return `U+${cp.toString(16).toUpperCase().padStart(4, '0')}`;
+};
+
+/** Which classes of invisible character the string carries, with a codepoint
+ *  and a count per class. Empty when the text is what it looks like. */
+export function hiddenCharacterHits(text: string): HiddenCharacterHit[] {
+  const normalized = text.normalize('NFKC');
+  const out: HiddenCharacterHit[] = [];
+  for (const { cls, source } of PATTERNS) {
+    const matches = [...normalized.matchAll(re(source))];
+    if (matches.length === 0) continue;
+    out.push({ cls, codepoint: codepointOf(matches[0]![0]), count: matches.length });
+  }
+  return out;
+}
+
+/** True when the analysis view differs from the original. */
 export function hasHiddenCharacters(text: string): boolean {
-  return normalizeForAnalysis(text) !== text.normalize('NFKC');
+  return hiddenCharacterHits(text).length > 0;
 }

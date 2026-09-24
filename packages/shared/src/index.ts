@@ -45,6 +45,12 @@ export interface DetectionFinding {
   /** WHICH rule matched (ssh_private_key, dotenv, injection_pattern…). The
    *  finding explains what raised it and where, never a verdict. */
   rule?: string;
+  /** Codepoint the finding is about, as `U+202E`. Set by the hidden-character
+   *  scan so the reader sees WHICH invisible character, not just that one was
+   *  there. */
+  codepoint?: string;
+  /** How many occurrences at this path. */
+  count?: number;
 }
 
 export interface DetectionBlock {
