@@ -22,7 +22,8 @@
     "package": "electron-builder --mac",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
-    "harness": "vite --config vite.harness.config.ts"
+    "harness": "vite --config vite.harness.config.ts",
+    "visual": "node scripts/visual-regress.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

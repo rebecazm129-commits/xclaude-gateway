@@ -34,3 +34,7 @@ spike/
 # names, descriptions and schemas tied to one installation. The mechanism that
 # loads them is in packages/proxy/tests/corpus; the data never enters the repo.
 corpus-local/
+
+# Visual-regression snapshots: megabytes of machine-specific pixels. A
+# baseline committed from one display would fail on every other.
+apps/desktop/.visual/
