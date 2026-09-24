@@ -19,7 +19,7 @@ import { DetailDrawer } from './DetailDrawer.js';
 import { DetectionRow } from './DetectionRow.js';
 import { FilterDropdown } from './FilterDropdown.js';
 import { NewEventsPill } from './NewEventsPill.js';
-import { SeverityBreakdown } from './SeverityBreakdown.js';
+import { SeverityBreakdown, severityCards } from './SeverityBreakdown.js';
 import { TimeFilter, type TimeRange } from './TimeFilter.js';
 
 import styles from './Detections.module.css';
@@ -247,12 +247,14 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
         </div>
       )}
       <SeverityBreakdown
-        counts={page.severityCounts}
-        total={page.categoryFilteredTotal}
-        selectedSeverities={selectedSeverities}
-        totalSeverityOptionsCount={SEVERITY_OPTIONS.length}
-        onSelectTotal={handleSelectTotal}
-        onSelectSeverity={handleSelectSeverity}
+        cards={severityCards({
+          counts: page.severityCounts,
+          total: page.categoryFilteredTotal,
+          selectedSeverities,
+          totalSeverityOptionsCount: SEVERITY_OPTIONS.length,
+          onSelectTotal: handleSelectTotal,
+          onSelectSeverity: handleSelectSeverity,
+        })}
       />
       <div className={ccStyles['toolbar']}>
         <div className={ccStyles['toolbarRow']}>

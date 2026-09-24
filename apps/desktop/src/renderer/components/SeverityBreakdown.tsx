@@ -1,6 +1,37 @@
+// The five counter cards above an audit list.
+//
+// WHY THE CARDS ARE A PROP NOW. Detections and Claude Code both count the same
+// axis — Total plus four severities — so the axis was hard-coded. Changes
+// counts a different one: 197 of 217 real connector changes carry no severity
+// at all, and `critical` is produced by no rule, so a CRITICAL card would sit
+// at zero forever while the question the tab exists to answer ("what still
+// needs a look?") had nowhere to appear.
+//
+// The order is fixed by the caller, not here, because these five cards are a
+// row the eye learns: TOTAL first and the axis rising to the right. Changes
+// puts NEEDS REVIEW in the slot CRITICAL held, so the shape stays familiar
+// even though the last card asks a different question.
+//
+// A card knows how to be "the only one selected" or "not selected"; it does
+// not know what selecting it means. That stays with the view, which is the
+// only place that knows whether a card maps to a severity, a review state, or
+// something later.
+
 import type { Severity } from '../../shared/types.js';
 
 import styles from './SeverityBreakdown.module.css';
+
+export interface BreakdownCard {
+  /** Stable key — also the React key and the CSS modifier (card_<key>). */
+  key: string;
+  label: string;
+  count: number;
+  /** Rendered as the single selected card. */
+  active: boolean;
+  /** Dimmed: some other card is the selection. */
+  inactive: boolean;
+  onSelect: () => void;
+}
 
 const SEVERITY_ORDER: readonly Severity[] = ['low', 'medium', 'high', 'critical'];
 const SEVERITY_LABELS: Record<Severity, string> = {
@@ -10,56 +41,58 @@ const SEVERITY_LABELS: Record<Severity, string> = {
   critical: 'Critical',
 };
 
-interface Props {
+/**
+ * The card row Detections and Claude Code use: Total, then the four
+ * severities. Kept as a helper so neither view had to restate an axis they
+ * already agreed on.
+ */
+export function severityCards(args: {
   counts: Record<Severity, number>;
   total: number;
   selectedSeverities: readonly Severity[];
   totalSeverityOptionsCount: number;
   onSelectTotal: () => void;
   onSelectSeverity: (severity: Severity) => void;
+}): BreakdownCard[] {
+  const allSelected = args.selectedSeverities.length === args.totalSeverityOptionsCount;
+  const selectedSet = new Set(args.selectedSeverities);
+  return [
+    {
+      key: 'total',
+      label: 'Total',
+      count: args.total,
+      active: allSelected,
+      inactive: !allSelected,
+      onSelect: args.onSelectTotal,
+    },
+    ...SEVERITY_ORDER.map((severity) => ({
+      key: severity,
+      label: SEVERITY_LABELS[severity],
+      count: args.counts[severity],
+      active: !allSelected && selectedSet.has(severity) && args.selectedSeverities.length === 1,
+      inactive: !allSelected && !selectedSet.has(severity),
+      onSelect: () => args.onSelectSeverity(severity),
+    })),
+  ];
 }
 
-export function SeverityBreakdown({
-  counts,
-  total,
-  selectedSeverities,
-  totalSeverityOptionsCount,
-  onSelectTotal,
-  onSelectSeverity,
-}: Props): JSX.Element {
-  const allSelected = selectedSeverities.length === totalSeverityOptionsCount;
-  const selectedSet = new Set(selectedSeverities);
-
+export function SeverityBreakdown({ cards }: { cards: readonly BreakdownCard[] }): JSX.Element {
   return (
     <div className={styles['banda']}>
       <div className={styles['grid']}>
-        <button
-          type="button"
-          className={`${styles['card']} ${styles['card_total']} ${
-            allSelected ? styles['cardActive'] : styles['cardInactive']
-          }`}
-          onClick={onSelectTotal}
-        >
-          <div className={styles['number']}>{total}</div>
-          <div className={styles['label']}>Total</div>
-        </button>
-        {SEVERITY_ORDER.map((severity) => {
-          const isActive = !allSelected && selectedSet.has(severity) && selectedSeverities.length === 1;
-          const isInactive = !allSelected && !selectedSet.has(severity);
-          return (
-            <button
-              key={severity}
-              type="button"
-              className={`${styles['card']} ${styles[`card_${severity}`]} ${
-                isActive ? styles['cardActive'] : ''
-              } ${isInactive ? styles['cardInactive'] : ''}`}
-              onClick={() => onSelectSeverity(severity)}
-            >
-              <div className={styles['number']}>{counts[severity]}</div>
-              <div className={styles['label']}>{SEVERITY_LABELS[severity]}</div>
-            </button>
-          );
-        })}
+        {cards.map((card) => (
+          <button
+            key={card.key}
+            type="button"
+            className={`${styles['card']} ${styles[`card_${card.key}`] ?? ''} ${
+              card.active ? styles['cardActive'] : ''
+            } ${card.inactive ? styles['cardInactive'] : ''}`}
+            onClick={card.onSelect}
+          >
+            <div className={styles['number']}>{card.count}</div>
+            <div className={styles['label']}>{card.label}</div>
+          </button>
+        ))}
       </div>
     </div>
   );

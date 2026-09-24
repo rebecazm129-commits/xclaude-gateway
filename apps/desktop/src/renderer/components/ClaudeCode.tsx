@@ -18,7 +18,7 @@ import { DateRangePicker } from './DateRangePicker.js';
 import { DetailDrawer } from './DetailDrawer.js';
 import { formatTimestamp } from './detections-format.js';
 import { FilterDropdown } from './FilterDropdown.js';
-import { SeverityBreakdown } from './SeverityBreakdown.js';
+import { SeverityBreakdown, severityCards } from './SeverityBreakdown.js';
 import { TimeFilter, type TimeRange } from './TimeFilter.js';
 import { ToggleChip } from './ToggleChip.js';
 
@@ -281,12 +281,14 @@ export function ClaudeCode(): JSX.Element {
   return (
     <>
       <SeverityBreakdown
-        counts={page.severityCounts}
-        total={page.categoryFilteredTotal}
-        selectedSeverities={selectedSeverities}
-        totalSeverityOptionsCount={SEVERITY_OPTIONS.length}
-        onSelectTotal={handleSelectTotal}
-        onSelectSeverity={handleSelectSeverity}
+        cards={severityCards({
+          counts: page.severityCounts,
+          total: page.categoryFilteredTotal,
+          selectedSeverities,
+          totalSeverityOptionsCount: SEVERITY_OPTIONS.length,
+          onSelectTotal: handleSelectTotal,
+          onSelectSeverity: handleSelectSeverity,
+        })}
       />
       <div className={styles['toolbar']}>
         <div className={styles['toolbarRow']}>
