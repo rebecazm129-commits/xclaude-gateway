@@ -5,7 +5,7 @@ import { dataExportWarning } from '../src/detection/detectors/data-export-warnin
 import { createFrameProcessor } from '../src/frame-processor.js';
 import { InflightTracker } from '../src/latency.js';
 import type { DetectorInput, RpcId, Direction, DetectionBlock } from '../src/detection/types.js';
-import type { ManifestOutcome, ManifestStore } from '../src/detection/manifest.js';
+import type { SectionObservation, SectionStore } from '../src/detection/section-store.js';
 import type { EventBody } from '../src/events.js';
 import type { ClassifiedFrame } from '../src/parser.js';
 
@@ -383,18 +383,20 @@ describe('createFrameProcessor — inbound: pii_structured / data_export / email
 describe('createFrameProcessor — tool_manifest_changed (tools/list)', () => {
   const TOOLS = { tools: [{ name: 'search', description: 'find', inputSchema: { type: 'object' } }] };
 
-  function stubStore(outcome: ManifestOutcome): {
-    store: ManifestStore;
-    checkAndUpdate: ReturnType<typeof vi.fn>;
+  function stubStore(obs: SectionObservation | null): {
+    store: SectionStore;
+    observe: ReturnType<typeof vi.fn>;
   } {
-    const checkAndUpdate = vi.fn((_mcp: string, _result: unknown): ManifestOutcome => outcome);
-    return { store: { checkAndUpdate }, checkAndUpdate };
+    const observe = vi.fn(
+      (_mcp: string, _method: string, _result: unknown): SectionObservation | null => obs,
+    );
+    return { store: { observe }, observe };
   }
 
   // Sends a request (populates the method map) then a response on the same
   // processor, so reqMethod === 'tools/list' when the response is processed.
-  function runListReqResp(store: ManifestStore, result: unknown): EventBody[] {
-    const processFrame = createFrameProcessor({ ...makeDeps(), manifestStore: store });
+  function runListReqResp(store: SectionStore, result: unknown): EventBody[] {
+    const processFrame = createFrameProcessor({ ...makeDeps(), sectionStore: store });
     processFrame(
       { kind: 'request', id: 9, method: 'tools/list', params: {} },
       'client_to_server', 20, '<req>', TS_NS, TS_MS,
@@ -402,31 +404,33 @@ describe('createFrameProcessor — tool_manifest_changed (tools/list)', () => {
     return processFrame({ kind: 'response', id: 9, result }, 'server_to_client', 30, '<resp>', TS_NS, TS_MS);
   }
 
-  const CHANGE = {
-    changes: [{ kind: 'description_changed' as const, target: 'search' }],
-    findings: [],
+  const OBS: SectionObservation = {
+    section: 'tools',
+    change: {
+      changes: [{ kind: 'description_changed', target: 'search' }],
+      findings: [],
+    },
     snapshot: { before: 'sha256:a', after: 'sha256:b' },
-    catalog: { before: 3, after: 3 },
+    events: [],
   };
 
   it('emits ONE mcp.connector_change when the store reports a change', () => {
-    const { store, checkAndUpdate } = stubStore({ changed: true, change: CHANGE });
+    const { store, observe } = stubStore(OBS);
     const events = runListReqResp(store, TOOLS);
     expect(events.map((e) => e.type)).toEqual(['mcp.response', 'mcp.connector_change']);
     const ev = events[1];
     if (ev?.type !== 'mcp.connector_change') throw new Error('expected connector_change');
     expect(ev.section).toBe('tools');
-    expect(ev.changes).toEqual(CHANGE.changes);
-    expect(ev.snapshot).toEqual(CHANGE.snapshot);
-    expect(ev.catalog).toEqual(CHANGE.catalog);
-    expect(checkAndUpdate).toHaveBeenCalledWith('test-mcp', TOOLS);
+    expect(ev.changes).toEqual(OBS.change?.changes);
+    expect(ev.snapshot).toEqual(OBS.snapshot);
+    expect(observe).toHaveBeenCalledWith('test-mcp', 'tools/list', TOOLS);
   });
 
   it('a change with NO findings is still emitted — that is the model', () => {
     // The old detector could only speak by raising a detection, so a plain
     // vendor edit had to be graded medium to be seen at all. Now it is a fact
     // with an empty findings list, and nothing downstream counts it.
-    const { store } = stubStore({ changed: true, change: CHANGE });
+    const { store } = stubStore(OBS);
     const events = runListReqResp(store, TOOLS);
     const ev = events[1];
     if (ev?.type !== 'mcp.connector_change') throw new Error('expected connector_change');
@@ -435,7 +439,7 @@ describe('createFrameProcessor — tool_manifest_changed (tools/list)', () => {
   });
 
   it('nothing emitted when the store reports no change (seed / unchanged)', () => {
-    const { store } = stubStore({ changed: false });
+    const { store } = stubStore(null);
     const events = runListReqResp(store, TOOLS);
     expect(events.map((e) => e.type)).toEqual(['mcp.response']);
   });
@@ -450,9 +454,9 @@ describe('createFrameProcessor — tool_manifest_changed (tools/list)', () => {
     expect(events.map((e) => e.type)).toEqual(['mcp.response']);
   });
 
-  it('does NOT run the manifest check on a tools/call response', () => {
-    const { store, checkAndUpdate } = stubStore({ changed: true, change: CHANGE });
-    const processFrame = createFrameProcessor({ ...makeDeps(), manifestStore: store });
+  it('does NOT consult the store on a tools/call response', () => {
+    const { store, observe } = stubStore(OBS);
+    const processFrame = createFrameProcessor({ ...makeDeps(), sectionStore: store });
     processFrame(
       { kind: 'request', id: 9, method: 'tools/call', params: { name: 'x', arguments: {} } },
       'client_to_server', 20, '<req>', TS_NS, TS_MS,
@@ -461,7 +465,7 @@ describe('createFrameProcessor — tool_manifest_changed (tools/list)', () => {
       { kind: 'response', id: 9, result: { content: [{ type: 'text', text: 'ok' }] } },
       'server_to_client', 30, '<resp>', TS_NS, TS_MS,
     );
-    expect(checkAndUpdate).not.toHaveBeenCalled();
+    expect(observe).not.toHaveBeenCalled();
     expect(events.map((e) => e.type)).toEqual(['mcp.response']);
   });
 });

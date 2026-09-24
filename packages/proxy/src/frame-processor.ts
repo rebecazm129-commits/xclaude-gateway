@@ -11,7 +11,8 @@ import type { ClassifiedFrame } from './parser.js';
 import { buildDetectorInput } from './detection/engine.js';
 import { CONTENT_DETECTORS, credentialMatches } from './detection/detectors/index.js';
 import type { AsyncDetector, DetectorInput } from './detection/types.js';
-import type { ManifestStore } from './detection/manifest.js';
+import { sectionForMethod } from './detection/manifest-sections.js';
+import type { SectionStore } from './detection/section-store.js';
 import { elapsedUs } from './timing.js';
 
 export interface FrameProcessorDeps {
@@ -20,9 +21,9 @@ export interface FrameProcessorDeps {
   mcp: string;
   session: string;
   asyncDetector?: AsyncDetector;
-  // Tool-manifest baseline store. Optional: when absent, tools/list responses
-  // are not diffed (no tool_manifest_changed detection).
-  manifestStore?: ManifestStore;
+  // Connector-surface baseline store (v2). Optional: when absent, the five
+  // surface reads are not diffed and nothing is recorded.
+  sectionStore?: SectionStore;
 }
 
 export type FrameProcessor = (
@@ -192,19 +193,40 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
         // findings is a fact worth recording and is NOT a detection, which is
         // the whole point of the model. `attention` stays normal here; the
         // heuristic that can raise it is a separate step.
-        if (deps.manifestStore !== undefined && reqMethod === 'tools/list' && 'result' in frame) {
-          const outcome = deps.manifestStore.checkAndUpdate(deps.mcp, frame.result);
-          if (outcome.changed && outcome.change !== undefined) {
-            events.push({
-              type: 'mcp.connector_change',
-              section: 'tools',
-              snapshot: outcome.change.snapshot,
-              catalog: outcome.change.catalog,
-              changes: outcome.change.changes,
-              findings: outcome.change.findings,
-              attention: { level: 'normal' },
-              overheadUs: elapsedUs(tsObservedNs),
-            });
+        // Routed HERE, not inside the store: tools/call is the overwhelming
+        // majority of traffic and must not pay for a lookup it can never use.
+        if (
+          deps.sectionStore !== undefined &&
+          reqMethod !== undefined &&
+          sectionForMethod(reqMethod) !== null &&
+          'result' in frame
+        ) {
+          const obs = deps.sectionStore.observe(deps.mcp, reqMethod, frame.result);
+          if (obs !== null) {
+            // Lifecycle facts FIRST: when a migration reports a change, the
+            // reader should already have seen why the baseline moved.
+            for (const e of obs.events) {
+              events.push({
+                type: 'app.manifest_baseline',
+                event: e.event,
+                ...(e.section !== undefined ? { section: e.section } : {}),
+                ...(e.reason !== undefined ? { reason: e.reason } : {}),
+                ...(e.coverageExpanded !== undefined ? { coverageExpanded: e.coverageExpanded } : {}),
+                ...(e.fromVersion !== undefined ? { fromVersion: e.fromVersion } : {}),
+                ...(e.toVersion !== undefined ? { toVersion: e.toVersion } : {}),
+              });
+            }
+            if (obs.change !== undefined) {
+              events.push({
+                type: 'mcp.connector_change',
+                section: obs.section,
+                snapshot: obs.snapshot ?? null,
+                changes: obs.change.changes,
+                findings: obs.change.findings,
+                attention: { level: 'normal' },
+                overheadUs: elapsedUs(tsObservedNs),
+              });
+            }
           }
         }
         return events;
