@@ -5,13 +5,18 @@
 // advancing a hash all happen here. Classifying a change as a finding is the
 // tools detector's job (diffManifest) and, for the other sections, still to
 // come — a wire change outside `tools` updates the baseline and is reported as
-// a lifecycle fact, not yet as a detection. Recording the surface before
+// a lifecycle fact, not yet as a rule finding. Recording the surface before
 // judging it is the right order: a baseline that only starts on the day the
 // classifier ships has nothing to compare against on that day.
 
-import type { DetectionBlock } from '@xcg/shared';
 
-import { canonicalizeCollection, canonicalize, type Manifest } from './manifest.js';
+import {
+  canonicalizeCollection,
+  canonicalize,
+  reportChanges,
+  type ChangeReport,
+  type Manifest,
+} from './manifest.js';
 import { planMigration } from './manifest-migrate.js';
 import {
   SECURITY_PROJECTION_VERSION,
@@ -43,7 +48,7 @@ export function sectionForMethod(method: string): SectionName | null {
   return null;
 }
 
-/** Lifecycle facts about the auditor's own baseline. Never a detection. */
+/** Lifecycle facts about the auditor's own baseline. Never a connector change. */
 export interface BaselineEvent {
   event: 'section_initialized' | 'migrated' | 'projection_migrated' | 'reseeded' | 'snapshot_incomplete';
   section?: SectionName;
@@ -54,7 +59,9 @@ export interface BaselineEvent {
 }
 
 export interface SectionOutcome {
-  detection?: DetectionBlock;
+  /** What moved and what a rule made of it. Absent when nothing moved. A
+   *  report with no findings is the normal case, and is not a detection. */
+  change?: ChangeReport;
   events: BaselineEvent[];
 }
 
@@ -160,26 +167,26 @@ export function observeSection(
   }
 
   const existing = baseline.sections[section];
-  let detection: DetectionBlock | undefined;
+  let change: ChangeReport | undefined;
 
   if (existing === undefined) {
     // First time this section is tracked. For `tools` a v1 baseline may exist,
     // and a real change under the OLD rules is reported before migrating.
     if (section === 'tools' && deps.readV1 !== undefined) {
       const plan = planMigration(deps.readV1(mcp), result);
-      if (plan.v1Detection !== null) detection = plan.v1Detection;
+      if (plan.v1Change !== null) change = plan.v1Change;
       events.push({ event: 'migrated', coverageExpanded: plan.coverageExpanded });
     }
     events.push({ event: 'section_initialized', section });
     baseline.sections[section] = freshSection(section, snapshot, baseline.generation + 1, now);
     writeBaselineV2(deps.baseDir, baseline, now);
-    return { ...(detection !== undefined ? { detection } : {}), events };
+    return { ...(change !== undefined ? { change } : {}), events };
   }
 
   const wire = hashOf(snapshot);
-  if (wire === existing.wire_hash) return { ...(detection !== undefined ? { detection } : {}), events };
+  if (wire === existing.wire_hash) return { ...(change !== undefined ? { change } : {}), events };
 
-  // Wire moved: advance the baseline. Classifying the change is the detector's
+  // Wire moved: advance the baseline. Classifying the change is the rules'
   // job, not this layer's.
   baseline.sections[section] = {
     ...existing,
@@ -191,5 +198,5 @@ export function observeSection(
     recent_wire_hashes: pushRecent(existing.recent_wire_hashes, wire),
   };
   writeBaselineV2(deps.baseDir, baseline, now);
-  return { ...(detection !== undefined ? { detection } : {}), events };
+  return { ...(change !== undefined ? { change } : {}), events };
 }

@@ -11,7 +11,14 @@ import { monotonicFactory, ulid } from 'ulid';
 // proxy: frame-processor.ts y latency.ts lo importan desde './events.js' en
 // su calidad de tipo de evento, sin conocer la topología del monorepo.
 // La fuente de verdad es @xcg/shared; este re-export es fachada explícita.
-import type { Direction } from '@xcg/shared';
+import type {
+  Attention,
+  ConnectorChangeEntry,
+  ConnectorFinding,
+  ConnectorSection,
+  Direction,
+  SnapshotRef,
+} from '@xcg/shared';
 export type { Direction };
 
 import type { Envelope, Writer } from './audit.js';
@@ -260,6 +267,23 @@ export type EventBody =
       rpcId: RpcId;
       direction: Direction;
       detection: DetectionBlock;
+      overheadUs: number;
+    }
+  | {
+      // The facts model for connector surface changes. Replaces the
+      // tool_manifest_changed enrichment: `changes` states what moved and
+      // carries no severity at all, `findings` carries what a versioned
+      // security rule made of it, and `attention` is a heuristic's opinion
+      // that a human should look. A change with no findings is the normal
+      // case — four months of production say it is 197 of 217 — and it is NOT
+      // a detection, so it must never reach a counter.
+      type: 'mcp.connector_change';
+      section: ConnectorSection;
+      snapshot: SnapshotRef | null;
+      catalog?: { before: number; after: number };
+      changes: ConnectorChangeEntry[];
+      findings: ConnectorFinding[];
+      attention: Attention;
       overheadUs: number;
     };
 

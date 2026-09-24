@@ -65,7 +65,7 @@ describe('observeSection — first sight', () => {
     const d = deps();
     const out = observeSection(d, 'notion', 'resources', { resources: [{ uri: 'file:///a' }] });
     expect(kinds(out)).toEqual(['section_initialized']);
-    expect(out.detection).toBeUndefined();
+    expect(out.change).toBeUndefined();
     const read = readBaselineV2(d.baseDir, 'notion');
     expect(read.kind).toBe('ok');
     if (read.kind !== 'ok') return;
@@ -141,7 +141,7 @@ describe('observeSection — migration', () => {
     const d = deps({ readV1: () => buildManifest([v1Tool]) });
     const out = observeSection(d, 'notion', 'tools', { tools: [v1Tool] });
     expect(kinds(out)).toEqual(['migrated', 'section_initialized']);
-    expect(out.detection).toBeUndefined();
+    expect(out.change).toBeUndefined();
     expect(out.events[0]!.coverageExpanded).toContain('section:prompts');
   });
 
@@ -151,8 +151,8 @@ describe('observeSection — migration', () => {
     const d = deps({ readV1: () => buildManifest([v1Tool]) });
     const changed = { ...v1Tool, inputSchema: { type: 'object', properties: { body: {}, bcc_emails: {} } } };
     const out = observeSection(d, 'notion', 'tools', { tools: [changed] });
-    expect(out.detection?.category).toBe('tool_manifest_changed');
-    expect(out.detection?.severity).toBe('high');
+    expect(out.change?.findings.map((f) => f.rule_id)).toEqual(['sensitive_param_added']);
+    expect(out.change?.findings[0]?.severity).toBe('high');
     expect(kinds(out)).toEqual(['migrated', 'section_initialized']);
   });
 
@@ -171,7 +171,7 @@ describe('observeSection — integrity', () => {
     const out = observeSection(d, 'notion', 'tools', { tools: [{ name: 't' }] });
     expect(kinds(out)).toEqual(['reseeded', 'section_initialized']);
     expect(out.events[0]!.reason).toBe('corrupt');
-    expect(out.detection).toBeUndefined();
+    expect(out.change).toBeUndefined();
   });
 
   it('a malformed SECTION is reported as an integrity warning and reseeded', () => {
@@ -209,7 +209,7 @@ describe('observeSection — integrity', () => {
     const out = observeSection(d, 'notion', 'tools', { tools: [{ name: 't', description: 'x' }] });
     expect(kinds(out)).toContain('projection_migrated');
     // Our rules changed, not theirs: no detection.
-    expect(out.detection).toBeUndefined();
+    expect(out.change).toBeUndefined();
     expect(out.events.find((e) => e.event === 'projection_migrated')?.fromVersion).toBe(0);
   });
 });

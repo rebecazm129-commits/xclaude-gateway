@@ -402,25 +402,39 @@ describe('createFrameProcessor — tool_manifest_changed (tools/list)', () => {
     return processFrame({ kind: 'response', id: 9, result }, 'server_to_client', 30, '<resp>', TS_NS, TS_MS);
   }
 
-  it('emits an mcp.detection_enrichment when the store reports a change', () => {
-    const detection: DetectionBlock = {
-      category: 'tool_manifest_changed',
-      severity: 'high',
-      findings: [{ type: 'description_changed', location: 'search' }],
-    };
-    const { store, checkAndUpdate } = stubStore({ changed: true, detection });
+  const CHANGE = {
+    changes: [{ kind: 'description_changed' as const, target: 'search' }],
+    findings: [],
+    snapshot: { before: 'sha256:a', after: 'sha256:b' },
+    catalog: { before: 3, after: 3 },
+  };
+
+  it('emits ONE mcp.connector_change when the store reports a change', () => {
+    const { store, checkAndUpdate } = stubStore({ changed: true, change: CHANGE });
     const events = runListReqResp(store, TOOLS);
-    expect(events.map((e) => e.type)).toEqual(['mcp.response', 'mcp.detection_enrichment']);
-    const enr = events[1];
-    if (enr?.type !== 'mcp.detection_enrichment') throw new Error('expected enrichment');
-    expect(enr.direction).toBe('server_to_client'); // response direction → own row
-    expect(enr.rpcId).toBe(9);
-    expect(enr.detection.category).toBe('tool_manifest_changed');
-    expect(enr.detection.severity).toBe('high');
+    expect(events.map((e) => e.type)).toEqual(['mcp.response', 'mcp.connector_change']);
+    const ev = events[1];
+    if (ev?.type !== 'mcp.connector_change') throw new Error('expected connector_change');
+    expect(ev.section).toBe('tools');
+    expect(ev.changes).toEqual(CHANGE.changes);
+    expect(ev.snapshot).toEqual(CHANGE.snapshot);
+    expect(ev.catalog).toEqual(CHANGE.catalog);
     expect(checkAndUpdate).toHaveBeenCalledWith('test-mcp', TOOLS);
   });
 
-  it('no enrichment when the store reports no change (seed / unchanged)', () => {
+  it('a change with NO findings is still emitted — that is the model', () => {
+    // The old detector could only speak by raising a detection, so a plain
+    // vendor edit had to be graded medium to be seen at all. Now it is a fact
+    // with an empty findings list, and nothing downstream counts it.
+    const { store } = stubStore({ changed: true, change: CHANGE });
+    const events = runListReqResp(store, TOOLS);
+    const ev = events[1];
+    if (ev?.type !== 'mcp.connector_change') throw new Error('expected connector_change');
+    expect(ev.findings).toEqual([]);
+    expect(ev.attention).toEqual({ level: 'normal' });
+  });
+
+  it('nothing emitted when the store reports no change (seed / unchanged)', () => {
     const { store } = stubStore({ changed: false });
     const events = runListReqResp(store, TOOLS);
     expect(events.map((e) => e.type)).toEqual(['mcp.response']);
@@ -437,8 +451,7 @@ describe('createFrameProcessor — tool_manifest_changed (tools/list)', () => {
   });
 
   it('does NOT run the manifest check on a tools/call response', () => {
-    const detection: DetectionBlock = { category: 'tool_manifest_changed', severity: 'high', findings: [] };
-    const { store, checkAndUpdate } = stubStore({ changed: true, detection });
+    const { store, checkAndUpdate } = stubStore({ changed: true, change: CHANGE });
     const processFrame = createFrameProcessor({ ...makeDeps(), manifestStore: store });
     processFrame(
       { kind: 'request', id: 9, method: 'tools/call', params: { name: 'x', arguments: {} } },

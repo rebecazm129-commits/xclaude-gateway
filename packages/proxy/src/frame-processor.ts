@@ -181,20 +181,28 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
             }
           }
         }
-        // Tool-poisoning: diff the tools/list manifest against the persisted
+        // Connector surface: diff the tools/list manifest against the persisted
         // per-connector baseline. Separate from the tools/call block above; the
         // raw mcp.response (with result.tools) is unaffected. Hash runs on the
-        // RAW frame.result, before EventSink's leaf truncation. A change emits
-        // ONE mcp.detection_enrichment with the response's direction (so it lands
-        // as its own row, uncorrelated to the tools/list request).
+        // RAW frame.result, before EventSink's leaf truncation.
+        //
+        // ONE mcp.connector_change per comparison, never one per tool — four
+        // months of production average 3.8 tools per change and peak at 52.
+        // It is emitted whether or not a rule matched: a change with no
+        // findings is a fact worth recording and is NOT a detection, which is
+        // the whole point of the model. `attention` stays normal here; the
+        // heuristic that can raise it is a separate step.
         if (deps.manifestStore !== undefined && reqMethod === 'tools/list' && 'result' in frame) {
           const outcome = deps.manifestStore.checkAndUpdate(deps.mcp, frame.result);
-          if (outcome.changed && outcome.detection !== undefined) {
+          if (outcome.changed && outcome.change !== undefined) {
             events.push({
-              type: 'mcp.detection_enrichment',
-              rpcId: frame.id,
-              direction,
-              detection: outcome.detection,
+              type: 'mcp.connector_change',
+              section: 'tools',
+              snapshot: outcome.change.snapshot,
+              catalog: outcome.change.catalog,
+              changes: outcome.change.changes,
+              findings: outcome.change.findings,
+              attention: { level: 'normal' },
               overheadUs: elapsedUs(tsObservedNs),
             });
           }

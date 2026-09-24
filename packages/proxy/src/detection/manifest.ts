@@ -13,11 +13,23 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { writeAtomic } from '@xcg/shared/config';
-import type { DetectionBlock, DetectionFinding, Severity } from '@xcg/shared';
+import type {
+  ChangeKind,
+  ConnectorChangeEntry,
+  ConnectorFinding,
+  DetectionBlock,
+  DetectionFinding,
+  Severity,
+  SnapshotRef,
+} from '@xcg/shared';
 
 import { injectionFindings } from './detectors/prompt-injection.js';
 import { isSensitiveParamName } from './detectors/sensitive-params.js';
-import { HIDDEN_CLASS_SEVERITY, hiddenCharacterHits } from './detectors/text-normalize.js';
+import {
+  HIDDEN_CLASS_SEVERITY,
+  hiddenCharacterHits,
+  type HiddenClass,
+} from './detectors/text-normalize.js';
 import { ruleStamp } from './rules.js';
 import { externalRefs, sensitivePathHits, walkSurface } from './detectors/surface-scan.js';
 
@@ -474,6 +486,84 @@ export function scanRules(delta: ToolDelta): RuleScanResult {
   return { findings, high, medium };
 }
 
+// --- the facts model view --------------------------------------------------
+//
+// Same walk as diffManifest, but reported the way the product now reads it:
+// `changes` says what moved and carries no severity, `findings` says what a
+// versioned rule made of it. The informational annotations (external_url,
+// imperative_language, external_ref) are not emitted at all — they never
+// raised severity, and four months of production showed every one of them to
+// be documentation prose.
+
+/** Old finding type -> the section-neutral change vocabulary. */
+const CHANGE_KIND: Readonly<Record<string, ChangeKind>> = {
+  tool_added: 'item_added',
+  tool_removed: 'item_removed',
+  description_changed: 'description_changed',
+  surface_added: 'surface_added',
+  schema_changed: 'schema_changed',
+};
+
+/** Severity each rule asserts. Lives with the rule, not with the event: an
+ *  event has no severity in this model. */
+function severityOf(f: DetectionFinding): ConnectorFinding['severity'] {
+  if (f.rule_id === 'hidden_characters') {
+    const cls = f.rule as HiddenClass | undefined;
+    if (cls === undefined) return 'high'; // unnamed class: assume the worse
+    return HIDDEN_CLASS_SEVERITY[cls] === 'high' ? 'high' : 'medium';
+  }
+  return 'high';
+}
+
+export interface ChangeReport {
+  changes: ConnectorChangeEntry[];
+  findings: ConnectorFinding[];
+}
+
+/** What moved and what a rule made of it, for one section's delta. */
+export function reportChanges(
+  prev: Manifest,
+  next: Manifest,
+  nextTools?: readonly ToolDef[],
+): ChangeReport | null {
+  if (prev.hash === next.hash) return null;
+  const changes: ConnectorChangeEntry[] = [];
+  const findings: ConnectorFinding[] = [];
+  for (const delta of toolDeltas(prev, next, nextTools)) {
+    for (const f of describeChanges(delta).findings) {
+      const kind = CHANGE_KIND[f.type];
+      if (kind === undefined) continue; // informational: not a fact about the surface
+      changes.push({
+        kind,
+        target: f.location ?? delta.name,
+        ...(f.path !== undefined ? { path: f.path } : {}),
+      });
+    }
+    for (const f of scanRules(delta).findings) {
+      if (f.rule_id === undefined) continue; // external_ref: evidence, not a verdict
+      const evidence: ConnectorFinding['evidence'] = {};
+      if (f.rule_id === 'sensitive_param_added' && f.location !== undefined) {
+        evidence.target = delta.name;
+        evidence.path = f.location;
+      } else if (f.location !== undefined) {
+        evidence.target = f.location;
+      }
+      if (f.path !== undefined) evidence.path = f.path;
+      if (f.rule !== undefined) evidence.rule = f.rule;
+      if (f.codepoint !== undefined) evidence.codepoint = f.codepoint;
+      if (f.count !== undefined) evidence.count = f.count;
+      findings.push({
+        rule_id: f.rule_id,
+        rule_version: f.rule_version ?? 1,
+        severity: severityOf(f),
+        evidence,
+      });
+    }
+  }
+  if (changes.length === 0 && findings.length === 0) return null;
+  return { changes, findings };
+}
+
 export function diffManifest(
   prev: Manifest,
   next: Manifest,
@@ -509,7 +599,9 @@ interface StoredManifest {
 
 export interface ManifestOutcome {
   changed: boolean;
-  detection?: DetectionBlock;
+  /** The facts-model payload. Present only when something moved. A report with
+   *  an empty `findings` is the normal case and is NOT a detection. */
+  change?: ChangeReport & { snapshot: SnapshotRef; catalog: { before: number; after: number } };
 }
 
 export interface ManifestStore {
@@ -623,12 +715,21 @@ export function createManifestStore(
       return { changed: false };
     }
     if (prev.hash === next.hash) return { changed: false }; // no change, no rewrite
-    const detection = diffManifest(prev, next, tools);
-    // Align the baseline to the new manifest either way (never alert twice for
-    // the same change). detection is null only in the hash-differs-but-no-diff
+    const report = reportChanges(prev, next, tools);
+    // Align the baseline to the new manifest either way (never report twice for
+    // the same change). report is null only in the hash-differs-but-no-diff
     // edge; still reseed silently.
+    const before = Object.keys(prev.tools).length;
     writeBaseline(mcp, next);
-    return detection !== null ? { changed: true, detection } : { changed: false };
+    if (report === null) return { changed: false };
+    return {
+      changed: true,
+      change: {
+        ...report,
+        snapshot: { before: `sha256:${prev.hash}`, after: `sha256:${next.hash}` },
+        catalog: { before, after: Object.keys(next.tools).length },
+      },
+    };
   }
 
   return { checkAndUpdate };

@@ -9,6 +9,8 @@ import { join } from 'node:path';
 import { CONNECTOR_CHANGE_TYPE } from '@xcg/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { parseAuditContent, readAudit } from '../../src/main/detection-reader.js';
+import { computeTrayCounts } from '../../src/main/tray.js';
 import {
   UNVERSIONED,
   fromLegacyLine,
@@ -262,5 +264,53 @@ describe('one reader, both formats', () => {
       `{ broken\n${JSON.stringify(native())}\n\n${JSON.stringify(legacy([{ type: 'tool_removed', location: 'z' }]))}\n`,
     );
     expect(await readConnectorChanges(d)).toHaveLength(2);
+  });
+});
+
+describe('connector_change is inert for every counted surface', () => {
+  // The load-bearing half of the model. Four months of production say 197 of
+  // 217 changes carry no finding; letting any of them reach a counter would
+  // inflate exactly the number the user reads as "things worth looking at".
+  const lines = [
+    native({ findings: [] }),
+    native({
+      findings: [
+        {
+          rule_id: 'sensitive_param_added',
+          rule_version: 1,
+          severity: 'high',
+          evidence: { target: 'send', path: 'send.webhook_url' },
+        },
+      ],
+    }),
+    native({ attention: { level: 'review_recommended', heuristic_id: 'h', heuristic_version: 1 } }),
+  ];
+  const content = lines.map((l) => JSON.stringify(l)).join('\n') + '\n';
+
+  it('produces no detection event, no auth signal and no outcome', () => {
+    const parsed = parseAuditContent(content);
+    expect(parsed.events).toEqual([]);
+    expect(parsed.authSignals).toEqual([]);
+    expect(parsed.outcomes?.size ?? 0).toBe(0);
+  });
+
+  it('never reaches the tray counters, findings or not', () => {
+    const parsed = parseAuditContent(content);
+    expect(computeTrayCounts(parsed.events, Date.parse('2026-09-24T12:00:00.000Z'))).toEqual({
+      flagged24h: 0,
+      critical24h: 0,
+    });
+  });
+
+  it('never appears as a Detections row', async () => {
+    const d = await dirWith(...lines);
+    const audit = await readAudit(d, Date.parse('2026-09-24T12:00:00.000Z'));
+    expect(audit.events).toEqual([]);
+    expect(audit.authAlerts).toEqual([]);
+  });
+
+  it('but the change reader does see all three', async () => {
+    const d = await dirWith(...lines);
+    expect(await readConnectorChanges(d)).toHaveLength(3);
   });
 });

@@ -18,30 +18,36 @@ describe('planMigration', () => {
   it('v1 view unchanged → no detection, coverage still reported', () => {
     const t = tool('send', 'Send.', { type: 'object', properties: { body: {} } });
     const plan = planMigration(buildManifest([t]), result(t));
-    expect(plan.v1Detection).toBeNull();
+    expect(plan.v1Change).toBeNull();
     expect(plan.coverageExpanded).toEqual(COVERAGE_EXPANDED);
   });
 
-  it('v1 view CHANGED → tool_manifest_changed with the v1 diff, then migrate', () => {
+  it('v1 view CHANGED → the v1 change is reported, then the migration happens', () => {
     // The correction that matters: a real change in what v1 already watched is
     // reported. Swallowing it as "we were migrating" would lose a finding.
     const before = buildManifest([tool('send', 'Send.', { type: 'object', properties: { body: {} } })]);
     const after = tool('send', 'Send anywhere.', { type: 'object', properties: { body: {}, bcc: {} } });
     const plan = planMigration(before, result(after));
-    expect(plan.v1Detection).not.toBeNull();
-    expect(plan.v1Detection?.category).toBe('tool_manifest_changed');
-    expect(plan.v1Detection?.findings.map((f) => f.type)).toContain('surface_added');
+    expect(plan.v1Change).not.toBeNull();
+    expect(plan.v1Change?.changes.map((c) => c.kind)).toContain('surface_added');
+    // `bcc` is a sensitive parameter name, so the surface growth also trips a
+    // rule. The two lists are independent: the change is the fact, the finding
+    // is the verdict on it.
+    expect(plan.v1Change?.findings.map((f) => f.rule_id)).toEqual(['sensitive_param_added']);
   });
 
   it('a sensitive parameter added across the migration still grades high', () => {
     const before = buildManifest([tool('send', 'Send.', { type: 'object', properties: { body: {} } })]);
     const after = tool('send', 'Send.', { type: 'object', properties: { body: {}, webhook_url: {} } });
-    expect(planMigration(before, result(after)).v1Detection?.severity).toBe('high');
+    const f = planMigration(before, result(after)).v1Change?.findings ?? [];
+    expect(f.map((x) => x.rule_id)).toEqual(['sensitive_param_added']);
+    expect(f[0]?.severity).toBe('high');
+    expect(f[0]?.rule_version).toBe(1);
   });
 
   it('no v1 baseline → nothing was ever watched, so nothing can have changed', () => {
     const plan = planMigration(null, result(tool('send', 'Send.')));
-    expect(plan.v1Detection).toBeNull();
+    expect(plan.v1Change).toBeNull();
     expect(plan.coverageExpanded.length).toBeGreaterThan(0);
   });
 
@@ -59,7 +65,7 @@ describe('planMigration', () => {
       outputSchema: { type: 'object' },
       annotations: { destructiveHint: true },
     };
-    expect(planMigration(before, result(after)).v1Detection).toBeNull();
+    expect(planMigration(before, result(after)).v1Change).toBeNull();
   });
 
   it('coverage lists the sections v1 never had', () => {
