@@ -13,6 +13,8 @@ import {
   type Manifest,
   type ToolDef,
   type ToolSig,
+  canonicalizeCollection,
+  itemIdentity,
 } from '../src/detection/manifest.js';
 
 function tool(name: string, description?: unknown, inputSchema?: unknown): ToolDef {
@@ -28,6 +30,52 @@ function result(...tools: ToolDef[]): unknown {
     })),
   };
 }
+
+// Section collections (result.tools, result.resources…) are ordered by the
+// SERVER, and that order is not part of the contract. v2 hashes the collection
+// after sorting by identity; the arrays INSIDE each item keep their order
+// because an enum or an anyOf branch list IS contract.
+describe('canonicalizeCollection', () => {
+  const a = { name: 'alpha', inputSchema: { enum: ['x', 'y'] } };
+  const b = { name: 'beta', description: 'second' };
+  const c = { uri: 'file:///a', mimeType: 'text/plain' };
+
+  it('item order does not change the canonical form', () => {
+    expect(canonicalizeCollection([a, b])).toEqual(canonicalizeCollection([b, a]));
+  });
+
+  it('arrays INSIDE an item keep their order', () => {
+    const flipped = { name: 'alpha', inputSchema: { enum: ['y', 'x'] } };
+    expect(canonicalizeCollection([a])).not.toEqual(canonicalizeCollection([flipped]));
+  });
+
+  it('object keys inside an item are sorted', () => {
+    expect(canonicalizeCollection([{ name: 'z', b: 1, a: 2 }])).toEqual(
+      canonicalizeCollection([{ a: 2, b: 1, name: 'z' }]),
+    );
+  });
+
+  it('duplicate identities are BOTH kept — a manifest shipping a name twice must not be hidden', () => {
+    const twice = canonicalizeCollection([{ name: 'dup', description: 'one' }, { name: 'dup', description: 'two' }]);
+    expect(twice).toHaveLength(2);
+  });
+
+  it('resources sort by uri, tools and prompts by name', () => {
+    expect(itemIdentity(a)).toBe('name:alpha');
+    expect(itemIdentity(c)).toBe('uri:file:///a');
+    expect(itemIdentity({ uriTemplate: 'file:///{p}' })).toBe('uriTemplate:file:///{p}');
+  });
+
+  it('an item with no identity still gets a stable position', () => {
+    const anon = { mimeType: 'text/plain' };
+    expect(itemIdentity(anon)).toBe(itemIdentity({ mimeType: 'text/plain' }));
+    expect(canonicalizeCollection([anon, b])).toEqual(canonicalizeCollection([b, anon]));
+  });
+
+  it('empty collection is empty, not undefined', () => {
+    expect(canonicalizeCollection([])).toEqual([]);
+  });
+});
 
 describe('buildManifest / diffManifest (pure)', () => {
   it('order-independent: permuted tools + permuted schema keys → same hash, no diff', () => {

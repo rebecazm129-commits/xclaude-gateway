@@ -29,7 +29,11 @@ function sha256(s: string): string {
 }
 
 // Recursively sorts object keys so property order never affects a hash. Arrays
-// keep their order (tool arrays are ordered separately, by name).
+// keep their order: inside a schema an array IS ordered data (an `enum`, an
+// `anyOf` branch list), and reordering one changes the contract.
+//
+// The COLLECTION a section arrives in is the exception and is handled by
+// canonicalizeCollection below, not here.
 export function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
   if (value !== null && typeof value === 'object') {
@@ -43,6 +47,46 @@ export function canonicalize(value: unknown): unknown {
 
 function canonicalJson(value: unknown): string {
   return JSON.stringify(canonicalize(value));
+}
+
+// ---- collection canonicalization ----
+
+/** Identity of an item inside a section collection. `name` for tools and
+ *  prompts, `uri`/`uriTemplate` for resources and templates. Falls back to the
+ *  canonical form of the item itself so an item with no identity still has a
+ *  stable position instead of drifting with arrival order. */
+export function itemIdentity(item: unknown): string {
+  if (item === null || typeof item !== 'object' || Array.isArray(item)) {
+    return canonicalJson(item);
+  }
+  const o = item as Record<string, unknown>;
+  for (const key of ['name', 'uri', 'uriTemplate']) {
+    const v = o[key];
+    if (typeof v === 'string' && v.length > 0) return `${key}:${v}`;
+  }
+  return canonicalJson(item);
+}
+
+/**
+ * Canonical form of a SECTION collection (result.tools, result.resources,
+ * result.prompts…). Two things happen here that canonicalize() must never do
+ * to an arbitrary array:
+ *
+ *   - items are ordered by identity, because the order a server lists its
+ *     tools in is not part of the contract. A vendor reshuffling its list, or
+ *     a paginated section whose pages arrive in a different order, is not a
+ *     change and must not hash differently;
+ *   - each item is canonicalized normally, so the arrays INSIDE it (enum,
+ *     anyOf, required) keep their order, which is contract.
+ *
+ * Duplicate identities are kept, both of them, sorted: dropping one would
+ * silently hide a manifest that ships the same tool name twice.
+ */
+export function canonicalizeCollection(items: readonly unknown[]): unknown[] {
+  return items
+    .map((item) => ({ id: itemIdentity(item), value: canonicalize(item) }))
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((x) => x.value);
 }
 
 // ---- manifest model ----
