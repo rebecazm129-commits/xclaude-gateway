@@ -18,7 +18,7 @@ import { formatTimestamp } from './detections-format.js';
 import { FilterDropdown } from './FilterDropdown.js';
 import { SeverityBreakdown } from './SeverityBreakdown.js';
 import { TimeFilter, type TimeRange } from './TimeFilter.js';
-import { Tooltip } from './Tooltip.js';
+import { ToggleChip } from './ToggleChip.js';
 
 import styles from './ClaudeCode.module.css';
 // The right-aligned time group still shares Detections' .timeFilterSpacer,
@@ -330,10 +330,6 @@ export function ClaudeCode(): JSX.Element {
     setCustomTo('');
   }
 
-  const flaggedChipClass = flaggedOnly
-    ? `${styles['flaggedChip']} ${styles['flaggedChipActive']}`
-    : styles['flaggedChip'];
-
   return (
     <>
       <SeverityBreakdown
@@ -363,16 +359,12 @@ export function ClaudeCode(): JSX.Element {
           </div>
         </div>
         <div className={`${styles['toolbarRow']} ${styles['chipsRow']}`}>
-        <Tooltip text="Show only calls that triggered a detection">
-          <button
-            type="button"
-            className={flaggedChipClass}
-            aria-pressed={flaggedOnly}
-            onClick={() => setFlaggedOnly((v) => !v)}
-          >
-            Flagged only
-          </button>
-        </Tooltip>
+        <ToggleChip
+          label="Flagged only"
+          tooltip="Show only calls that triggered a detection"
+          active={flaggedOnly}
+          onChange={setFlaggedOnly}
+        />
         <FilterDropdown
           label="Severity"
           options={SEVERITY_OPTIONS}
