@@ -11,8 +11,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { parseAuditContent, readAudit } from '../../src/main/detection-reader.js';
 import { computeTrayCounts } from '../../src/main/tray.js';
+import { REVIEW_STATUS_CHANGED_TYPE } from '@xcg/shared';
 import {
   UNVERSIONED,
+  foldReviewStatus,
+  reviewMarkerOfLine,
   fromLegacyLine,
   fromNativeLine,
   readConnectorChanges,
@@ -309,8 +312,97 @@ describe('connector_change is inert for every counted surface', () => {
     expect(audit.authAlerts).toEqual([]);
   });
 
+  it('a review marker is inert too — it is bookkeeping, not evidence of risk', async () => {
+    const line = JSON.stringify({
+      v: 1, id: 'M0', ts: '2026-09-24T11:00:00.000Z', session: 'desktop',
+      type: REVIEW_STATUS_CHANGED_TYPE, target_event_id: 'E1', from: 'unreviewed', to: 'reviewed',
+    });
+    const parsed = parseAuditContent(line + '\n');
+    expect(parsed.events).toEqual([]);
+    expect(parsed.authSignals).toEqual([]);
+    expect(computeTrayCounts(parsed.events, Date.parse('2026-09-24T12:00:00.000Z'))).toEqual({
+      flagged24h: 0, critical24h: 0,
+    });
+  });
+
   it('but the change reader does see all three', async () => {
     const d = await dirWith(...lines);
     expect(await readConnectorChanges(d)).toHaveLength(3);
+  });
+});
+
+describe('review status is folded, never stored on the event', () => {
+  const marker = (target: string, to: 'reviewed' | 'unreviewed', ts: string): Record<string, unknown> => ({
+    v: 1,
+    id: `M${(n += 1)}`,
+    ts,
+    session: 'desktop',
+    type: REVIEW_STATUS_CHANGED_TYPE,
+    target_event_id: target,
+    from: to === 'reviewed' ? 'unreviewed' : 'reviewed',
+    to,
+  });
+
+  it('a change with no marker pointing at it is unreviewed', async () => {
+    const d = await dirWith(native());
+    expect((await readConnectorChanges(d))[0]?.review_status).toBe('unreviewed');
+  });
+
+  it('a marker moves the status and records the step', async () => {
+    const ev = native();
+    const d = await dirWith(ev, marker(ev['id'] as string, 'reviewed', '2026-09-24T11:00:00.000Z'));
+    const row = (await readConnectorChanges(d))[0];
+    expect(row?.review_status).toBe('reviewed');
+    expect(row?.review_history).toEqual([
+      { ts: '2026-09-24T11:00:00.000Z', from: 'unreviewed', to: 'reviewed' },
+    ]);
+  });
+
+  it('the last marker in time wins, whatever order the files are read in', async () => {
+    const ev = native();
+    const id = ev['id'] as string;
+    const d = await dirWith(
+      ev,
+      marker(id, 'unreviewed', '2026-09-24T13:00:00.000Z'),
+      marker(id, 'reviewed', '2026-09-24T12:00:00.000Z'),
+    );
+    const row = (await readConnectorChanges(d))[0];
+    expect(row?.review_status).toBe('unreviewed');
+    expect(row?.review_history.map((h) => h.to)).toEqual(['reviewed', 'unreviewed']);
+  });
+
+  it('a marker for a change that is not there is dropped, never invented', () => {
+    const rows = foldReviewStatus(
+      [],
+      [{ ts: '2026-09-24T11:00:00.000Z', target_event_id: 'gone', from: 'unreviewed', to: 'reviewed' }],
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it('a new change starts unreviewed even when an identical one was reviewed', async () => {
+    // The property that matters: review status follows the EVENT, not the
+    // content. A surface that goes back to a state someone already signed off
+    // produces a new event with a new id, and no marker points at it.
+    const first = native({ id: 'E1', ts: '2026-09-24T10:00:00.000Z' });
+    const again = native({ id: 'E2', ts: '2026-09-24T12:00:00.000Z' });
+    const d = await dirWith(first, marker('E1', 'reviewed', '2026-09-24T11:00:00.000Z'), again);
+    const rows = await readConnectorChanges(d);
+    expect(rows.map((r) => [r.event_id, r.review_status])).toEqual([
+      ['E2', 'unreviewed'],
+      ['E1', 'reviewed'],
+    ]);
+  });
+
+  it('a marker is never mistaken for a change', () => {
+    const line = JSON.stringify(marker('E1', 'reviewed', '2026-09-24T11:00:00.000Z'));
+    expect(viewOfLine(line)).toBeNull();
+    expect(reviewMarkerOfLine(line)?.target_event_id).toBe('E1');
+    expect(reviewMarkerOfLine(JSON.stringify(native()))).toBeNull();
+  });
+
+  it('historical changes can be reviewed too', async () => {
+    const ev = legacy([{ type: 'tool_added', location: 'a' }]);
+    const d = await dirWith(ev, marker(ev['id'] as string, 'reviewed', '2026-09-24T11:00:00.000Z'));
+    expect((await readConnectorChanges(d))[0]?.review_status).toBe('reviewed');
   });
 });

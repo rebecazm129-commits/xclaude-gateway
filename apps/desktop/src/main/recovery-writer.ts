@@ -183,3 +183,37 @@ export function writeCchookRemoved(
     console.error(`writeCchookRemoved: failed to append ${filePath}:`, err);
   }
 }
+
+// --- review status ----------------------------------------------------------
+//
+// A connector change is evidence and is never edited. Marking one reviewed
+// appends a SEPARATE line pointing at it, and the status is folded at read
+// time. That is also why a change that reappears starts unreviewed again: the
+// new event has a new id, and no marker points at it yet.
+
+export const REVIEW_STATUS_CHANGED_TYPE = 'app.review_status_changed';
+
+export function writeReviewStatusChanged(
+  targetEventId: string,
+  from: 'unreviewed' | 'reviewed',
+  to: 'unreviewed' | 'reviewed',
+  dir: string = DEFAULT_WRAPPERS_DIR,
+): void {
+  const envelope = {
+    v: 1,
+    id: randomUUID(),
+    ts: new Date().toISOString(),
+    session: 'desktop',
+    type: REVIEW_STATUS_CHANGED_TYPE,
+    target_event_id: targetEventId,
+    from,
+    to,
+  };
+  const filePath = join(dir, APP_EVENTS_FILENAME);
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    appendFileSync(filePath, `${JSON.stringify(envelope)}\n`, { mode: 0o600 });
+  } catch (err) {
+    console.error(`writeReviewStatusChanged: failed to append ${filePath}:`, err);
+  }
+}

@@ -46,6 +46,9 @@ import { join } from 'node:path';
 
 import {
   CONNECTOR_CHANGE_TYPE,
+  REVIEW_STATUS_CHANGED_TYPE,
+  isReviewStatusChangedEvent,
+  type ReviewStatus,
   type Attention,
   type ChangeKind,
   type ConnectorChangeEntry,
@@ -58,6 +61,12 @@ import {
 import { listJsonlFiles } from './detection-reader.js';
 
 /** One change as the UI and the export see it, whatever format it came from. */
+export interface ReviewStep {
+  ts: string;
+  from: ReviewStatus;
+  to: ReviewStatus;
+}
+
 export interface ConnectorChangeView {
   event_id: string;
   ts: string;
@@ -67,6 +76,12 @@ export interface ConnectorChangeView {
   changes: ConnectorChangeEntry[];
   findings: ConnectorFinding[];
   attention: Attention;
+  /** Folded from the app.review_status_changed lines, never stored on the
+   *  event. A change with no marker pointing at it is unreviewed, which is why
+   *  a surface that returns to a reviewed state starts over: the new event has
+   *  a new id. */
+  review_status: ReviewStatus;
+  review_history: ReviewStep[];
   source_format?: 'tool_manifest_changed_v1';
 }
 
@@ -159,6 +174,8 @@ export function fromLegacyLine(value: unknown): ConnectorChangeView | null {
     changes,
     findings,
     attention: { level: 'normal' },
+    review_status: 'unreviewed',
+    review_history: [],
     source_format: 'tool_manifest_changed_v1',
   };
 }
@@ -182,6 +199,8 @@ export function fromNativeLine(value: unknown): ConnectorChangeView | null {
     changes: value['changes'] as ConnectorChangeEntry[],
     findings: value['findings'] as ConnectorFinding[],
     attention: (isRecord(attention) ? attention : { level: 'normal' }) as Attention,
+    review_status: 'unreviewed',
+    review_history: [],
   };
 }
 
@@ -197,6 +216,51 @@ export function viewOfLine(line: string): ConnectorChangeView | null {
 }
 
 /**
+ * Applies the review markers to the changes they point at.
+ *
+ * Markers are applied in timestamp order, so the last one wins and the history
+ * reads forward. A marker whose target is not in the set is dropped, not
+ * guessed at: it may point at a change in a purged session file, and inventing
+ * a row for it would fabricate evidence.
+ */
+export function foldReviewStatus(
+  views: readonly ConnectorChangeView[],
+  markers: readonly { ts: string; target_event_id: string; from: ReviewStatus; to: ReviewStatus }[],
+): ConnectorChangeView[] {
+  const byId = new Map(views.map((v) => [v.event_id, { ...v, review_history: [...v.review_history] }]));
+  const ordered = [...markers].sort((a, b) => a.ts.localeCompare(b.ts));
+  for (const m of ordered) {
+    const v = byId.get(m.target_event_id);
+    if (v === undefined) continue;
+    v.review_history.push({ ts: m.ts, from: m.from, to: m.to });
+    v.review_status = m.to;
+  }
+  return views.map((v) => byId.get(v.event_id) ?? v);
+}
+
+/** A review marker line, or null. */
+export function reviewMarkerOfLine(line: string): {
+  ts: string;
+  target_event_id: string;
+  from: ReviewStatus;
+  to: ReviewStatus;
+} | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (!isReviewStatusChangedEvent(parsed)) return null;
+  return {
+    ts: parsed.ts,
+    target_event_id: parsed.target_event_id,
+    from: parsed.from === 'reviewed' ? 'reviewed' : 'unreviewed',
+    to: parsed.to,
+  };
+}
+
+/**
  * Every connector change in the trail, newest first.
  *
  * Read on demand like the baseline history, not folded into the 2s audit poll:
@@ -209,6 +273,7 @@ export async function readConnectorChanges(
 ): Promise<ConnectorChangeView[]> {
   const limit = opts.limit ?? 500;
   const out: ConnectorChangeView[] = [];
+  const markers: { ts: string; target_event_id: string; from: ReviewStatus; to: ReviewStatus }[] = [];
   let files: string[];
   try {
     files = await listJsonlFiles(dir);
@@ -223,9 +288,20 @@ export async function readConnectorChanges(
       continue; // an unreadable session file must not lose the others
     }
     // Cheap pre-filter: most session files carry neither format.
-    if (!content.includes(CONNECTOR_CHANGE_TYPE) && !content.includes(LEGACY_CATEGORY)) continue;
+    if (
+      !content.includes(CONNECTOR_CHANGE_TYPE) &&
+      !content.includes(LEGACY_CATEGORY) &&
+      !content.includes(REVIEW_STATUS_CHANGED_TYPE)
+    ) {
+      continue;
+    }
     for (const line of content.split('\n')) {
       if (line.length === 0) continue;
+      const marker = reviewMarkerOfLine(line);
+      if (marker !== null) {
+        markers.push(marker);
+        continue;
+      }
       const view = viewOfLine(line);
       if (view === null) continue;
       if (opts.mcp !== undefined && view.mcp !== opts.mcp) continue;
@@ -233,5 +309,7 @@ export async function readConnectorChanges(
     }
   }
   out.sort((a, b) => b.ts.localeCompare(a.ts));
-  return out.slice(0, limit);
+  // Fold BEFORE the cap: a marker written today may point at a change far down
+  // the list, and slicing first would silently lose it.
+  return foldReviewStatus(out, markers).slice(0, limit);
 }
