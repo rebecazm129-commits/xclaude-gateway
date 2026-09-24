@@ -43,6 +43,49 @@ export interface BaselineHistoryEntry {
   toVersion?: number;
 }
 
+/** Mirrors main/connector-changes.ts. Declared here rather than imported so the
+ *  renderer keeps no dependency on a main-process module. */
+export interface ConnectorChangeEntryView {
+  kind:
+    | 'item_added'
+    | 'item_removed'
+    | 'description_changed'
+    | 'surface_added'
+    | 'surface_removed'
+    | 'schema_changed'
+    | 'returned_to_seen_state';
+  target: string;
+  path?: string;
+}
+
+export interface ConnectorFindingView {
+  rule_id: string;
+  rule_version: number;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  evidence: { target?: string; path?: string; rule?: string; codepoint?: string; count?: number };
+}
+
+export type AttentionView =
+  | { level: 'normal' }
+  | { level: 'review_recommended'; heuristic_id: string; heuristic_version: number };
+
+export interface ConnectorChangeView {
+  event_id: string;
+  ts: string;
+  mcp: string;
+  section: 'tools' | 'resources' | 'resource_templates' | 'prompts' | 'discovery';
+  snapshot: { before: string | null; after: string } | null;
+  changes: ConnectorChangeEntryView[];
+  findings: ConnectorFindingView[];
+  attention: AttentionView;
+  review_status: 'unreviewed' | 'reviewed';
+  review_history: { ts: string; from: string; to: string }[];
+  source_format?: 'tool_manifest_changed_v1';
+  /** Previous and new text of the descriptions that moved. Native events only:
+   *  a historical one has no snapshot to diff against. */
+  descriptionDiff?: { target: string; before: string; after: string }[];
+}
+
 export interface XcgApi {
   listDetections(): Promise<DetectionListResult>;
   listDetectionPage(params: {
@@ -85,6 +128,14 @@ export interface XcgApi {
   /** Baseline lifecycle for one connector's card. These events describe what
    *  the AUDITOR did to its own state and never appear as detections. */
   baselineHistory?(mcp: string): Promise<BaselineHistoryEntry[]>;
+  /** Connector surface changes, both formats, newest first. Optional: a
+   *  preload from an older build does not expose it, and the renderer must not
+   *  assume it does. */
+  connectorChanges?(mcp?: string): Promise<ConnectorChangeView[]>;
+  /** Appends an app.review_status_changed marker pointing at one change. */
+  setReviewStatus?(eventId: string, to: 'reviewed' | 'unreviewed'): Promise<void>;
+  /** Exports the given changes as the versioned document. */
+  exportChanges?(eventIds: string[]): Promise<AuditExportResult>;
   /** Current OS login-item state. Read on every panel open — never cached:
    *  macOS System Settings can change it behind the app's back. */
   openAtLogin(): Promise<boolean>;

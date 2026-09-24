@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Notification, dialog, ipcMain, shell } from 'electron';
 import { homedir } from 'node:os';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -55,7 +55,13 @@ import {
   runSweep,
   writeRetentionConfig,
 } from './retention.js';
+import { writeReviewStatusChanged } from './recovery-writer.js';
+import { CHANGES_EXPORT_SCHEMA_VERSION } from '@xcg/shared';
 import { createAuditStore } from './audit-store.js';
+import {
+  readConnectorChanges,
+  type ConnectorChangeView,
+} from './connector-changes.js';
 import { cchookSpoolDir } from '@xcg/proxy/cchook-ingest';
 import { getCchookStatus, runCchookIngestCycle } from './cchook-ingester.js';
 import {
@@ -749,6 +755,79 @@ ipcMain.handle(
   async (_event, params: { mcp: string }): Promise<BaselineHistoryEntry[]> => {
     if (typeof params?.mcp !== 'string' || params.mcp === '') return [];
     return readBaselineHistory(WRAPPERS_DIR, params.mcp);
+  },
+);
+
+// Connector surface changes, both formats, read on demand. Off the 2s audit
+// poll on purpose: these feed a view the user opens, and keeping them off that
+// path is what guarantees a change with no findings can never reach a counter.
+ipcMain.handle(
+  'changes:list',
+  async (_event, params?: { mcp?: string }): Promise<ConnectorChangeView[]> => {
+    const mcp = typeof params?.mcp === 'string' && params.mcp !== '' ? params.mcp : undefined;
+    return readConnectorChanges(WRAPPERS_DIR, mcp === undefined ? {} : { mcp });
+  },
+);
+
+// Marking a change reviewed appends its own line; the change event is never
+// edited. Returns nothing: the renderer re-reads, so the folded status always
+// comes from the trail rather than from what the UI hoped happened.
+ipcMain.handle(
+  'changes:set-review-status',
+  async (_event, params: { eventId: string; to: 'reviewed' | 'unreviewed' }): Promise<void> => {
+    if (typeof params?.eventId !== 'string' || params.eventId === '') return;
+    if (params.to !== 'reviewed' && params.to !== 'unreviewed') return;
+    const current = await readConnectorChanges(WRAPPERS_DIR, { limit: 5000 });
+    const target = current.find((c) => c.event_id === params.eventId);
+    // An unknown id is not written: a marker pointing at nothing would be a
+    // row in the trail that can never be explained.
+    if (target === undefined) return;
+    if (target.review_status === params.to) return;
+    writeReviewStatusChanged(params.eventId, target.review_status, params.to, WRAPPERS_DIR);
+  },
+);
+
+// Export what the Changes view is showing, as the versioned document the
+// design fixed: schema_version for the file, rule_version per finding,
+// heuristic_version on attention. A re-read six months from now has to be able
+// to tell which rules produced what it is looking at.
+ipcMain.handle(
+  'changes:export',
+  async (_event, params: { eventIds: string[] }): Promise<AuditExportResult> => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
+    const chosen = await dialog.showSaveDialog(win ?? undefined!, {
+      defaultPath: `xclaude-changes-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (chosen.canceled || chosen.filePath === undefined) return { ok: false, canceled: true };
+    try {
+      const wanted = new Set(params?.eventIds ?? []);
+      const all = await readConnectorChanges(WRAPPERS_DIR, { limit: 100000 });
+      const events = all.filter((c) => wanted.has(c.event_id));
+      const doc = {
+        schema_version: CHANGES_EXPORT_SCHEMA_VERSION,
+        exported_at: new Date().toISOString(),
+        generator: { app: 'xCLAUDE Gateway', version: app.getVersion() },
+        events: events.map((c) => ({
+          event_id: c.event_id,
+          event_type: 'connector_change' as const,
+          ts: c.ts,
+          mcp: c.mcp,
+          section: c.section,
+          snapshot: c.snapshot,
+          changes: c.changes,
+          findings: c.findings,
+          attention: c.attention,
+          review_status: c.review_status,
+          review_history: c.review_history,
+          ...(c.source_format !== undefined ? { source_format: c.source_format } : {}),
+        })),
+      };
+      writeFileSync(chosen.filePath, `${JSON.stringify(doc, null, 2)}\n`, { mode: 0o600 });
+      return { ok: true, count: events.length, path: chosen.filePath };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Unexpected error' };
+    }
   },
 );
 

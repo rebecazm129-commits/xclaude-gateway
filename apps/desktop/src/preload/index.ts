@@ -75,6 +75,12 @@ contextBridge.exposeInMainWorld('xcg', {
   appVersion: (): Promise<string> => ipcRenderer.invoke('system:version'),
   baselineHistory: (mcp: string): Promise<unknown[]> =>
     ipcRenderer.invoke('manifest:baseline-history', { mcp }),
+  connectorChanges: (mcp?: string): Promise<unknown[]> =>
+    ipcRenderer.invoke('changes:list', { mcp }),
+  setReviewStatus: (eventId: string, to: 'reviewed' | 'unreviewed'): Promise<void> =>
+    ipcRenderer.invoke('changes:set-review-status', { eventId, to }),
+  exportChanges: (eventIds: string[]): Promise<AuditExportResult> =>
+    ipcRenderer.invoke('changes:export', { eventIds }),
   openAtLogin: (): Promise<boolean> => ipcRenderer.invoke('prefs:open-at-login'),
   setOpenAtLogin: (value: boolean): Promise<boolean> =>
     ipcRenderer.invoke('prefs:set-open-at-login', { value }),

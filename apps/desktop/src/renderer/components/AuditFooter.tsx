@@ -28,9 +28,13 @@ interface AuditFooterProps {
    *  it. Defaults to the existing wording, so the two views that predate this
    *  read exactly as they did. */
   readonly noun?: string;
+  /** Overrides what "Export" does. Changes exports a versioned document of
+   *  connector changes, not a slice of the tool-call trail, so it supplies its
+   *  own; the two views that predate it pass nothing and keep exportAudit. */
+  readonly onExport?: () => Promise<{ ok: true; count: number } | { ok: false; error: string } | null>;
 }
 
-export function AuditFooter({ filter, total, totalMatching, noun = 'event' }: AuditFooterProps): JSX.Element {
+export function AuditFooter({ filter, total, totalMatching, noun = 'event', onExport }: AuditFooterProps): JSX.Element {
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ count: number } | { error: string } | null>(null);
 
@@ -51,8 +55,10 @@ export function AuditFooter({ filter, total, totalMatching, noun = 'event' }: Au
     setExporting(true);
     setExportResult(null);
     try {
-      const result = await window.xcg.exportAudit(filter, 'jsonl');
-      if (result.ok) {
+      const result = onExport !== undefined ? await onExport() : await window.xcg.exportAudit(filter, 'jsonl');
+      if (result === null) {
+        // Cancelled: leave the status cleared.
+      } else if (result.ok) {
         setExportResult({ count: result.count });
       } else if ('error' in result) {
         setExportResult({ error: briefError(result.error) });
