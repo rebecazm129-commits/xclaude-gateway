@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FixedSizeList } from 'react-window';
 
 import { useDetectionPage } from '../hooks/useDetectionPage.js';
@@ -10,7 +10,8 @@ import type {
 } from '../../shared/types.js';
 
 import { AuditFooter } from './AuditFooter.js';
-import { CATEGORY_OPTIONS, SEVERITY_OPTIONS, INITIAL_LIST_HEIGHT, SEARCH_DEBOUNCE_MS } from './Detections.js';
+import { CATEGORY_OPTIONS, SEVERITY_OPTIONS } from './Detections.js';
+import { useListView } from '../hooks/useListView.js';
 import { ClaudeCodeRow } from './ClaudeCodeRow.js';
 import { DateRangePicker } from './DateRangePicker.js';
 import { DetailDrawer } from './DetailDrawer.js';
@@ -117,7 +118,6 @@ function facetOptions(
 
 export function ClaudeCode(): JSX.Element {
   const [selectedRow, setSelectedRow] = useState<DetectionRowSlim | null>(null);
-  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('all');
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [selectedSeverities, setSelectedSeverities] =
     useState<readonly Severity[]>(SEVERITY_OPTIONS);
@@ -127,42 +127,35 @@ export function ClaudeCode(): JSX.Element {
   const [sessionFilter, setSessionFilter] = useState<readonly string[] | null>(null);
   const [projectFilter, setProjectFilter] = useState<readonly string[] | null>(null);
   const [statusFilter, setStatusFilter] = useState<readonly string[] | null>(null);
-  // Free-text search: raw input debounced into the shipped filter value.
-  const [searchInput, setSearchInput] = useState('');
-  const [textFilter, setTextFilter] = useState<string | null>(null);
-  // Custom date range (active when the time segment is 'custom').
-  const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo] = useState('');
-  const [openDropdown, setOpenDropdown] = useState<
-    'severity' | 'tool' | 'session' | 'project' | 'status' | null
-  >(null);
-  // Measured list height (Detections' exact pattern — fallback replaced by
-  // the measuring layout effect before the first paint).
-  const [listHeight, setListHeight] = useState(INITIAL_LIST_HEIGHT);
-  const listViewportRef = useRef<HTMLDivElement>(null);
+  // Search, time range, measured height and the open dropdown are the same in
+  // every audit list view — see hooks/useListView.ts. The close criterion is
+  // "outside the OPEN dropdown" (its chip plus its menu), which is why the
+  // hook hands out one container ref per chip rather than one for the toolbar.
+  const view = useListView<'severity' | 'tool' | 'session' | 'project' | 'status'>();
+  const {
+    searchInput,
+    setSearchInput,
+    textFilter,
+    timeRange: selectedTimeRange,
+    setTimeRange: setSelectedTimeRange,
+    customFrom,
+    setCustomFrom,
+    customTo,
+    setCustomTo,
+    customRange,
+    openDropdown,
+    setOpenDropdown,
+    dropdownRef,
+    listHeight,
+    listViewportRef,
+  } = view;
   const triggerRef = useRef<HTMLElement | null>(null);
-  // One container ref PER chip (Detections' shape): the close criterion is
-  // "outside the OPEN dropdown" (its chip + its menu), so the handler needs
-  // exactly that chip's node — never the whole toolbar.
-  const dropdownRefs = useRef<Record<
-    'severity' | 'tool' | 'session' | 'project' | 'status',
-    HTMLDivElement | null
-  >>({ severity: null, tool: null, session: null, project: null, status: null });
 
   // Source is FIXED: this view IS the claude-code slice — no Source chip.
   // tool/ccSession/project are all server-side since commit 6 (project moved
   // from client-side: with facets and multi-select on the server, it is the
   // same pattern — and the counts stop lying under a project filter).
   // Default on open: everything visible.
-  // Debounce the search box into the shipped text filter.
-  useEffect(() => {
-    const handle = setTimeout(() => {
-      const trimmed = searchInput.trim();
-      setTextFilter(trimmed === '' ? null : trimmed);
-    }, SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(handle);
-  }, [searchInput]);
-
   const filter: DetectionFilter = useMemo(
     () => ({
       mcp: null,
@@ -175,10 +168,7 @@ export function ClaudeCode(): JSX.Element {
       project: projectFilter === null ? null : [...projectFilter],
       status: statusFilter === null ? null : [...statusFilter],
       text: textFilter,
-      customRange:
-        selectedTimeRange === 'custom' && customFrom !== '' && customTo !== ''
-          ? { from: customFrom, to: customTo }
-          : null,
+      customRange: customRange ?? null,
     }),
     [
       selectedTimeRange, flaggedOnly, selectedSeverities, toolFilter,
@@ -228,51 +218,6 @@ export function ClaudeCode(): JSX.Element {
   // and banners appearing/disappearing above. Re-runs on hasItems: the
   // viewport only exists while the list renders.
   const hasItems = items.length > 0;
-  useLayoutEffect(() => {
-    const el = listViewportRef.current;
-    if (el === null) return undefined;
-    const measure = (): void => {
-      const h = el.clientHeight;
-      // Layout-less environments (jsdom) report 0 — keep the fallback.
-      if (h > 0) setListHeight(h);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [hasItems]);
-
-  // Escape and outside-click close the open dropdown. "Outside" means outside
-  // the OPEN chip's own container (chip + menu): clicking the search box, the
-  // time segment or ANOTHER chip now closes it — and on another chip the same
-  // click's onToggle then sees v === null and opens that one (close-then-open,
-  // no fighting states). The old criterion compared against the whole toolbar,
-  // which left a long scrolling menu (Session: 25) undismissable from inside
-  // the bar. The setTimeout(0) "active" guard is gone: this effect registers
-  // its listener post-commit, after the click that opened the menu has fully
-  // finished — and a mousedown on the open chip itself lands inside its
-  // container anyway. StrictMode's dev double-invoke is safe: the cleanup
-  // removes both listeners before the re-registration, never two copies.
-  useEffect(() => {
-    if (openDropdown === null) return;
-    const openKey = openDropdown; // narrowed: the closure below indexes with a non-null key
-    function onMouseDown(e: MouseEvent): void {
-      const open = dropdownRefs.current[openKey];
-      if (!(open?.contains(e.target as Node) ?? false)) {
-        setOpenDropdown(null);
-      }
-    }
-    function onKeyDown(e: KeyboardEvent): void {
-      if (e.key === 'Escape') setOpenDropdown(null);
-    }
-    document.addEventListener('mousedown', onMouseDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onMouseDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [openDropdown]);
-
   // Severity-card gestures — Detections' exact narrowing behavior.
   function handleSelectTotal(): void {
     setSelectedSeverities(SEVERITY_OPTIONS);
@@ -305,6 +250,12 @@ export function ClaudeCode(): JSX.Element {
   // RENDERER state — rows arrive server-filtered, so an empty page cannot
   // distinguish "no CC activity" from "no matches" (and page.total is the
   // whole store, both sources, so it is no signal either).
+  // The viewport only exists while there are items, so the height measurement
+  // has to re-run when that flips.
+  useEffect(() => {
+    view.setHasRows(hasItems);
+  }, [view, hasItems]);
+
   const hasActiveFilters =
     flaggedOnly ||
     selectedSeverities.length !== SEVERITY_OPTIONS.length ||
@@ -323,11 +274,7 @@ export function ClaudeCode(): JSX.Element {
     setSessionFilter(null);
     setProjectFilter(null);
     setStatusFilter(null);
-    setSearchInput('');
-    setTextFilter(null); // immediate — don't wait out the debounce
-    setSelectedTimeRange('all');
-    setCustomFrom('');
-    setCustomTo('');
+    view.resetShared();
   }
 
   return (
@@ -370,7 +317,7 @@ export function ClaudeCode(): JSX.Element {
           options={SEVERITY_OPTIONS}
           selected={selectedSeverities}
           onChange={setSelectedSeverities}
-          dropdownRef={(el) => { dropdownRefs.current.severity = el; }}
+          dropdownRef={dropdownRef('severity')}
           isOpen={openDropdown === 'severity'}
           onToggle={() =>
             setOpenDropdown((v) => (v === 'severity' ? null : 'severity'))
@@ -381,7 +328,7 @@ export function ClaudeCode(): JSX.Element {
           options={toolOptions}
           selected={toolFilter ?? toolOptions}
           onChange={(next) => facetChange(next, toolOptions, setToolFilter)}
-          dropdownRef={(el) => { dropdownRefs.current.tool = el; }}
+          dropdownRef={dropdownRef('tool')}
           isOpen={openDropdown === 'tool'}
           onToggle={() => setOpenDropdown((v) => (v === 'tool' ? null : 'tool'))}
         />
@@ -390,7 +337,7 @@ export function ClaudeCode(): JSX.Element {
           options={sessionOptions}
           selected={sessionFilter ?? sessionOptions}
           onChange={(next) => facetChange(next, sessionOptions, setSessionFilter)}
-          dropdownRef={(el) => { dropdownRefs.current.session = el; }}
+          dropdownRef={dropdownRef('session')}
           isOpen={openDropdown === 'session'}
           onToggle={() =>
             setOpenDropdown((v) => (v === 'session' ? null : 'session'))
@@ -416,7 +363,7 @@ export function ClaudeCode(): JSX.Element {
           options={STATUS_OPTIONS}
           selected={statusFilter ?? STATUS_OPTIONS}
           onChange={(next) => facetChange(next, STATUS_OPTIONS, setStatusFilter)}
-          dropdownRef={(el) => { dropdownRefs.current.status = el; }}
+          dropdownRef={dropdownRef('status')}
           isOpen={openDropdown === 'status'}
           onToggle={() =>
             setOpenDropdown((v) => (v === 'status' ? null : 'status'))
@@ -432,7 +379,7 @@ export function ClaudeCode(): JSX.Element {
             options={projectOptions}
             selected={projectFilter ?? projectOptions}
             onChange={(next) => facetChange(next, projectOptions, setProjectFilter)}
-            dropdownRef={(el) => { dropdownRefs.current.project = el; }}
+            dropdownRef={dropdownRef('project')}
             isOpen={openDropdown === 'project'}
             onToggle={() =>
               setOpenDropdown((v) => (v === 'project' ? null : 'project'))

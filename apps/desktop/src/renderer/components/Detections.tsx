@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FixedSizeList } from 'react-window';
 
 import { useDetectionPage } from '../hooks/useDetectionPage.js';
+import { useListView } from '../hooks/useListView.js';
 import type {
   DetectionFilter,
   DetectionRowSlim,
@@ -48,8 +49,6 @@ export const CATEGORY_OPTIONS: readonly Category[] = [
 
 // Search debounce: fast enough to feel live, slow enough to not thrash the
 // 2s-polled IPC with every keystroke. Exported (filter parity 22/07): both
-// views share the same cadence, like the option inventories above.
-export const SEARCH_DEBOUNCE_MS = 250;
 
 // Human-readable byte size for the retention banner (1024-based).
 function formatBytes(bytes: number): string {
@@ -74,8 +73,6 @@ const ROW_HEIGHT = 40;
 // This fallback is only ever painted in layout-less environments (jsdom
 // reports clientHeight 0, which the measure ignores).
 // Exported (commit 5h precedent): ClaudeCode shares the same measuring
-// pattern and the same fallback.
-export const INITIAL_LIST_HEIGHT = 400;
 // (CUSTOM_ROW_HEIGHT died in dogfood 3ª ronda: the custom date inputs live
 // inside the chips row now, so the Custom segment adds no extra height.)
 // Rows from the end at which we prefetch the next page (infinite scroll).
@@ -100,35 +97,30 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
   const [selectedSources, setSelectedSources] =
     useState<readonly SourceKind[]>(SOURCE_OPTIONS);
   const [selectedRow, setSelectedRow] = useState<DetectionRowSlim | null>(null);
-  const [openDropdown, setOpenDropdown] = useState<'severity' | 'category' | 'source' | null>(null);
-  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('all');
-  // Free-text search (filter parity 22/07 — ClaudeCode's exact pattern): raw
-  // input debounced into the shipped filter value.
-  const [searchInput, setSearchInput] = useState('');
-  const [textFilter, setTextFilter] = useState<string | null>(null);
-  // Custom date range (active when the time segment is 'custom').
-  const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo] = useState('');
-  const severityRef = useRef<HTMLDivElement>(null);
-  const categoryRef = useRef<HTMLDivElement>(null);
-  const sourceRef = useRef<HTMLDivElement>(null);
-  // Measured list height — see the measuring layout effect below. In the real
-  // renderer the fallback is replaced before the first paint.
-  const [listHeight, setListHeight] = useState(INITIAL_LIST_HEIGHT);
-  const listViewportRef = useRef<HTMLDivElement>(null);
+  // Search, time range, measured height and the open dropdown are the same in
+  // every audit list view — see hooks/useListView.ts.
+  const view = useListView<'severity' | 'category' | 'source'>();
+  const {
+    searchInput,
+    setSearchInput,
+    textFilter,
+    timeRange: selectedTimeRange,
+    setTimeRange: setSelectedTimeRange,
+    customFrom,
+    setCustomFrom,
+    customTo,
+    setCustomTo,
+    customRange,
+    openDropdown,
+    setOpenDropdown,
+    dropdownRef,
+    listHeight,
+    listViewportRef,
+  } = view;
   const triggerRef = useRef<HTMLElement | null>(null);
   const listRef = useRef<FixedSizeList>(null);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [lastSeenTopId, setLastSeenTopId] = useState<string | null>(null);
-
-  // Debounce the search box into the shipped text filter.
-  useEffect(() => {
-    const handle = setTimeout(() => {
-      const trimmed = searchInput.trim();
-      setTextFilter(trimmed === '' ? null : trimmed);
-    }, SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(handle);
-  }, [searchInput]);
 
   // The full filter is computed server-side; the renderer no longer filters.
   const filter: DetectionFilter = useMemo(
@@ -139,10 +131,7 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
       severities: [...selectedSeverities],
       sources: [...selectedSources],
       text: textFilter,
-      customRange:
-        selectedTimeRange === 'custom' && customFrom !== '' && customTo !== ''
-          ? { from: customFrom, to: customTo }
-          : null,
+      customRange: customRange ?? null,
     }),
     [
       mcpFilter, selectedTimeRange, selectedCategories, selectedSeverities,
@@ -161,55 +150,6 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
     onSourcesPresetConsumed?.();
   }, [sourcesPreset, onSourcesPresetConsumed]);
 
-  // The list's height is MEASURED from .listViewport (flex:1/min-height:0 —
-  // Setup's .container pattern, the one layout that already coexisted with
-  // app-level banners), never derived from window.innerHeight minus a chrome
-  // constant. useLayoutEffect measures synchronously before the first paint;
-  // the ResizeObserver keeps the value true afterwards (window resizes,
-  // banners appearing/disappearing above the list). Re-runs on hasRows: the
-  // viewport only exists while there are rows to render.
-  const hasRows = rows.length > 0;
-  useLayoutEffect(() => {
-    const el = listViewportRef.current;
-    if (el === null) return undefined;
-    const measure = (): void => {
-      const h = el.clientHeight;
-      // Layout-less environments (jsdom) report 0 — keep the fallback.
-      if (h > 0) setListHeight(h);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [hasRows]);
-
-  // Escape and outside-click close the open dropdown. "Outside" means outside
-  // the OPEN chip's own container only — clicking another chip closes this one
-  // and that click's onToggle (v === null) opens the other: close-then-open.
-  // Guard and rationale mirror ClaudeCode's effect (the setTimeout(0) "active"
-  // guard is unnecessary: the listener registers post-commit, after the
-  // opening click; StrictMode's double-invoke is covered by the cleanup).
-  useEffect(() => {
-    if (openDropdown === null) return;
-    const openKey = openDropdown; // narrowed for the closure below
-    const refFor = { severity: severityRef, category: categoryRef, source: sourceRef };
-    function onMouseDown(e: MouseEvent): void {
-      const open = refFor[openKey].current;
-      if (!(open?.contains(e.target as Node) ?? false)) {
-        setOpenDropdown(null);
-      }
-    }
-    function onKeyDown(e: KeyboardEvent): void {
-      if (e.key === 'Escape') setOpenDropdown(null);
-    }
-    document.addEventListener('mousedown', onMouseDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onMouseDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [openDropdown]);
-
   useEffect(() => {
     if (scrollOffset === 0 && rows.length > 0) {
       const topId = rows[0]?.id ?? null;
@@ -225,6 +165,13 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
     // (The export-result reset on filter change lives in AuditFooter now.)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSeverities, selectedCategories, selectedSources, selectedTimeRange, mcpFilter, textFilter, customFrom, customTo]);
+
+  // The viewport only exists while there are rows, so the height measurement
+  // has to re-run when that flips.
+  const hasRows = rows.length > 0;
+  useEffect(() => {
+    view.setHasRows(hasRows);
+  }, [view, hasRows]);
 
   const newCount = useMemo(() => {
     if (lastSeenTopId === null) return 0;
@@ -282,11 +229,7 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
     setSelectedSeverities(SEVERITY_OPTIONS);
     setSelectedCategories(CATEGORY_OPTIONS);
     setSelectedSources(SOURCE_OPTIONS);
-    setSelectedTimeRange('all');
-    setSearchInput('');
-    setTextFilter(null); // immediate — don't wait out the debounce
-    setCustomFrom('');
-    setCustomTo('');
+    view.resetShared();
     onClearMcpFilter();
   }
 
@@ -350,7 +293,7 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
             onChange={setSelectedSeverities}
             isOpen={openDropdown === 'severity'}
             onToggle={() => setOpenDropdown((prev) => (prev === 'severity' ? null : 'severity'))}
-            dropdownRef={severityRef}
+            dropdownRef={dropdownRef('severity')}
           />
           <FilterDropdown
             label="Category"
@@ -359,7 +302,7 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
             onChange={setSelectedCategories}
             isOpen={openDropdown === 'category'}
             onToggle={() => setOpenDropdown((prev) => (prev === 'category' ? null : 'category'))}
-            dropdownRef={categoryRef}
+            dropdownRef={dropdownRef('category')}
           />
           <FilterDropdown
             label="Source"
@@ -368,7 +311,7 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
             onChange={setSelectedSources}
             isOpen={openDropdown === 'source'}
             onToggle={() => setOpenDropdown((prev) => (prev === 'source' ? null : 'source'))}
-            dropdownRef={sourceRef}
+            dropdownRef={dropdownRef('source')}
             formatOption={(o) => SOURCE_LABELS[o]}
           />
           {hasActiveFilters && (
