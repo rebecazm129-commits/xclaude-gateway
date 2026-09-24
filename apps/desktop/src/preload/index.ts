@@ -73,6 +73,8 @@ contextBridge.exposeInMainWorld('xcg', {
   runSelfTest: (): Promise<SelfTestReport> => ipcRenderer.invoke('system:self-test:run'),
   openAuditFolder: (): Promise<void> => ipcRenderer.invoke('system:open-audit-folder'),
   appVersion: (): Promise<string> => ipcRenderer.invoke('system:version'),
+  baselineHistory: (mcp: string): Promise<unknown[]> =>
+    ipcRenderer.invoke('manifest:baseline-history', { mcp }),
   openAtLogin: (): Promise<boolean> => ipcRenderer.invoke('prefs:open-at-login'),
   setOpenAtLogin: (value: boolean): Promise<boolean> =>
     ipcRenderer.invoke('prefs:set-open-at-login', { value }),

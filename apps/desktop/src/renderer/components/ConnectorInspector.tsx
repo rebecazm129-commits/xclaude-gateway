@@ -8,8 +8,33 @@ import { usePolledDetections } from '../hooks/usePolledDetections.js';
 import { Badge } from './Badge.js';
 import { CATEGORY_LABELS, formatTimestamp } from './detections-format.js';
 import { connectMessage, errorMessage } from './config-messages.js';
+import type { BaselineHistoryEntry } from '../lib/xcgApi.js';
 
 import styles from './ConnectorInspector.module.css';
+
+// The auditor's own lifecycle, phrased as what it did — not as a verdict on
+// the connector. `migrated` deliberately says "now also tracking", never
+// "these did not change": nothing ever looked at those fields before.
+function baselineLine(e: BaselineHistoryEntry): string {
+  switch (e.event) {
+    case 'section_initialized':
+      return `Started tracking ${e.section ?? 'a section'}`;
+    case 'migrated':
+      return `Baseline upgraded — now also tracking ${e.coverageExpanded?.length ?? 0} more fields`;
+    case 'projection_migrated':
+      return `Risk view recalculated (v${e.fromVersion ?? '?'} → v${e.toVersion ?? '?'})`;
+    case 'reseeded':
+      return e.reason === 'corrupt'
+        ? `Baseline could not be read and was rebuilt${e.section ? ` (${e.section})` : ''}`
+        : `Baseline created${e.section ? ` (${e.section})` : ''}`;
+    case 'snapshot_incomplete':
+      return `Could not read the full ${e.section ?? 'section'} list`;
+  }
+}
+
+function isBaselineWarning(e: BaselineHistoryEntry): boolean {
+  return e.event === 'snapshot_incomplete' || (e.event === 'reseeded' && e.reason === 'corrupt');
+}
 
 const STATUS_LABEL: Record<Connector['status'], string> = {
   audited: 'Auditing',
@@ -55,6 +80,9 @@ export function ConnectorInspector({ connector, authAlert, onOpenInDetections, o
   const [authPresent, setAuthPresent] = useState<boolean | null>(null);
   // null = loading/none/error ("—"); otherwise the latest tool inventory size.
   const [toolCount, setToolCount] = useState<ToolCount | null>(null);
+  // Card detail, fetched on demand. Deliberately NOT part of the polled audit:
+  // keeping it off that path is what guarantees it can never reach a counter.
+  const [baseline, setBaseline] = useState<BaselineHistoryEntry[]>([]);
   const weekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const calls7d = detections.filter(
     (e): e is DetectionEvent =>
@@ -74,6 +102,28 @@ export function ConnectorInspector({ connector, authAlert, onOpenInDetections, o
 
   // Query the Keychain once on mount. No polling: the inspector is keyed by
   // connector name, so selecting another connector remounts and re-runs this.
+  useEffect(() => {
+    let cancelled = false;
+    // Optional-called on purpose: the renderer must not assume the preload
+    // exposes every method. A renderer running against an older preload gets
+    // an empty history instead of a crashed card.
+    const load = window.xcg.baselineHistory?.(connector.name);
+    if (load === undefined) {
+      setBaseline([]);
+      return undefined;
+    }
+    void load
+      .then((h) => {
+        if (!cancelled) setBaseline(h);
+      })
+      .catch(() => {
+        if (!cancelled) setBaseline([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connector.name]);
+
   useEffect(() => {
     if (connector.type !== 'remote') return;
     let cancelled = false;
@@ -232,6 +282,20 @@ export function ConnectorInspector({ connector, authAlert, onOpenInDetections, o
         </div>
       ) : null}
 
+      {baseline.filter(isBaselineWarning).slice(0, 2).map((e) => (
+        <div key={`${e.ts}-${e.event}`} className={styles['authStrip']} data-testid="baseline-warning">
+          <span className={styles['authStripIcon']} aria-hidden="true">{'⚠︎'}</span>
+          <div>
+            <div className={styles['authStripTitle']}>{baselineLine(e)}</div>
+            <div className={styles['authStripBody']}>
+              {e.event === 'snapshot_incomplete'
+                ? 'The baseline was left untouched — a partial list would look like a change that never happened.'
+                : 'Something modified or damaged the auditor’s own stored baseline.'}
+            </div>
+          </div>
+        </div>
+      ))}
+
       <dl className={styles['rows']}>
         <div className={styles['row']}>
           <dt className={styles['label']}>Transport</dt>
@@ -289,6 +353,25 @@ export function ConnectorInspector({ connector, authAlert, onOpenInDetections, o
           <p className={styles['flaggedEmpty']}>No flagged calls.</p>
         )}
       </div>
+
+      {baseline.length > 0 ? (
+        <div className={styles['flagged']} data-testid="baseline-history">
+          <div className={styles['flaggedHead']}>
+            <h3 className={styles['flaggedTitle']}>Baseline history</h3>
+          </div>
+          <ul className={styles['baselineList']}>
+            {baseline.slice(0, 8).map((e) => (
+              <li key={`${e.ts}-${e.event}-${e.section ?? ''}`} className={styles['baselineItem']}>
+                <span className={styles['baselineTs']}>{formatTimestamp(e.ts)}</span>
+                <span className={styles['baselineText']}>{baselineLine(e)}</span>
+              </li>
+            ))}
+          </ul>
+          <p className={styles['baselineNote']}>
+            What the auditor tracked and repaired. These are not detections and are not counted.
+          </p>
+        </div>
+      ) : null}
 
       {canReconnect ? (
         <div className={styles['foot']}>

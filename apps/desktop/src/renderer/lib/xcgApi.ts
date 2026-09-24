@@ -25,6 +25,24 @@ import type {
   SeedClientResult,
 } from '../../shared/types.js';
 
+/** Mirrors main/baseline-history.ts. Declared here rather than imported so the
+ *  renderer keeps no dependency on a main-process module. */
+export interface BaselineHistoryEntry {
+  ts: string;
+  mcp: string;
+  event:
+    | 'section_initialized'
+    | 'migrated'
+    | 'projection_migrated'
+    | 'reseeded'
+    | 'snapshot_incomplete';
+  section?: string;
+  reason?: string;
+  coverageExpanded?: string[];
+  fromVersion?: number;
+  toVersion?: number;
+}
+
 export interface XcgApi {
   listDetections(): Promise<DetectionListResult>;
   listDetectionPage(params: {
@@ -64,6 +82,9 @@ export interface XcgApi {
   openAuditFolder(): Promise<void>;
   /** App version (package.json), for the Settings About section. */
   appVersion(): Promise<string>;
+  /** Baseline lifecycle for one connector's card. These events describe what
+   *  the AUDITOR did to its own state and never appear as detections. */
+  baselineHistory?(mcp: string): Promise<BaselineHistoryEntry[]>;
   /** Current OS login-item state. Read on every panel open — never cached:
    *  macOS System Settings can change it behind the app's back. */
   openAtLogin(): Promise<boolean>;

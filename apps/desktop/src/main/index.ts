@@ -77,6 +77,7 @@ import { computeReloginTransitions } from './relogin-notify.js';
 import { readNotified, writeNotified, type NotifiedMap } from './relogin-state.js';
 import { isAllowedNavigation } from './navigation-guard.js';
 import { writeRecoveryMarkerAfterConnect, writeReloginNotified } from './recovery-writer.js';
+import { readBaselineHistory, type BaselineHistoryEntry } from './baseline-history.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -739,6 +740,18 @@ ipcMain.handle('system:open-audit-folder', async (): Promise<void> => {
 // user can flip it from System Settings > General > Login Items without telling
 // us. Both handlers return what getLoginItemSettings reports AFTER the change,
 // so the UI can never drift from the OS.
+// Baseline lifecycle for ONE connector's card. Read on demand, never folded
+// into the audit store: these events are what the auditor did to its own
+// state, so they must never reach Detections, the tray count or any flagged
+// counter.
+ipcMain.handle(
+  'manifest:baseline-history',
+  async (_event, params: { mcp: string }): Promise<BaselineHistoryEntry[]> => {
+    if (typeof params?.mcp !== 'string' || params.mcp === '') return [];
+    return readBaselineHistory(WRAPPERS_DIR, params.mcp);
+  },
+);
+
 ipcMain.handle('prefs:open-at-login', (): boolean => isOpenAtLogin());
 
 ipcMain.handle('prefs:set-open-at-login', (_event, params: { value: unknown }): boolean => {

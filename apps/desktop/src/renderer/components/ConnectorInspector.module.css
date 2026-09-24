@@ -368,3 +368,40 @@
   border: var(--kraft-hairline) solid var(--kraft-critical-border);
   color: var(--kraft-critical-text);
 }
+
+/* Baseline history: the auditor's own lifecycle for this connector. Quiet by
+   design — it is context, not a finding, and it must not read like one. */
+.baselineList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.baselineItem {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 12px;
+}
+
+.baselineTs {
+  font-family: var(--kraft-font-mono);
+  font-size: 11px;
+  color: var(--kraft-ink-disabled);
+  flex: 0 0 auto;
+}
+
+.baselineText {
+  color: var(--kraft-ink-soft);
+  min-width: 0;
+}
+
+.baselineNote {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--kraft-ink-disabled);
+  line-height: 1.5;
+}
