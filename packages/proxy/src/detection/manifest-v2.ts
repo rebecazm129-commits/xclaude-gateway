@@ -119,11 +119,18 @@ export function pushRecent(recent: readonly string[], hash: string): string[] {
 }
 
 export type ReadOutcome =
-  | { kind: 'ok'; baseline: BaselineV2 }
+  /** `droppedSections` lists sections that were present but malformed. They
+   *  are reseeded, and each one is worth an integrity warning: the auditor
+   *  wrote that file itself. */
+  | { kind: 'ok'; baseline: BaselineV2; droppedSections: SectionName[] }
   | { kind: 'absent' }
   /** The auditor's own state could not be read. Reported as an integrity
    *  warning, never as a manifest change. */
-  | { kind: 'corrupt'; detail: string };
+  | { kind: 'corrupt'; detail: string }
+  /** The file was written by a NEWER build. Not damage and not absence: this
+   *  build must leave it alone. Seeding over it would destroy a baseline it
+   *  cannot read, and the user would silently lose history by downgrading. */
+  | { kind: 'future'; storageVersion: number };
 
 function isSectionState(v: unknown): v is SectionState {
   if (v === null || typeof v !== 'object') return false;
@@ -154,10 +161,16 @@ export function readBaselineV2(baseDir: string, mcp: string): ReadOutcome {
     return { kind: 'corrupt', detail: 'not an object' };
   }
   const o = parsed as Record<string, unknown>;
-  if (o['storage_version'] !== STORAGE_VERSION) {
-    // A FUTURE storage version is not corruption — it is a downgrade. Treat it
-    // as absent so this build seeds its own file rather than mangling one it
-    // does not understand.
+  const onDisk = o['storage_version'];
+  if (typeof onDisk === 'number' && onDisk > STORAGE_VERSION) {
+    // Written by a newer build. NEVER write over it: this build cannot read
+    // the format, and overwriting would destroy a baseline whose history the
+    // user would not get back by upgrading again.
+    return { kind: 'future', storageVersion: onDisk };
+  }
+  if (onDisk !== STORAGE_VERSION) {
+    // An OLDER (or absent) storage version: nothing here this build can use,
+    // so seed a fresh one.
     return { kind: 'absent' };
   }
   if (typeof o['mcp'] !== 'string' || typeof o['generation'] !== 'number') {
@@ -165,16 +178,22 @@ export function readBaselineV2(baseDir: string, mcp: string): ReadOutcome {
   }
   const sectionsRaw = o['sections'];
   const sections: Partial<Record<SectionName, SectionState>> = {};
+  const droppedSections: SectionName[] = [];
   if (sectionsRaw !== null && typeof sectionsRaw === 'object' && !Array.isArray(sectionsRaw)) {
     for (const [k, v] of Object.entries(sectionsRaw as Record<string, unknown>)) {
+      // An unknown section name is ignored silently: a newer build may write
+      // sections this one does not know, and that is not damage.
       if (!(SECTIONS as readonly string[]).includes(k)) continue;
-      // One malformed section degrades to "not tracked yet" — it must never
-      // condemn the whole file, which would lose the other sections' history.
+      // A KNOWN section that is malformed degrades to "not tracked yet" rather
+      // than condemning the whole file — but it is reported, because the
+      // auditor wrote this file itself and something changed it.
       if (isSectionState(v)) sections[k as SectionName] = v;
+      else droppedSections.push(k as SectionName);
     }
   }
   return {
     kind: 'ok',
+    droppedSections,
     baseline: {
       storage_version: STORAGE_VERSION,
       canonicalization_version:
@@ -213,6 +232,17 @@ export function writeBaselineV2(
   now: string,
 ): WriteResult {
   const path = v2PathFor(baseDir, baseline.mcp);
+  // Refuse to write over a newer build's file. Checked here rather than left
+  // to the caller: every write path has to honour it, and one that forgets
+  // would destroy the baseline silently.
+  const existing = readBaselineV2(baseDir, baseline.mcp);
+  if (existing.kind === 'future') {
+    return {
+      ok: false,
+      generation: baseline.generation,
+      error: `refused: on-disk storage_version ${existing.storageVersion} is newer than ${STORAGE_VERSION}`,
+    };
+  }
   const next: BaselineV2 = { ...baseline, generation: baseline.generation + 1, updated_at: now };
   const tmp = `${path}.tmp.${process.pid}`;
   try {
@@ -252,6 +282,14 @@ export function seedBaselineV2(
   now: string,
 ): WriteResult {
   const path = v2PathFor(baseDir, mcp);
+  const existing = readBaselineV2(baseDir, mcp);
+  if (existing.kind === 'future') {
+    return {
+      ok: false,
+      generation: 0,
+      error: `refused: on-disk storage_version ${existing.storageVersion} is newer than ${STORAGE_VERSION}`,
+    };
+  }
   try {
     mkdirSync(v2Dir(baseDir), { recursive: true, mode: 0o700 });
     if (!existsSync(path)) {

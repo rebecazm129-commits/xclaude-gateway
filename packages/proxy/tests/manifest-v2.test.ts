@@ -171,12 +171,25 @@ describe('v2 file — reading', () => {
     expect(r.kind).toBe('corrupt');
   });
 
-  it('a FUTURE storage version reads as absent, not corrupt — that is a downgrade', () => {
+  it('a FUTURE storage version reads as `future` — neither absent nor corrupt', () => {
     const d = dir();
     mkdirSync(join(d, 'manifests', 'v2'), { recursive: true });
     writeFileSync(
       v2PathFor(d, 'notion'),
       JSON.stringify({ ...emptyBaseline('notion', '9', NOW), storage_version: 99 }),
+      { mode: 0o600 },
+    );
+    const r = readBaselineV2(d, 'notion');
+    expect(r.kind).toBe('future');
+    if (r.kind === 'future') expect(r.storageVersion).toBe(99);
+  });
+
+  it('an OLDER storage version reads as absent — nothing here this build can use', () => {
+    const d = dir();
+    mkdirSync(join(d, 'manifests', 'v2'), { recursive: true });
+    writeFileSync(
+      v2PathFor(d, 'notion'),
+      JSON.stringify({ ...emptyBaseline('notion', '9', NOW), storage_version: 1 }),
       { mode: 0o600 },
     );
     expect(readBaselineV2(d, 'notion').kind).toBe('absent');
@@ -196,6 +209,22 @@ describe('v2 file — reading', () => {
     if (r.kind !== 'ok') return;
     expect(r.baseline.sections.tools).toBeDefined();
     expect(r.baseline.sections.prompts).toBeUndefined();
+    // …and it is REPORTED, so the caller can raise an integrity warning: the
+    // auditor wrote this file itself and something changed it.
+    expect(r.droppedSections).toEqual(['prompts']);
+  });
+
+  it('an unknown section name is dropped SILENTLY — a newer build may write it', () => {
+    const d = dir();
+    mkdirSync(join(d, 'manifests', 'v2'), { recursive: true });
+    writeFileSync(
+      v2PathFor(d, 'notion'),
+      JSON.stringify({ ...emptyBaseline('notion', '1.0.0', NOW), sections: { tools: section(), widgets: { x: 1 } } }),
+      { mode: 0o600 },
+    );
+    const r = readBaselineV2(d, 'notion');
+    if (r.kind !== 'ok') throw new Error('expected ok');
+    expect(r.droppedSections).toEqual([]);
   });
 
   it('an unknown section name is ignored', () => {
@@ -209,6 +238,43 @@ describe('v2 file — reading', () => {
     const r = readBaselineV2(d, 'notion');
     if (r.kind !== 'ok') throw new Error('expected ok');
     expect(Object.keys(r.baseline.sections)).toEqual([]);
+  });
+});
+
+describe('v2 file — never write over a newer build', () => {
+  const futureFile = (d: string): void => {
+    mkdirSync(join(d, 'manifests', 'v2'), { recursive: true });
+    writeFileSync(
+      v2PathFor(d, 'notion'),
+      JSON.stringify({ ...emptyBaseline('notion', '9', NOW), storage_version: 99, generation: 7 }),
+      { mode: 0o600 },
+    );
+  };
+
+  it('writeBaselineV2 refuses and leaves the file untouched', () => {
+    const d = dir();
+    futureFile(d);
+    const before = readFileSync(v2PathFor(d, 'notion'), 'utf8');
+    const r = writeBaselineV2(d, withTools(emptyBaseline('notion', '1.0.0', NOW)), NOW);
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain('refused');
+    expect(readFileSync(v2PathFor(d, 'notion'), 'utf8')).toBe(before);
+  });
+
+  it('seedBaselineV2 refuses too — seeding over it would destroy the history', () => {
+    const d = dir();
+    futureFile(d);
+    const before = readFileSync(v2PathFor(d, 'notion'), 'utf8');
+    const r = seedBaselineV2(d, 'notion', '1.0.0', NOW);
+    expect(r.ok).toBe(false);
+    expect(readFileSync(v2PathFor(d, 'notion'), 'utf8')).toBe(before);
+  });
+
+  it('no .prev is left behind by a refused write', () => {
+    const d = dir();
+    futureFile(d);
+    writeBaselineV2(d, withTools(emptyBaseline('notion', '1.0.0', NOW)), NOW);
+    expect(existsSync(`${v2PathFor(d, 'notion')}.prev`)).toBe(false);
   });
 });
 

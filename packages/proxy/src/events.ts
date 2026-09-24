@@ -181,6 +181,39 @@ export type EventBody =
       oauthErrorDescription?: string;
     }
   | {
+      // Baseline lifecycle of the manifest auditor itself. These are NOT
+      // detections: they say what the auditor started, stopped or had to
+      // repair in its own state, and must never appear as a Detections row,
+      // in the tray count, or in any flagged counter.
+      //   'section_initialized'  - first observation of a (connector, section).
+      //                            Nothing to compare against yet.
+      //   'migrated'             - a v1 baseline was upgraded. coverageExpanded
+      //                            lists fields now tracked that never were:
+      //                            this is NOT a claim that they did not change.
+      //   'projection_migrated'  - OUR security projection changed and the
+      //                            hashes were recomputed from the stored
+      //                            snapshot. No manifest change is implied.
+      //   'reseeded'             - the baseline was (re)created. reason
+      //                            'corrupt' is an INTEGRITY warning: the
+      //                            auditor wrote that file itself.
+      //   'snapshot_incomplete'  - a section could not be assembled (pagination
+      //                            failed, cursor repeated, page cap). The
+      //                            baseline is deliberately NOT advanced.
+      type: 'app.manifest_baseline';
+      event:
+        | 'section_initialized'
+        | 'migrated'
+        | 'projection_migrated'
+        | 'reseeded'
+        | 'snapshot_incomplete';
+      section?: string;
+      reason?: 'absent' | 'corrupt' | 'version_mismatch' | 'future_version';
+      coverageExpanded?: readonly string[];
+      fromVersion?: number;
+      toVersion?: number;
+      pages?: number;
+    }
+  | {
       type: 'mcp.request';
       direction: Direction;
       rpcId: RpcId;
