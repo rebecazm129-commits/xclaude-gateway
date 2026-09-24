@@ -16,6 +16,7 @@ import { writeAtomic } from '@xcg/shared/config';
 import type { DetectionBlock, DetectionFinding, Severity } from '@xcg/shared';
 
 import { injectionFindings } from './detectors/prompt-injection.js';
+import { isSensitiveParamName } from './detectors/sensitive-params.js';
 
 export const MANIFEST_VERSION = 1;
 
@@ -62,10 +63,11 @@ export interface ToolShape {
 }
 
 // Per-tool signature, split so the diff can distinguish a description change
-// from a schema change. `sh` grades schema changes (new surface → high, rest
-// → medium); it is absent on baselines written before the shape existed —
-// that absence IS the migration marker (legacy classification, see
-// diffManifest).
+// from a schema change. `sh` carries the schema surface, which is what tells
+// a growing tool from a re-typed one. It is optional only because baselines
+// predating it exist; a sig without `sh` simply yields no surface evidence
+// (addedSurface returns nothing), so its schema change grades as
+// schema_changed — never as an invented high.
 export interface ToolSig {
   d: string; // sha256(description)
   s: string; // sha256(canonicalJson(inputSchema))
@@ -141,26 +143,57 @@ export function buildManifest(tools: readonly ToolDef[]): Manifest {
   return { hash: sha256(JSON.stringify(canonical)), tools: map };
 }
 
+// Every property/required name a tool declares, at any nesting depth.
+function surfaceOf(tool: ToolDef): string[] {
+  const sh = toolShape(tool);
+  return [...new Set([...sh.p, ...sh.r])];
+}
+
+// Property/required names present in `next` and absent from `prev`. An absent
+// shape on either side yields nothing: without both shapes there is no
+// evidence of GROWTH, and guessing would manufacture severity.
+function addedSurface(prev: ToolShape | undefined, next: ToolShape | undefined): string[] {
+  if (prev === undefined || next === undefined) return [];
+  const out = new Set<string>();
+  for (const x of next.p) if (!prev.p.includes(x)) out.add(x);
+  for (const x of next.r) if (!prev.r.includes(x)) out.add(x);
+  return [...out];
+}
+
+// Informational scans over a changed description (see diffManifest).
+const EXTERNAL_URL = /https?:\/\/[^\s"'<>)\]]+/i;
+const IMPERATIVE =
+  /\b(?:you\s+must\s+(?:always|never)|always\s+(?:call|use|send|include)|never\s+(?:tell|reveal|mention|disclose)|do\s+not\s+(?:tell|reveal|mention|inform)|before\s+(?:calling|using)\s+any\s+other)\b/i;
+
 // ---- diff → findings + severity ----
 
 // null when the manifests are equivalent. Otherwise a DetectionBlock with one
 // finding per change (type + tool name in `location`).
 //
-// Grading (F-A, corpus 06-17/07: vendors rewrite tool docs near-daily, and a
-// description edit INSIDE the inputSchema is still a doc edit):
-//   high   → surface_added (new property name or required entry: a new way
-//            for data to flow into the tool), or injection_marker (the NEW
-//            description matches the existing prompt-injection patterns —
+// Grading by STRUCTURE, not by volume (replay over 06-09/2026, 212 manifest
+// transitions). The previous rule graded every surface_added as high, which
+// made 39% of all alerts high and meant "high" only ever said "a vendor added
+// a parameter" — 50 times in two months. What actually distinguishes a
+// dangerous addition is WHAT the parameter is: of 123 surface additions in
+// the corpus, 7 introduced a parameter whose name is a destination, a
+// recipient or a credential (bcc_emails, source_url, file_upload, …).
+//   high   → surface_added whose new property/required name is sensitive
+//            (sensitive-params.ts, whole-word match), or injection_marker
+//            (the NEW description matches the prompt-injection patterns —
 //            reused scan, not a second classifier).
-//   medium → everything else: description_changed / schema_changed (doc or
-//            typing edits with no new surface), tool_added / tool_removed.
-// Migration: a prev sig without `sh` (pre-shape baseline) can't grade its
-// schema, so that tool's description/schema changes classify with the legacy
-// rule (→ high) exactly once; the rebaseline persists shapes and the next
-// change grades normally. No reseed, no blind window.
+//   medium → every other surface_added, plus description_changed /
+//            schema_changed on an existing tool (doc and typing edits).
+//   low    → tool_added / tool_removed on their own. A manifest that only
+//            grows or shrinks is a release, not an attack — unless the NEW
+//            tool already declares a sensitive parameter, which is the same
+//            question surface_added asks, so it grades high too.
+// external_url / imperative_language are INFORMATIONAL findings only: on the
+// 4-month corpus every one of them was documentation prose (example.com,
+// notion.so page ids, usage guidance), so they never raise severity.
 //
-// `nextTools` carries the live (raw) tool defs so the injection scan can read
-// the NEW description in the clear — the baseline only ever stores hashes.
+// `nextTools` carries the live (raw) tool defs so the injection scan and the
+// informational scans can read the NEW description in the clear — the
+// baseline only ever stores hashes.
 export function diffManifest(
   prev: Manifest,
   next: Manifest,
@@ -168,50 +201,72 @@ export function diffManifest(
 ): DetectionBlock | null {
   if (prev.hash === next.hash) return null;
   const descByName = new Map<string, string>();
+  const defByName = new Map<string, ToolDef>();
   if (nextTools !== undefined) {
     for (const t of nextTools) {
       if (typeof t.description === 'string') descByName.set(t.name, t.description);
+      defByName.set(t.name, t);
     }
   }
   const findings: DetectionFinding[] = [];
   let high = false;
+  let medium = false;
   const names = new Set([...Object.keys(prev.tools), ...Object.keys(next.tools)]);
   for (const name of [...names].sort()) {
     const p = prev.tools[name];
     const n = next.tools[name];
     if (p === undefined && n !== undefined) {
       findings.push({ type: 'tool_added', location: name });
+      // A brand-new tool is judged by the same rule as a grown one: what it
+      // can RECEIVE. Without the live def (nextTools absent) there is no
+      // schema to read, so it stays low rather than guessing.
+      const def = defByName.get(name);
+      const sensitive =
+        def === undefined ? [] : surfaceOf(def).filter(isSensitiveParamName).sort();
+      for (const s of sensitive) {
+        findings.push({ type: 'sensitive_param_added', location: `${name}.${s}` });
+      }
+      if (sensitive.length > 0) high = true;
     } else if (p !== undefined && n === undefined) {
       findings.push({ type: 'tool_removed', location: name });
     } else if (p !== undefined && n !== undefined) {
-      const legacy = p.sh === undefined;
+      const desc = descByName.get(name) ?? '';
       if (p.d !== n.d) {
-        if (injectionFindings(descByName.get(name) ?? '').length > 0) {
+        if (injectionFindings(desc).length > 0) {
           findings.push({ type: 'injection_marker', location: name });
           high = true;
         } else {
           findings.push({ type: 'description_changed', location: name });
-          if (legacy) high = true;
+          medium = true;
         }
+        // Informational only. The baseline stores hashes, not text, so these
+        // say "present in the NEW description", never "newly introduced".
+        // Both were pure documentation prose across the whole corpus.
+        if (EXTERNAL_URL.test(desc)) findings.push({ type: 'external_url', location: name });
+        if (IMPERATIVE.test(desc)) findings.push({ type: 'imperative_language', location: name });
       }
       if (p.s !== n.s) {
-        const surface =
-          !legacy &&
-          n.sh !== undefined &&
-          (n.sh.p.some((x) => !p.sh!.p.includes(x)) ||
-            n.sh.r.some((x) => !p.sh!.r.includes(x)));
-        if (surface) {
+        const added = addedSurface(p.sh, n.sh);
+        if (added.length > 0) {
           findings.push({ type: 'surface_added', location: name });
-          high = true;
+          medium = true;
+          const sensitive = added.filter(isSensitiveParamName);
+          if (sensitive.length > 0) {
+            // location carries the parameter, not the tool: it IS the finding.
+            for (const s of sensitive.sort()) {
+              findings.push({ type: 'sensitive_param_added', location: `${name}.${s}` });
+            }
+            high = true;
+          }
         } else {
           findings.push({ type: 'schema_changed', location: name });
-          if (legacy) high = true;
+          medium = true;
         }
       }
     }
   }
   if (findings.length === 0) return null;
-  const severity: Severity = high ? 'high' : 'medium';
+  const severity: Severity = high ? 'high' : medium ? 'medium' : 'low';
   return { category: 'tool_manifest_changed', severity, findings };
 }
 
@@ -283,8 +338,8 @@ export function createManifestStore(
       const s = (v as Record<string, unknown>)['s'];
       if (typeof d !== 'string' || typeof s !== 'string') return null;
       // sh is optional (pre-shape baselines lack it) and validated leniently:
-      // a malformed sh degrades to "no shape" for that tool (legacy grading,
-      // same as the migration path) — never a whole-baseline reseed.
+      // a malformed sh degrades to "no shape" for that tool, which means no
+      // surface evidence — never a whole-baseline reseed.
       const shRaw = (v as Record<string, unknown>)['sh'];
       let sh: ToolShape | undefined;
       if (shRaw !== null && typeof shRaw === 'object' && !Array.isArray(shRaw)) {
