@@ -12,8 +12,9 @@
 // low is not what a change with no finding is.
 //
 // Changes recorded by the previous format are out of every count and list by
-// default, behind a quiet note that shows them. They are NOT marked reviewed
-// to get them out of the way: nobody reviewed them.
+// default: "Previous format" is a Status option, unchecked. They are NOT marked
+// reviewed to get them out of the way — nobody reviewed them — and they stay
+// in the trail and in the export.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FixedSizeList } from 'react-window';
@@ -29,7 +30,6 @@ import {
 } from '../hooks/useChangePage.js';
 import { useListView } from '../hooks/useListView.js';
 import { AuditFooter } from './AuditFooter.js';
-import { Tooltip } from './Tooltip.js';
 import { ChangeRow } from './ChangeRow.js';
 import { ColumnHeader, columnsStyle, type Column } from './ColumnHeader.js';
 import { DetailDrawer } from './DetailDrawer.js';
@@ -46,7 +46,6 @@ import { DateRangePicker } from './DateRangePicker.js';
 // three tabs share one physical rule per element rather than three copies.
 import styles from './Detections.module.css';
 import bar from './ClaudeCode.module.css';
-import rowStyles from './ChangeRow.module.css';
 
 const ROW_HEIGHT = 40;
 
@@ -58,8 +57,18 @@ export const CHANGE_COLUMNS: readonly Column[] = [
   { key: 'details', label: 'Details', width: '1fr' },
 ];
 
-const REVIEW_OPTIONS: readonly ReviewState[] = ['unreviewed', 'reviewed'];
-const REVIEW_LABELS: Record<string, string> = { unreviewed: 'Unreviewed', reviewed: 'Reviewed' };
+// Status: the review state of a current-format change, plus "Previous format"
+// for the changes recorded before rules and review existed — they have no
+// review state to filter on, so they are their own option. Unchecked by
+// default.
+type StatusOption = ReviewState | 'previous';
+const STATUS_OPTIONS: readonly StatusOption[] = ['unreviewed', 'reviewed', 'previous'];
+const STATUS_DEFAULT: readonly StatusOption[] = ['unreviewed', 'reviewed'];
+const STATUS_LABELS: Record<StatusOption, string> = {
+  unreviewed: 'Unreviewed',
+  reviewed: 'Reviewed',
+  previous: 'Previous format',
+};
 
 export function Changes(): JSX.Element {
   const view = useListView<'severity' | 'status' | 'section' | 'mcp'>();
@@ -85,9 +94,10 @@ export function Changes(): JSX.Element {
   // Needs review is ON by default: the tab opens on the question it exists to
   // answer, not on four months of vendor edits.
   const [needsReviewOnly, setNeedsReviewOnly] = useState(true);
-  const [includeHistorical, setIncludeHistorical] = useState(false);
   const [selectedSeverities, setSelectedSeverities] = useState<readonly Severity[]>(SEVERITY_OPTIONS);
-  const [reviewFilter, setReviewFilter] = useState<readonly ReviewState[]>(REVIEW_OPTIONS);
+  const [statusFilter, setStatusFilter] = useState<readonly StatusOption[]>(STATUS_DEFAULT);
+  const includeHistorical = statusFilter.includes('previous');
+  const reviewStates = statusFilter.filter((o): o is ReviewState => o !== 'previous');
   const [sectionFilter, setSectionFilter] = useState<readonly ConnectorChangeView['section'][] | null>(null);
   const [mcpFilter, setMcpFilter] = useState<readonly string[] | null>(null);
   const [selectedRow, setSelectedRow] = useState<ConnectorChangeView | null>(null);
@@ -97,15 +107,18 @@ export function Changes(): JSX.Element {
     () => ({
       needsReviewOnly,
       includeHistorical,
+      includeCurrent: reviewStates.length > 0,
       severities: selectedSeverities,
-      review: reviewFilter.length === REVIEW_OPTIONS.length ? [] : reviewFilter,
+      // Both review states = no review filter; the current format is then
+      // in or out as a whole through includeCurrent.
+      review: reviewStates.length === 2 ? [] : reviewStates,
       sections: sectionFilter ?? [],
       mcps: mcpFilter ?? [],
       text: textFilter,
       timeRange,
       customRange: customRange ?? null,
     }),
-    [needsReviewOnly, includeHistorical, selectedSeverities, reviewFilter, sectionFilter, mcpFilter, textFilter, timeRange, customRange],
+    [needsReviewOnly, statusFilter, selectedSeverities, sectionFilter, mcpFilter, textFilter, timeRange, customRange],
   );
 
   const page = useChangePage(filter);
@@ -166,8 +179,8 @@ export function Changes(): JSX.Element {
           setNeedsReviewOnly(false);
         },
         tooltip: includeHistorical
-          ? 'Every change, flagged or not, historical ones included'
-          : 'Every change, flagged or not, historical ones aside',
+          ? 'Every change, flagged or not, previous format included'
+          : 'Every change, flagged or not, previous format aside',
       },
       {
         // The question the tab exists to answer. Prominent but NOT coloured:
@@ -199,11 +212,12 @@ export function Changes(): JSX.Element {
     pressedCard,
   ]);
 
+  const statusIsDefault =
+    statusFilter.length === STATUS_DEFAULT.length && STATUS_DEFAULT.every((o) => statusFilter.includes(o));
   const hasActiveFilters =
     needsReviewOnly ||
-    includeHistorical ||
+    !statusIsDefault ||
     selectedSeverities.length !== SEVERITY_OPTIONS.length ||
-    reviewFilter.length !== REVIEW_OPTIONS.length ||
     sectionFilter !== null ||
     mcpFilter !== null ||
     searchInput !== '' ||
@@ -211,25 +225,25 @@ export function Changes(): JSX.Element {
 
   function handleClearFilters(): void {
     setNeedsReviewOnly(false);
-    setIncludeHistorical(false);
     setPressedCard(null);
     setSelectedSeverities(SEVERITY_OPTIONS);
-    setReviewFilter(REVIEW_OPTIONS);
+    setStatusFilter(STATUS_DEFAULT);
     setSectionFilter(null);
     setMcpFilter(null);
     view.resetShared();
   }
 
-  // Showing historical changes also lifts Needs review only: none of them can
-  // need review, so under that chip "show them" would show nothing.
-  function showHistorical(): void {
-    setIncludeHistorical(true);
-    setNeedsReviewOnly(false);
-    setPressedCard(null);
+  // Checking "Previous format" also lifts Needs review only: those changes
+  // carry no review state, so under that chip checking it would show nothing.
+  function handleStatusChange(next: readonly StatusOption[]): void {
+    if (next.includes('previous') && !statusFilter.includes('previous')) {
+      setNeedsReviewOnly(false);
+      setPressedCard(null);
+    }
+    setStatusFilter(next);
   }
-  const plural = (n: number): string => `${n} historical change${n === 1 ? '' : 's'}`;
-  // Nothing in scope at all, and the only changes recorded are the hidden
-  // historical ones: say so, and offer the way in, rather than "no changes".
+  // Nothing current at all, and the only changes recorded are in the previous
+  // format: say where they are rather than "no changes".
   const onlyHistorical = page.total === 0 && page.historicalCount > 0 && !includeHistorical;
 
   const handleReview = useCallback(
@@ -290,13 +304,13 @@ export function Changes(): JSX.Element {
           />
           <FilterDropdown
             label="Status"
-            options={REVIEW_OPTIONS}
-            selected={reviewFilter}
-            onChange={setReviewFilter}
+            options={STATUS_OPTIONS}
+            selected={statusFilter}
+            onChange={handleStatusChange}
             isOpen={openDropdown === 'status'}
             onToggle={() => setOpenDropdown((prev) => (prev === 'status' ? null : 'status'))}
             dropdownRef={dropdownRef('status')}
-            formatOption={(o) => REVIEW_LABELS[o] ?? o}
+            formatOption={(o) => STATUS_LABELS[o]}
           />
           <FilterDropdown
             label="Section"
@@ -324,23 +338,6 @@ export function Changes(): JSX.Element {
               Clear filters
             </button>
           )}
-          {page.historicalCount > 0 && (
-            // A note, not a chip: a fact about the trail that doubles as the
-            // way in. Styled as the "Clear filters" link, so it reads as
-            // something you can press.
-            <span className={rowStyles['historicalNote']}>
-              <Tooltip text="Recorded by the previous format, before rules and review existed">
-                <button
-                  type="button"
-                  className={bar['clearInline']}
-                  aria-pressed={includeHistorical}
-                  onClick={() => (includeHistorical ? setIncludeHistorical(false) : showHistorical())}
-                >
-                  {includeHistorical ? `Hide ${plural(page.historicalCount)}` : plural(page.historicalCount)}
-                </button>
-              </Tooltip>
-            </span>
-          )}
         </div>
         {timeRange === 'custom' && (
           <div className={bar['toolbarRow']}>
@@ -361,13 +358,7 @@ export function Changes(): JSX.Element {
           {page.loading ? (
             'Loading changes…'
           ) : onlyHistorical ? (
-            <span className={rowStyles['emptyHistorical']}>
-              No new changes. {plural(page.historicalCount)}{' '}
-              {page.historicalCount === 1 ? 'is' : 'are'} hidden.
-              <button type="button" className={bar['clearInline']} onClick={showHistorical}>
-                Show them
-              </button>
-            </span>
+            'No new changes. Older changes in the previous format are available in the Status filter.'
           ) : needsReviewOnly
               ? 'Nothing needs review. Every change a rule flagged has been looked at.'
               : hasActiveFilters

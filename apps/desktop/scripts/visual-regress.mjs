@@ -57,8 +57,9 @@ const SCENARIOS = (
     'detections-activity',
     'detections-activity#Flagged only',
     'claude-code-activity',
-    // Historical changes are out of view by default; the note is the way in.
-    'historical#2 historical changes',
+    // The previous format is out of view by default; the Status filter, open
+    // here, is the way in.
+    'historical#Status (2/3) ▾',
   ].join(',')
 ).split(',');
 // Two widths: a narrow one where the 1fr column is squeezed and the chips wrap,

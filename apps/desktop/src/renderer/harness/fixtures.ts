@@ -589,8 +589,8 @@ export const SCENARIOS: readonly Scenario[] = [
       'The tab opens here. Cards: ALL CHANGES · NEEDS REVIEW · MEDIUM · HIGH — ALL CHANGES ' +
       'styled as TOTAL, MEDIUM and HIGH in their severity colours, NEEDS REVIEW neutral and ' +
       'prominent. None is dimmed on opening: the default filter is the "Needs review only" ' +
-      'chip. Press MEDIUM: the other three dim; press it again: none. "2 historical changes" at ' +
-      'the end of the chips row is an underlined link. Open a row: per-item lines, raw kinds ' +
+      'chip. Press MEDIUM: the other three dim; press it again: none. Status reads (2/3): its ' +
+      'third option, "Previous format", is unchecked. Open a row: per-item lines, raw kinds ' +
       'only in Technical details, Copy as JSON grey link left, Mark as reviewed pill right.',
     entries: TWO_CONNECTORS,
     events: rowsToEvents(FEW),
@@ -622,14 +622,14 @@ export const SCENARIOS: readonly Scenario[] = [
   {
     id: 'historical',
     tab: 'changes',
-    label: 'Changes · Historical format only',
+    label: 'Changes · Previous format only',
     note:
-      'Only historical changes recorded. The list reads "No new changes. 2 historical changes ' +
-      'are hidden." with a "Show them" link; every card 0, none dimmed. Press Show them: the ' +
-      'two rows appear (Needs review only lifts, since they can never need review), ALL CHANGES ' +
-      'reads 2, the chips-row link reads "Hide 2 historical changes". Open one: no diff, ' +
-      '"Changes before <date> are shown as recorded by the previous format." Neither is marked ' +
-      'reviewed.',
+      'Only changes in the previous format recorded. The list reads "No new changes. Older ' +
+      'changes in the previous format are available in the Status filter."; every card 0, none ' +
+      'dimmed; no note in the chips row. Open Status (2/3): Unreviewed and Reviewed checked, ' +
+      '"Previous format" unchecked. Check it: the two rows appear (Needs review only lifts, since ' +
+      'they carry no review state) and ALL CHANGES reads 2. Open one: no diff, "Changes before ' +
+      '<date> are shown as recorded by the previous format." Neither is marked reviewed.',
     entries: TWO_CONNECTORS,
     events: [],
     rows: [],

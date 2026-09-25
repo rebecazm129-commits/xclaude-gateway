@@ -109,47 +109,89 @@ describe('MCP changes — the detail panel', () => {
   });
 });
 
-describe('MCP changes — historical changes', () => {
-  it('are out of view by default, behind a note that shows them', async () => {
-    // Recorded by the previous format. They are NOT marked reviewed to get
-    // them out of the way — nobody reviewed them — they are simply out of the
-    // counts and the list until asked for.
+describe('MCP changes — the previous format', () => {
+  // Recorded before rules and review existed. They are NOT marked reviewed to
+  // get them out of the way — nobody reviewed them — they are an unchecked
+  // option of the Status filter, and stay in the trail and the export.
+  const openStatus = (): void => {
+    fireEvent.click(screen.getByRole('button', { name: /^Status/ }));
+  };
+
+  it('is an unchecked Status option, and out of the counts and the list', async () => {
     mount('historical');
     await settle();
     fireEvent.click(screen.getByText('Needs review only').closest('button')!);
     await settle();
     expect(rowNodes()).toHaveLength(0);
     expect(cardTexts()).toEqual(['0All changes', '0Needs review', '0Medium', '0High']);
+    // No note in the chips row any more: the Status filter is the way in.
+    expect(screen.queryByRole('button', { name: /historical change/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Status \(2\/3\)/ })).toBeDefined();
 
-    const note = screen.getByRole('button', { name: '2 historical changes' });
-    expect(note.getAttribute('aria-pressed')).toBe('false');
-    fireEvent.click(note);
+    openStatus();
+    const previous = screen.getByLabelText('Previous format') as HTMLInputElement;
+    expect(previous.checked).toBe(false);
+    fireEvent.click(previous);
     await settle();
     expect(rowNodes()).toHaveLength(2);
     expect(cardTexts()).toContain('2All changes');
-    expect(screen.getByRole('button', { name: 'Hide 2 historical changes' })).toBeDefined();
   });
 
-  it('with nothing else recorded, the empty state says so and offers them', async () => {
-    // Opening on "Nothing needs review" would be true and useless: the trail
-    // holds changes, just none in the current format.
+  it('with nothing else recorded, the empty state points at the Status filter', async () => {
+    // "Nothing needs review" would be true and useless: the trail holds
+    // changes, just none in the current format.
     mount('historical');
     await settle();
-    expect(document.body.textContent).toContain('No new changes. 2 historical changes are hidden.');
-    fireEvent.click(screen.getByRole('button', { name: 'Show them' }));
+    expect(document.body.textContent).toContain(
+      'No new changes. Older changes in the previous format are available in the Status filter.',
+    );
+    expect(screen.queryByRole('button', { name: 'Show them' })).toBeNull();
+  });
+
+  it('checking it lifts Needs review only, which would otherwise show nothing', async () => {
+    mount('historical');
     await settle();
-    // Needs review only is lifted too: none of these could ever need review.
-    expect(rowNodes()).toHaveLength(2);
+    openStatus();
+    fireEvent.click(screen.getByLabelText('Previous format'));
+    await settle();
     expect(screen.getByText('Needs review only').closest('button')?.getAttribute('aria-pressed')).toBe('false');
+    expect(rowNodes()).toHaveLength(2);
+  });
+
+  it('"Previous format" alone shows only the old changes', async () => {
+    mount('needs-review');
+    await settle();
+    fireEvent.click(screen.getByText('Needs review only').closest('button')!);
+    await settle();
+    openStatus();
+    fireEvent.click(screen.getByLabelText('Previous format'));
+    fireEvent.click(screen.getByLabelText('Unreviewed'));
+    fireEvent.click(screen.getByLabelText('Reviewed'));
+    await settle();
+    expect(rowNodes()).toHaveLength(2);
+  });
+
+  it('a review state never filters them out: Reviewed + Previous format keeps both', async () => {
+    mount('needs-review');
+    await settle();
+    fireEvent.click(screen.getByText('Needs review only').closest('button')!);
+    await settle();
+    openStatus();
+    fireEvent.click(screen.getByLabelText('Unreviewed'));
+    fireEvent.click(screen.getByLabelText('Previous format'));
+    await settle();
+    // One reviewed change (evt-reviewed) plus the two in the previous format.
+    expect(rowNodes()).toHaveLength(3);
   });
 
   it('never enter Needs review, and are never written as reviewed', async () => {
     mount('needs-review');
     await settle();
-    // Five need review with or without them: the two historical ones carry
-    // nothing a rule or heuristic raised.
+    // Five need review with or without them: the two old ones carry nothing
+    // a rule or heuristic raised.
     expect(cardTexts()[1]).toBe('5Needs review');
-    fireEvent.click(screen.getByRole('button', { name: '2 historical changes' }));
+    openStatus();
+    fireEvent.click(screen.getByLabelText('Previous format'));
     await settle();
     expect(cardTexts()[1]).toBe('5Needs review');
     const xcg = (window as unknown as { xcg: { setReviewStatus: ReturnType<typeof vi.fn> } }).xcg;

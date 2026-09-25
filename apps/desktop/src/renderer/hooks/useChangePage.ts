@@ -31,6 +31,9 @@ export interface ChangeFilter {
    *  every count and every list until asked for, rather than marked reviewed
    *  to get them out of the way — nobody reviewed them. */
   includeHistorical: boolean;
+  /** Changes in the current format. ON unless the Status filter leaves out
+   *  both review states — "Previous format" alone shows only the old ones. */
+  includeCurrent: boolean;
   severities: readonly Severity[];
   /** Empty or absent = no filter. */
   review: readonly ReviewState[];
@@ -116,7 +119,11 @@ function matchesText(view: ConnectorChangeView, query: string): boolean {
  *  that severity has NOT yet narrowed — the same split detection-page makes. */
 function matchesPreSeverity(view: ConnectorChangeView, filter: ChangeFilter, now: number): boolean {
   if (filter.needsReviewOnly && !needsReview(view)) return false;
-  if (filter.review.length > 0 && !filter.review.includes(view.review_status)) return false;
+  // Review state is a fact about current-format changes only; a change in the
+  // previous format is in or out through includeHistorical, never through this.
+  if (!isHistorical(view) && filter.review.length > 0 && !filter.review.includes(view.review_status)) {
+    return false;
+  }
   if (filter.sections.length > 0 && !filter.sections.includes(view.section)) return false;
   if (filter.mcps.length > 0 && !filter.mcps.includes(view.mcp)) return false;
   if (filter.text !== null && filter.text !== '' && !matchesText(view, filter.text)) return false;
@@ -143,7 +150,7 @@ export function useChangePage(filter: ChangeFilter, nowMs?: number): ChangePage 
     const historicalCount = everything.filter(isHistorical).length;
     // Scope first: every count, every facet and the list agree on whether the
     // previous format is in view, because they all start from this.
-    const rows = filter.includeHistorical ? everything : everything.filter((r) => !isHistorical(r));
+    const rows = everything.filter((r) => (isHistorical(r) ? filter.includeHistorical : filter.includeCurrent));
     const now = nowMs ?? Date.now();
     const preSeverity = rows.filter((r) => matchesPreSeverity(r, filter, now));
 
