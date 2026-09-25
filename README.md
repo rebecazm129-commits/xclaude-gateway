@@ -39,7 +39,7 @@ It audits. It doesn't block.
 ## What you get
 
 - **One reviewable history.** A **Detections** view over every recorded event, with severity, category, source and time-range filters — plus a dedicated **Claude Code** view grouped by session and project.
-- **Classification with severity.** Seven categories, from `credential_detected` at CRITICAL down to the `tool_call_allowed` baseline — see [Detectors](#detectors). Changes to a connector's own surface are not graded here: they get their own tab — see [MCP changes](#mcp-changes).
+- **Classification with severity.** Seven categories, from `credential_detected` at CRITICAL down to the `tool_call_allowed` baseline — see [Detectors](#detectors). Changes to a connector's definition are tracked separately, in [MCP changes](#mcp-changes).
 - **The record stays yours.** Append-only JSONL under your own home directory, exportable to raw JSONL or CSV from the app.
 - **Credential masking.** Values the credential detector recognizes are masked before they are written.
 - **A menu-bar summary.** A dropdown listing the number of flagged events in the last 24 hours.
@@ -143,15 +143,15 @@ above.
 xCLAUDE keeps a per-connector reference snapshot of everything a server
 advertises — `tools/list`, `resources/list`, `resources/templates/list`,
 `prompts/list` and server discovery. The first time a section is seen it is
-recorded silently. Afterwards, every comparison produces **one** event, whatever
-it touched: a single vendor release in four months of real traffic moved 52
-tools at once.
+recorded silently. Afterwards, each comparison produces **one** event, whatever
+it touched — a vendor release can rewrite most of a catalogue at once, and that
+is one row, not one per tool.
 
 Each event separates two things that used to be conflated:
 
 - **changes** — what moved. A description, an input schema, an added or removed
-  tool. These carry no severity at all. Over four months, 197 of 217 real
-  changes were nothing else.
+  tool. These carry no severity at all, and in ordinary use they are the vast
+  majority of what a connector does.
 - **findings** — what a security rule made of it, each stamped with the rule's
   id and version so a judgement stays reproducible after the rule changes. Four
   rules read a connector surface: a sensitive parameter name appearing, a
