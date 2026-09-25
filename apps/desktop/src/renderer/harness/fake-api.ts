@@ -34,7 +34,38 @@ export function buildFakeApi(s: Scenario): XcgApi {
     // worse than no harness at all — it looks like it works. See fake-page.ts
     // for which axes are replicated and what that costs.
     listDetectionPage: async ({ filter }) => fakePage(s, filter),
-    detectionDetail: async () => null,
+    // A real detail, not null: with null the drawer renders its "no longer
+    // available" state and every block below it — including the collapsible —
+    // never mounts, so the panel could not be reviewed or captured at all.
+    detectionDetail: async (id) => {
+      const row = s.rows.find((r) => r.id === id);
+      if (row === undefined) return null;
+      return {
+        id: row.id,
+        ts: row.ts,
+        session: '01M39D8KVX36DX7G2V353BDGPF',
+        mcp: row.mcp,
+        type: 'mcp.request',
+        rpcId: 42,
+        direction: 'client_to_server',
+        category: row.category,
+        severity: row.severity,
+        source: row.source,
+        findings: [
+          { type: 'credential_like', location: 'arguments.token' },
+          { type: 'credential_like', location: 'arguments.token' },
+          { type: 'email_address', location: 'arguments.to' },
+        ],
+        ...(row.method !== undefined ? { method: row.method } : {}),
+        ...(row.toolName !== undefined ? { toolName: row.toolName } : {}),
+        argumentsJson: JSON.stringify(
+          { query: row.argsSummary ?? 'quarterly report', limit: 20, includeArchived: false },
+          null,
+          2,
+        ),
+        overheadUs: 1180,
+      };
+    },
     exportAudit: never,
     retentionStatus: async () => ({
       config: { purgeMode: 'never', sizeWarnBytes: s.retention?.sizeWarnBytes ?? 1_000_000_000 },
@@ -83,6 +114,12 @@ export function buildFakeApi(s: Scenario): XcgApi {
     openAuditFolder: async () => undefined,
     appVersion: async () => '0.0.0-harness',
     baselineHistory: baselineFor,
+    connectorChanges: async (mcp) =>
+      mcp === undefined ? (s.changes ?? []) : (s.changes ?? []).filter((c) => c.mcp === mcp),
+    // A review marker has nowhere to go here, so the write is a no-op and what
+    // you see is the component's own re-read of the same fixture.
+    setReviewStatus: async () => undefined,
+    exportChanges: async (ids) => ({ ok: true, count: ids.length, path: '/tmp/harness-changes.json' }),
     openAtLogin: async () => false,
     setOpenAtLogin: async () => false,
     // Deliberately inert rather than window.open: the harness must not navigate

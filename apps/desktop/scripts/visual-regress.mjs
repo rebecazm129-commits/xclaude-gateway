@@ -29,7 +29,26 @@ const appDir = dirname(here);
 const outRoot = join(appDir, '.visual');
 
 const BASE_URL = process.env.XCG_HARNESS_URL ?? 'http://127.0.0.1:5199';
-const SCENARIOS = (process.env.XCG_VISUAL_SCENARIOS ?? 'detections-tab,claude-code-tab,detections-scroll').split(',');
+// A scenario may carry `#Button label`, which captures the state after that
+// button is clicked — without it the tool only ever sees a view's initial
+// state, which is how a change to a chip's PRESSED style came back as "zero
+// pixels differ".
+const SCENARIOS = (
+  process.env.XCG_VISUAL_SCENARIOS ??
+  [
+    'detections-tab',
+    'claude-code-tab',
+    'claude-code-tab#Flagged only',
+    'detections-scroll',
+    // Panel OPEN, one per view. The drawer's stylesheet is shared by all
+    // three, so a change to it is invisible to any capture that never opens
+    // one — which is how a word-break fix reached the Detections panel
+    // unmeasured.
+    'detections-tab#stripe',
+    'claude-code-tab#Bash',
+    'needs-review#gmail',
+  ].join(',')
+).split(',');
 // Two widths: a narrow one where the 1fr column is squeezed and the chips wrap,
 // and a wide one where they do not. Most layout regressions show at one but
 // not the other.
@@ -142,7 +161,19 @@ function diff() {
     );
   }
 
-  const summary = `\nvisual regression: ${stems.length} captures\n${report.join('\n')}\n`;
+  // Captures the "after" has and the "before" does not are NEW COVERAGE, not
+  // a pass. Saying so stops "8 captures, all identical" from reading as "the
+  // panel was checked" the first time a panel capture is added.
+  const afterStems = new Set(
+    readdirSync(afterDir).filter((f) => f.endsWith('.bitmap')).map((f) => f.replace(/\.bitmap$/, '')),
+  );
+  const fresh = [...afterStems].filter((x) => !stems.includes(x)).sort();
+  const freshNote =
+    fresh.length === 0
+      ? ''
+      : `\n  new coverage, no baseline to compare against yet:\n    ${fresh.join('\n    ')}\n`;
+
+  const summary = `\nvisual regression: ${stems.length} compared${fresh.length > 0 ? `, ${fresh.length} new` : ''}\n${report.join('\n')}\n${freshNote}`;
   process.stdout.write(summary);
   writeFileSync(join(outRoot, 'last-diff.txt'), summary);
   if (worst === 0) {

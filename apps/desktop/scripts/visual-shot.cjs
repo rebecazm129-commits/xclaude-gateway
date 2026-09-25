@@ -35,16 +35,36 @@ const FREEZE_CSS = `
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function capture(win, scenario, width) {
+/** `scenario#Button label` captures the state AFTER clicking that button.
+ *  Without it the tool can only ever see a view's initial state, which is how
+ *  a change to a chip's pressed style came back as "zero pixels differ". */
+async function capture(win, spec, width) {
+  const [scenario, clickLabel] = spec.split('#');
   win.setContentSize(width, HEIGHT);
   await win.loadURL(`${baseUrl}/?scenario=${scenario}`);
   await win.webContents.insertCSS(FREEZE_CSS);
+  if (clickLabel !== undefined && clickLabel !== '') {
+    await wait(700);
+    // Exact <button> label first, then any [role="button"] CONTAINING the
+    // label — list rows are divs with that role, and they are what a capture
+    // has to click to reach the detail panel.
+    const clicked = await win.webContents.executeJavaScript(
+      `(() => {
+         const want = ${JSON.stringify(clickLabel)};
+         const exact = [...document.querySelectorAll('button')]
+           .find((x) => x.textContent.trim() === want);
+         const target = exact ?? [...document.querySelectorAll('[role="button"]')]
+           .find((x) => (x.textContent ?? '').includes(want));
+         if (target === undefined) return false; target.click(); return true; })()`,
+    );
+    if (!clicked) throw new Error(`no button labelled "${clickLabel}" in ${scenario}`);
+  }
   // The views poll on an interval and measure their own height with a
   // ResizeObserver; give both a beat to settle before the shutter.
   await wait(900);
   const image = await win.webContents.capturePage();
   const size = image.getSize();
-  const stem = `${scenario}@${width}`;
+  const stem = `${spec.replace(/[^A-Za-z0-9_.-]/g, '_')}@${width}`;
   // The raw bitmap is what gets compared — PNG encoding could in principle
   // differ for identical pixels. The PNG is for looking at.
   writeFileSync(join(outDir, `${stem}.bitmap`), image.toBitmap());
@@ -67,9 +87,9 @@ app.whenReady().then(async () => {
     webPreferences: { zoomFactor: 1, backgroundThrottling: false },
   });
   try {
-    for (const scenario of scenarios) {
+    for (const spec of scenarios) {
       for (const width of widths) {
-        await capture(win, scenario, width);
+        await capture(win, spec, width);
       }
     }
   } catch (err) {
