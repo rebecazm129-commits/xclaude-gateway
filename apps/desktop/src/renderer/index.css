@@ -54,6 +54,11 @@
   /* Accents */
   --kraft-accent: #d86a4d;
   --kraft-accent-hover: #c45d42;
+  /* A light tint of the accent, for the pressed state of a toggle. Named and
+     opaque like every other tint here (--kraft-high-bg and friends) rather
+     than an rgba() of the accent: the surfaces underneath are not all the
+     same colour, and a translucent fill would land differently on each. */
+  --kraft-accent-bg: #f9e7e0;
   --kraft-status: #6b8e5a;
   --kraft-status-ok: #c65c42;  /* brand orange (icon dot) — healthy pulse */
 

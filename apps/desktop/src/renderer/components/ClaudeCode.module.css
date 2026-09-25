@@ -28,9 +28,23 @@
   border-color: var(--kraft-ink-soft);
 }
 
+/* Pressed. It used to change only the text and the border, same weight and a
+   white fill, which did not read as pressed at all — the 24/09 review took an
+   active "Needs review only" for an inactive one and reported the filter as
+   broken when it was working. A fill is what makes the state legible. */
 .flaggedChipActive {
+  background: var(--kraft-accent-bg);
   border-color: var(--kraft-accent);
   color: var(--kraft-accent);
+}
+
+/* Hover must not wash the fill away: the generic .flaggedChip:hover sets the
+   neutral filter background, which would make a pressed chip look unpressed
+   exactly while the pointer is on it. */
+.flaggedChipActive:hover {
+  background: var(--kraft-accent-bg);
+  border-color: var(--kraft-accent-hover);
+  color: var(--kraft-accent-hover);
 }
 
 /* Toolbar band (incidencia B): the MULTI-ROW band, shared by BOTH views
