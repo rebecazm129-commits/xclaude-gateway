@@ -22,13 +22,19 @@ const EMPTY_PAGE: DetectionPageResult = {
   severityCounts: { low: 0, medium: 0, high: 0, critical: 0 },
   categoryFilteredTotal: 0,
   nextCursor: null,
-  facets: { tools: [], ccSessions: [], projects: [] },
+  facets: { tools: [], ccSessions: [], projects: [], sourceNames: [] },
   authAlerts: [],
   retention: null,
 };
 
-function stubXcg(): { listDetectionPage: ReturnType<typeof vi.fn> } {
-  const listDetectionPage = vi.fn(async () => EMPTY_PAGE);
+// Three concrete sources, so the Source chip has a choice to show.
+const THREE_SOURCES: DetectionPageResult = {
+  ...EMPTY_PAGE,
+  facets: { ...EMPTY_PAGE.facets, sourceNames: ['claude-code', 'notion', 'stripe'] },
+};
+
+function stubXcg(page: DetectionPageResult = EMPTY_PAGE): { listDetectionPage: ReturnType<typeof vi.fn> } {
+  const listDetectionPage = vi.fn(async () => page);
   vi.stubGlobal('xcg', { listDetectionPage });
   return { listDetectionPage };
 }
@@ -61,8 +67,8 @@ afterEach(() => {
 });
 
 describe('Detections — sources preset (F1.3c)', () => {
-  it('arriving preset selects the Source pill and is consumed once', async () => {
-    stubXcg();
+  it('arriving preset selects Claude Code in the Source pill and is consumed once', async () => {
+    const { listDetectionPage } = stubXcg(THREE_SOURCES);
     const onConsumed = vi.fn();
     render(
       <Detections
@@ -72,30 +78,37 @@ describe('Detections — sources preset (F1.3c)', () => {
         onSourcesPresetConsumed={onConsumed}
       />,
     );
-    // The pill trigger reflects the narrowed selection (1 of 2 sources).
+    // The pill trigger reflects the narrowed selection (1 of 3 sources)…
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Source \(1\/2\)/ })).toBeDefined();
+      expect(screen.getByRole('button', { name: /Source \(1\/3\)/ })).toBeDefined();
     });
     expect(onConsumed).toHaveBeenCalledTimes(1);
+    // …and main is asked for Claude Code by concrete source name.
+    const calls = listDetectionPage.mock.calls.map((c) => (c[0] as { filter: { sourceNames?: string[] | null } }).filter);
+    expect(calls.some((f) => JSON.stringify(f.sourceNames) === '["claude-code"]')).toBe(true);
   });
 
-  it('without preset the Source pill starts with both selected', async () => {
-    const { listDetectionPage } = stubXcg();
+  it('without preset the Source pill starts with every source selected', async () => {
+    const { listDetectionPage } = stubXcg(THREE_SOURCES);
     render(<Detections mcpFilter={null} onClearMcpFilter={() => {}} />);
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Source \(2\/2\)/ })).toBeDefined();
+      expect(screen.getByRole('button', { name: /Source \(3\/3\)/ })).toBeDefined();
     });
-    // And the filter shipped to main carries both sources.
+    // The filter shipped to main carries both record kinds and no source
+    // narrowing: null, so a connector added later is not silently excluded.
     await waitFor(() => expect(listDetectionPage).toHaveBeenCalled());
-    const call = listDetectionPage.mock.calls[0]?.[0] as { filter: { sources: string[] } };
+    const call = listDetectionPage.mock.calls[0]?.[0] as {
+      filter: { sources: string[]; sourceNames?: string[] | null };
+    };
     expect(call.filter.sources.sort()).toEqual(['claude-code', 'gateway']);
+    expect(call.filter.sourceNames ?? null).toBeNull();
   });
 
   it('the toolbar "N events" counter is gone (F2.4 commit 5i — the Total card owns it)', async () => {
     stubXcg();
     render(<Detections mcpFilter={null} onClearMcpFilter={() => {}} />);
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Source \(2\/2\)/ })).toBeDefined();
+      expect(screen.getByRole('button', { name: /Severity/ })).toBeDefined();
     });
     // Old label shapes: "0 events" (no filters) / "0 of 0" (filtered). The
     // footer's "Export 0 events" button is a different, whole-element text.
@@ -322,5 +335,35 @@ describe('list height is measured from the viewport (banner regression)', () => 
       expect(container.querySelector('[style*="height: 404px"]')).not.toBeNull();
     });
     expect(container.querySelector('[style*="height: 512px"]')).toBeNull();
+  });
+});
+
+describe('Detections — Flagged only', () => {
+  const filters = (fn: ReturnType<typeof vi.fn>): { categories: string[] }[] =>
+    fn.mock.calls.map((c) => (c[0] as { filter: { categories: string[] } }).filter);
+
+  it('is OFF by default: the audit trail shows all activity, normal calls included', async () => {
+    const { listDetectionPage } = stubXcg();
+    render(<Detections mcpFilter={null} onClearMcpFilter={() => {}} />);
+    const chip = await screen.findByRole('button', { name: 'Flagged only' });
+    expect(chip.getAttribute('aria-pressed')).toBe('false');
+    await waitFor(() => expect(listDetectionPage).toHaveBeenCalled());
+    expect(filters(listDetectionPage)[0]!.categories).toContain('tool_call_allowed');
+  });
+
+  it('narrows to the flagged categories, and Clear filters turns it off', async () => {
+    const { listDetectionPage } = stubXcg();
+    render(<Detections mcpFilter={null} onClearMcpFilter={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Flagged only' }));
+    await waitFor(() => {
+      const last = filters(listDetectionPage).at(-1)!;
+      expect(last.categories).not.toContain('tool_call_allowed');
+      expect(last.categories).toHaveLength(6);
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Clear filters' })[0]!);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Flagged only' }).getAttribute('aria-pressed')).toBe('false');
+      expect(filters(listDetectionPage).at(-1)!.categories).toContain('tool_call_allowed');
+    });
   });
 });

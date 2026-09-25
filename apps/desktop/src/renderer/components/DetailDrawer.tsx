@@ -4,9 +4,11 @@ import type { Category, DetectionDetail, DetectionFinding, DetectionRowSlim } fr
 import type { ConnectorChangeView } from '../lib/xcgApi.js';
 import { ChangeDetail } from './ChangeDetail.js';
 import { Badge } from './Badge.js';
-import { PAIRED_SOURCE_LABELS, SOURCE_LABELS, categoryLabel } from './detections-format.js';
+import { calledServerLabel, rawToolName } from '../../shared/tool-names.js';
+import { PAIRED_SOURCE_LABELS, SOURCE_LABELS, categoryLabel, displaySeverity } from './detections-format.js';
 
 import styles from './DetailDrawer.module.css';
+import footer from './AuditFooter.module.css';
 
 const MONTH_SHORT: readonly string[] = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -143,7 +145,18 @@ function DetectionDetailPanel({ row, onClose }: { row: DetectionRowSlim; onClose
   }
 
   const isRequest = detail?.type === 'mcp.request';
-  const toolName = isRequest ? detail?.toolName : undefined;
+  // The raw name Claude Code uses (mcp__notion__notion-fetch) — the list shows
+  // a cleaned-up one, the panel keeps the exact record.
+  const toolName =
+    isRequest && detail !== null
+      ? rawToolName({ source: detail.source, mcp: detail.mcp, toolName: detail.toolName })
+      : undefined;
+  // The connector a Claude Code MCP call went to — the list no longer names
+  // it in TOOL, so the panel does.
+  const server =
+    detail !== null
+      ? calledServerLabel({ source: detail.source, mcp: detail.mcp, toolName: detail.toolName })
+      : null;
   const method = isRequest ? detail?.method : undefined;
   const argumentsJson = isRequest ? detail?.argumentsJson : undefined;
   const overheadUs = isRequest ? detail?.overheadUs : undefined;
@@ -158,7 +171,7 @@ function DetectionDetailPanel({ row, onClose }: { row: DetectionRowSlim; onClose
     >
       <div className={styles['header']}>
         <span className={styles['timestamp']}>{formatTimestamp(row.ts)}</span>
-        <Badge severity={row.severity} />
+        <Badge severity={displaySeverity(row)} />
         <span id={headingId} className={styles['category']}>
           {categoryLabel(row.category, row.method)}
         </span>
@@ -192,6 +205,12 @@ function DetectionDetailPanel({ row, onClose }: { row: DetectionRowSlim; onClose
                   <div className={styles['kvRow']}>
                     <span className={styles['kvKey']}>tool:</span>
                     <span className={styles['kvValue']}>{toolName}</span>
+                  </div>
+                )}
+                {server !== null && (
+                  <div className={styles['kvRow']}>
+                    <span className={styles['kvKey']}>server:</span>
+                    <span className={styles['kvValue']}>{server}</span>
                   </div>
                 )}
                 {method !== undefined && (
@@ -293,8 +312,10 @@ function DetectionDetailPanel({ row, onClose }: { row: DetectionRowSlim; onClose
       </div>
 
       <div className={styles['footer']}>
+        {/* The audit footer's quiet link, not a pill: copying is a utility,
+            and this panel has no action of its own to put on the right. */}
         <button
-          className={styles['copyButton']}
+          className={footer['footerLink']}
           onClick={handleCopyJson}
           type="button"
         >

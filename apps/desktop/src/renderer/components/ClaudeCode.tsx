@@ -11,11 +11,12 @@ import type {
 
 import { AuditFooter } from './AuditFooter.js';
 import { CLAUDE_CODE_COLUMNS, ColumnHeader, columnsStyle } from './ColumnHeader.js';
-import { CATEGORY_OPTIONS, SEVERITY_OPTIONS } from './Detections.js';
+import { CATEGORY_OPTIONS, FLAGGED_CATEGORIES, SEVERITY_OPTIONS } from './Detections.js';
 import { useListView } from '../hooks/useListView.js';
 import { ClaudeCodeRow } from './ClaudeCodeRow.js';
 import { DateRangePicker } from './DateRangePicker.js';
 import { DetailDrawer } from './DetailDrawer.js';
+import { facetChange, facetOptions } from './facet-select.js';
 import { formatTimestamp } from './detections-format.js';
 import { FilterDropdown } from './FilterDropdown.js';
 import { SeverityBreakdown, severityCards } from './SeverityBreakdown.js';
@@ -42,12 +43,9 @@ const ROW_HEIGHT = 40;
 // Detections' infinite scroll).
 const LOAD_MORE_THRESHOLD = 20;
 
-// Flagged = everything the detectors actually flagged: every category except
-// the baseline tool_call_allowed. Server-side (categories axis), so counts
-// never lie.
-export const FLAGGED_CATEGORIES: readonly Category[] = CATEGORY_OPTIONS.filter(
-  (c) => c !== 'tool_call_allowed',
-);
+// Re-exported: FLAGGED_CATEGORIES moved next to CATEGORY_OPTIONS when
+// Detections gained the same chip.
+export { FLAGGED_CATEGORIES };
 
 // Status facet (delta final): fixed axis — ok/error. Requests without a
 // matched response (outcome undefined) are neither: an active Status filter
@@ -91,30 +89,6 @@ export function buildListItems(rows: readonly DetectionRowSlim[]): CcListItem[] 
     items.push({ kind: 'row', row });
   }
   return items;
-}
-
-// Multi-select facet gesture (commit 6, Detections' Severity/Category
-// semantics): null = no filter, rendered as all-checked; toggling narrows to
-// the checked subset; all checked OR none checked collapses back to null.
-function facetChange(
-  next: readonly string[],
-  all: readonly string[],
-  set: (v: readonly string[] | null) => void,
-): void {
-  set(next.length === 0 || next.length === all.length ? null : [...next]);
-}
-
-// Facet options = the server's stable inventory (computed on the base
-// filter, so picking Bash never removes the other tools from the menu),
-// unioned with any active selection whose value slid out of the current
-// time window — it must stay visible to be un-checkable.
-function facetOptions(
-  inventory: readonly string[],
-  active: readonly string[] | null,
-): string[] {
-  if (active === null) return [...inventory];
-  const s = new Set([...inventory, ...active]);
-  return [...s].sort();
 }
 
 export function ClaudeCode(): JSX.Element {

@@ -10,17 +10,19 @@ import type {
   Category,
   SourceKind,
 } from '../../shared/types.js';
-import { SOURCE_LABELS } from './detections-format.js';
 
+import { sourceLabel } from '../../shared/tool-names.js';
 import { AuditFooter } from './AuditFooter.js';
 import { ColumnHeader, DETECTION_COLUMNS, columnsStyle } from './ColumnHeader.js';
 import { DateRangePicker } from './DateRangePicker.js';
 import { DetailDrawer } from './DetailDrawer.js';
+import { facetChange, facetOptions } from './facet-select.js';
 import { DetectionRow } from './DetectionRow.js';
 import { FilterDropdown } from './FilterDropdown.js';
 import { NewEventsPill } from './NewEventsPill.js';
 import { SeverityBreakdown, severityCards } from './SeverityBreakdown.js';
 import { TimeFilter, type TimeRange } from './TimeFilter.js';
+import { ToggleChip } from './ToggleChip.js';
 
 import styles from './Detections.module.css';
 // The whole toolbar band (toolbar/toolbarRow/chipsRow) plus the
@@ -34,6 +36,8 @@ import ccStyles from './ClaudeCode.module.css';
 // Exported (like CATEGORY_OPTIONS below) so sibling views that fix a filter
 // axis (ClaudeCode) share the same "everything selected" definition.
 export const SEVERITY_OPTIONS: readonly Severity[] = ['low', 'medium', 'high', 'critical'];
+// Both record kinds, always: the Source chip filters by concrete source (see
+// sourceName), so the SourceKind axis is never narrowed in this view.
 const SOURCE_OPTIONS: readonly SourceKind[] = ['gateway', 'claude-code'];
 // Exported so the default-filter membership is unit-testable. The filter is
 // server-side, so a category absent here is filtered OUT by default.
@@ -52,6 +56,13 @@ export const CATEGORY_OPTIONS: readonly Category[] = [
   'pii_detected',
   'pii_structured',
 ];
+
+// Flagged = everything the detectors actually flagged: every category except
+// the baseline tool_call_allowed. Server-side (categories axis), so counts
+// never lie. Shared by both views' "Flagged only" chip.
+export const FLAGGED_CATEGORIES: readonly Category[] = CATEGORY_OPTIONS.filter(
+  (c) => c !== 'tool_call_allowed',
+);
 
 // Search debounce: fast enough to feel live, slow enough to not thrash the
 // 2s-polled IPC with every keystroke. Exported (filter parity 22/07): both
@@ -87,11 +98,12 @@ const LOAD_MORE_THRESHOLD = 20;
 interface DetectionsProps {
   readonly mcpFilter: string | null;
   readonly onClearMcpFilter: () => void;
-  /** One-shot source-filter preset (Claude Code inspector's Open in
-   *  Detections). Applied to the internal sources selection on arrival, then
-   *  acknowledged via onSourcesPresetConsumed — the selection itself stays
-   *  owned by this component (unlike the controlled mcpFilter). */
-  readonly sourcesPreset?: readonly SourceKind[] | null;
+  /** One-shot Source-chip preset, as concrete source names (Claude Code
+   *  inspector's Open in Detections sends ['claude-code']). Applied to the
+   *  internal selection on arrival, then acknowledged via
+   *  onSourcesPresetConsumed — the selection itself stays owned by this
+   *  component (unlike the controlled mcpFilter). */
+  readonly sourcesPreset?: readonly string[] | null;
   readonly onSourcesPresetConsumed?: () => void;
 }
 
@@ -100,8 +112,12 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
     useState<readonly Severity[]>(SEVERITY_OPTIONS);
   const [selectedCategories, setSelectedCategories] =
     useState<readonly Category[]>(CATEGORY_OPTIONS);
-  const [selectedSources, setSelectedSources] =
-    useState<readonly SourceKind[]>(SOURCE_OPTIONS);
+  // null = every source, whatever the inventory holds right now. A stored list
+  // would silently exclude a connector added after it was made.
+  const [selectedSourceNames, setSelectedSourceNames] = useState<readonly string[] | null>(null);
+  // OFF by default: this view is the audit trail, and activity that matched
+  // nothing is part of it. The chip is the one-click way to the findings.
+  const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [selectedRow, setSelectedRow] = useState<DetectionRowSlim | null>(null);
   // Search, time range, measured height and the open dropdown are the same in
   // every audit list view — see hooks/useListView.ts.
@@ -133,26 +149,35 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
     () => ({
       mcp: mcpFilter,
       timeRange: selectedTimeRange,
-      categories: [...selectedCategories],
+      // Flagged only narrows whatever the Category chip holds rather than
+      // replacing it, so the two compose instead of fighting.
+      categories: flaggedOnly
+        ? selectedCategories.filter((c) => c !== 'tool_call_allowed')
+        : [...selectedCategories],
       severities: [...selectedSeverities],
-      sources: [...selectedSources],
+      sources: [...SOURCE_OPTIONS],
+      sourceNames: selectedSourceNames === null ? null : [...selectedSourceNames],
       text: textFilter,
       customRange: customRange ?? null,
     }),
     [
-      mcpFilter, selectedTimeRange, selectedCategories, selectedSeverities,
-      selectedSources, textFilter, customFrom, customTo,
+      mcpFilter, selectedTimeRange, selectedCategories, flaggedOnly, selectedSeverities,
+      selectedSourceNames, textFilter, customFrom, customTo,
     ],
   );
 
   const page = useDetectionPage(filter);
   const { rows, retention } = page;
+  const sourceOptions = useMemo(
+    () => facetOptions(page.facets.sourceNames, selectedSourceNames),
+    [page.facets.sourceNames, selectedSourceNames],
+  );
 
   // Apply the one-shot preset and hand the token back immediately, so a later
   // manual change to the pill is never fought by a stale preset.
   useEffect(() => {
     if (sourcesPreset === null) return;
-    setSelectedSources(sourcesPreset);
+    setSelectedSourceNames(sourcesPreset);
     onSourcesPresetConsumed?.();
   }, [sourcesPreset, onSourcesPresetConsumed]);
 
@@ -170,7 +195,7 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
     setScrollOffset(0);
     // (The export-result reset on filter change lives in AuditFooter now.)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSeverities, selectedCategories, selectedSources, selectedTimeRange, mcpFilter, textFilter, customFrom, customTo]);
+  }, [selectedSeverities, selectedCategories, flaggedOnly, selectedSourceNames, selectedTimeRange, mcpFilter, textFilter, customFrom, customTo]);
 
   // The viewport only exists while there are rows, so the height measurement
   // has to re-run when that flips.
@@ -189,9 +214,10 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
 
   const hasActiveFilters =
     mcpFilter !== null ||
+    flaggedOnly ||
     selectedSeverities.length !== SEVERITY_OPTIONS.length ||
     selectedCategories.length !== CATEGORY_OPTIONS.length ||
-    selectedSources.length !== SOURCE_OPTIONS.length ||
+    selectedSourceNames !== null ||
     // 'custom' is covered here too — any non-default time segment is active.
     selectedTimeRange !== 'all' ||
     textFilter !== null;
@@ -232,9 +258,10 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
   }
 
   function handleClearFilters(): void {
+    setFlaggedOnly(false);
     setSelectedSeverities(SEVERITY_OPTIONS);
     setSelectedCategories(CATEGORY_OPTIONS);
-    setSelectedSources(SOURCE_OPTIONS);
+    setSelectedSourceNames(null);
     view.resetShared();
     onClearMcpFilter();
   }
@@ -294,6 +321,12 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
               </button>
             </span>
           )}
+          <ToggleChip
+            label="Flagged only"
+            tooltip="Show only calls that triggered a detection"
+            active={flaggedOnly}
+            onChange={setFlaggedOnly}
+          />
           <FilterDropdown
             label="Severity"
             options={SEVERITY_OPTIONS}
@@ -314,13 +347,13 @@ export function Detections({ mcpFilter, onClearMcpFilter, sourcesPreset = null, 
           />
           <FilterDropdown
             label="Source"
-            options={SOURCE_OPTIONS}
-            selected={selectedSources}
-            onChange={setSelectedSources}
+            options={sourceOptions}
+            selected={selectedSourceNames ?? sourceOptions}
+            onChange={(next) => facetChange(next, sourceOptions, setSelectedSourceNames)}
             isOpen={openDropdown === 'source'}
             onToggle={() => setOpenDropdown((prev) => (prev === 'source' ? null : 'source'))}
             dropdownRef={dropdownRef('source')}
-            formatOption={(o) => SOURCE_LABELS[o]}
+            formatOption={sourceLabel}
           />
           {hasActiveFilters && (
             // Always-reachable reset (producto 22/07): same handler as the

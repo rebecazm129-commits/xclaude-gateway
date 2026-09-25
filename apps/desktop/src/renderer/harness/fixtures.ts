@@ -169,6 +169,56 @@ function rowsToEvents(rows: readonly DetectionRowSlim[]): EnrichableEvent[] {
 const FEW = manyRows(4);
 const THIRTY = manyRows(30);
 
+/**
+ * What a real trail looks like: mostly normal activity (tool calls AND protocol
+ * calls — initialize, tools/list…), a handful of findings, and every kind of
+ * source the Source chip has to name: catalog connectors (Notion, Google
+ * Drive, Stripe), a hand-wrapped local server (xcg-toy), Claude Code's own
+ * tools, and Claude Code calling an MCP tool (source Claude Code, server
+ * notion). Severities are what the engine really writes — `low` on every
+ * baseline line — so "None" has to come from the category, not the data.
+ */
+function activityRows(): DetectionRowSlim[] {
+  const base = Date.parse('2026-09-24T12:20:00.000Z');
+  type Spec = Partial<DetectionRowSlim> & Pick<DetectionRowSlim, 'mcp' | 'category' | 'severity'>;
+  const specs: Spec[] = [
+    { mcp: 'notion', category: 'tool_call_allowed', severity: 'low', toolName: 'search' },
+    { mcp: 'claude-code', category: 'tool_call_allowed', severity: 'low', source: 'claude-code', toolName: 'Read' },
+    { mcp: 'drive', category: 'pii_structured', severity: 'medium', toolName: 'read_file' },
+    { mcp: 'notion', category: 'tool_call_allowed', severity: 'low', method: 'tools/list', toolName: undefined },
+    { mcp: 'claude-code', category: 'credential_detected', severity: 'critical', source: 'claude-code', toolName: 'Bash' },
+    { mcp: 'stripe', category: 'tool_call_allowed', severity: 'low', toolName: 'list_charges' },
+    { mcp: 'notion', category: 'tool_call_allowed', severity: 'low', source: 'claude-code', toolName: 'notion-fetch' },
+    { mcp: 'xcg-toy', category: 'tool_call_allowed', severity: 'low', method: 'initialize', toolName: undefined },
+    { mcp: 'stripe', category: 'email_send_warning', severity: 'high', toolName: 'send_invoice' },
+    { mcp: 'claude-code', category: 'tool_call_allowed', severity: 'low', source: 'claude-code', toolName: 'Edit' },
+    { mcp: 'drive', category: 'tool_call_allowed', severity: 'low', method: 'resources/list', toolName: undefined },
+    { mcp: 'notion', category: 'pii_detected', severity: 'low', toolName: 'create_page' },
+    { mcp: 'claude-code', category: 'tool_call_allowed', severity: 'low', source: 'claude-code', toolName: 'Bash' },
+    { mcp: 'xcg-toy', category: 'tool_call_allowed', severity: 'low', toolName: 'toy_ping' },
+    { mcp: 'notion', category: 'data_export_warning', severity: 'medium', source: 'claude-code', toolName: 'notion-export' },
+    { mcp: 'stripe', category: 'tool_call_allowed', severity: 'low', method: 'tools/list', toolName: undefined },
+    { mcp: 'drive', category: 'tool_call_allowed', severity: 'low', toolName: 'search_files' },
+    { mcp: 'claude-code', category: 'prompt_injection', severity: 'critical', source: 'claude-code', toolName: 'WebFetch' },
+    { mcp: 'notion', category: 'tool_call_allowed', severity: 'low', method: 'initialize', toolName: undefined },
+    { mcp: 'claude-code', category: 'tool_call_allowed', severity: 'low', source: 'claude-code', toolName: 'Grep' },
+  ];
+  return specs.map((sp, i) => {
+    const { source, method, ...rest } = sp;
+    return {
+      id: `act-${String(i).padStart(3, '0')}`,
+      ts: new Date(base - i * 6 * 60_000).toISOString(),
+      type: 'mcp.request' as const,
+      source: (source ?? 'gateway') as DetectionRowSlim['source'],
+      method: method ?? 'tools/call',
+      outcome: 'ok' as const,
+      ...rest,
+    };
+  });
+}
+
+const ACTIVITY = activityRows();
+
 
 // --- connector changes -------------------------------------------------------
 
@@ -420,6 +470,43 @@ function ccRows(n: number): DetectionRowSlim[] {
 
 const CC = ccRows(14);
 
+/** Claude Code as it really runs: mostly normal calls, a few findings, and ONE
+ *  project — so the Project chip has a single option and must not show. */
+function ccActivityRows(): DetectionRowSlim[] {
+  const base = Date.parse('2026-09-24T12:00:00.000Z');
+  // Two of them are Claude Code calling an MCP tool — the ingest has already
+  // split mcp__<server>__<tool> into mcp + toolName. One server is in the
+  // catalog (notion → "Notion"); the other is a Claude.ai connector
+  // (claude_ai_Linear), shown as "Linear" with the raw name on hover.
+  const tools = ['Read', 'Edit', 'Bash', 'notion-fetch', 'Read', 'Bash', 'WebFetch', 'list_issues', 'Read', 'Bash'];
+  const servers: Record<number, string> = { 3: 'notion', 7: 'claude_ai_Linear' };
+  const flagged: Record<number, [Category, Severity]> = {
+    2: ['credential_detected', 'critical'],
+    6: ['prompt_injection', 'critical'],
+    9: ['data_export_warning', 'medium'],
+  };
+  return tools.map((toolName, i) => {
+    const f = flagged[i];
+    return {
+      id: `cca-${String(i).padStart(3, '0')}`,
+      ts: new Date(base - i * 9 * 60_000).toISOString(),
+      mcp: servers[i] ?? 'claude-code',
+      type: 'mcp.request' as const,
+      category: f?.[0] ?? 'tool_call_allowed',
+      severity: f?.[1] ?? 'low',
+      source: 'claude-code' as DetectionRowSlim['source'],
+      toolName,
+      method: 'tools/call',
+      ccSession: i < 5 ? '4f21c8a0-1111-4aaa-9000-000000000001' : '9b30d7e1-2222-4bbb-9000-000000000002',
+      project: 'xclaude-gateway',
+      argsSummary: ['src/renderer/App.tsx', 'pnpm -r test', 'README.md', 'src/**/*.tsx'][i % 4]!,
+      outcome: 'ok' as const,
+    };
+  });
+}
+
+const CC_ACTIVITY = ccActivityRows();
+
 export const SCENARIOS: readonly Scenario[] = [
   {
     id: 'baseline',
@@ -499,11 +586,12 @@ export const SCENARIOS: readonly Scenario[] = [
     tab: 'changes',
     label: 'Changes · Needs review (default)',
     note:
-      'The tab opens here. Cards: TOTAL · LOW · MEDIUM · HIGH · NEEDS REVIEW, with NEEDS REVIEW in ' +
-      'the slot CRITICAL holds elsewhere. Four rows: bcc_emails (HIGH), inserted text (REVIEW, an ' +
-      'outline not a colour), the 52-tool release (MEDIUM) and invisible characters (HIGH). Open ' +
-      'each — plain sentence, Why this is flagged, the fixed severity sentence, What changed with ' +
-      'the flagged item first, Show diff on the inserted-text one, Technical details, Mark as reviewed.',
+      'The tab opens here. Cards: ALL CHANGES · NEEDS REVIEW · MEDIUM · HIGH — ALL CHANGES ' +
+      'styled as TOTAL, MEDIUM and HIGH in their severity colours, NEEDS REVIEW neutral and ' +
+      'prominent. None is dimmed on opening: the default filter is the "Needs review only" ' +
+      'chip. Press MEDIUM: the other three dim; press it again: none. "2 historical changes" at ' +
+      'the end of the chips row is an underlined link. Open a row: per-item lines, raw kinds ' +
+      'only in Technical details, Copy as JSON grey link left, Mark as reviewed pill right.',
     entries: TWO_CONNECTORS,
     events: rowsToEvents(FEW),
     rows: FEW,
@@ -518,9 +606,10 @@ export const SCENARIOS: readonly Scenario[] = [
     tab: 'changes',
     label: 'Changes · All (findings-free majority)',
     note:
-      'Turn "Needs review only" off, or press TOTAL. The plain vendor edits carry NO badge at all — ' +
-      'not LOW. One row is already reviewed (✓) and drops out of Needs review. Try the Status, ' +
-      'Section and MCP chips, the search box, and the footer reading "Export N changes".',
+      'Turn "Needs review only" off, or press ALL CHANGES. Plain vendor edits carry a grey ' +
+      'filled NONE pill (same box as LOW…CRITICAL); REVIEW rows are an outline. Their panel has ' +
+      'no "Why this is flagged". One row is already reviewed (✓). Try the Status, Section and ' +
+      'MCP chips, the search box, and the footer "Export N changes".',
     entries: TWO_CONNECTORS,
     events: rowsToEvents(FEW),
     rows: FEW,
@@ -535,9 +624,12 @@ export const SCENARIOS: readonly Scenario[] = [
     tab: 'changes',
     label: 'Changes · Historical format only',
     note:
-      'Two rows recorded before the facts model. No badge, no diff offered (there is no snapshot to ' +
-      'diff against), and the note "Changes before <date> are shown as recorded by the previous ' +
-      'format." Needs review should be empty: a historical change can never be re-judged.',
+      'Only historical changes recorded. The list reads "No new changes. 2 historical changes ' +
+      'are hidden." with a "Show them" link; every card 0, none dimmed. Press Show them: the ' +
+      'two rows appear (Needs review only lifts, since they can never need review), ALL CHANGES ' +
+      'reads 2, the chips-row link reads "Hide 2 historical changes". Open one: no diff, ' +
+      '"Changes before <date> are shown as recorded by the previous format." Neither is marked ' +
+      'reviewed.',
     entries: TWO_CONNECTORS,
     events: [],
     rows: [],
@@ -583,6 +675,44 @@ export const SCENARIOS: readonly Scenario[] = [
     retention: null,
     hookVanishedTs: null,
     changes: [LONG_DIFF],
+  },
+  {
+    id: 'detections-activity',
+    tab: 'detections',
+    label: 'Detections · real mix (A + B)',
+    note:
+      'All activity by default. Normal calls ("Tool call", "Protocol call") carry a grey filled ' +
+      'NONE pill — same box and alignment as the severities, not an outline. Cards: TOTAL 20; ' +
+      'LOW 1, MEDIUM 2, HIGH 1, CRITICAL 2 count findings only. "Flagged only" OFF; press it → ' +
+      '6 rows. Press LOW → only the real LOW. SOURCE plain text (Notion, Google Drive, Stripe, ' +
+      'xcg-toy, Claude Code). The Claude Code → Notion row: TOOL "notion-fetch" alone, raw name ' +
+      'on hover; open it: the panel has "server: Notion" and "tool: mcp__notion__notion-fetch".',
+    entries: TWO_CONNECTORS,
+    events: rowsToEvents(ACTIVITY),
+    rows: ACTIVITY,
+    authAlerts: [],
+    baseline: BASELINE_BOTH,
+    retention: null,
+    hookVanishedTs: null,
+  },
+  {
+    id: 'claude-code-activity',
+    tab: 'claude-code',
+    label: 'Claude Code · real mix (A + B)',
+    note:
+      'NONE pills on normal calls; TOTAL 10, CRITICAL 2, MEDIUM 1. No Project chip (one ' +
+      'project). Two MCP calls: TOOL "notion-fetch" and "list_issues" alone (raw name on ' +
+      'hover); DETAILS starts "via Notion" / "via Linear" (claude_ai_Linear: prefix dropped, ' +
+      'catalog name). Open one: "tool:" is the raw name, "server:" the connector. Search ' +
+      '"Linear", "claude_ai_Linear" or "list_issues" — each finds its row. Native tools (Read, ' +
+      'Bash…) unchanged.',
+    entries: TWO_CONNECTORS,
+    events: rowsToEvents(CC_ACTIVITY),
+    rows: CC_ACTIVITY,
+    authAlerts: [],
+    baseline: BASELINE_BOTH,
+    retention: null,
+    hookVanishedTs: null,
   },
 ];
 

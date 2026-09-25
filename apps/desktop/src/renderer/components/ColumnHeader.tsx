@@ -55,7 +55,7 @@ export const DETECTION_COLUMNS: readonly Column[] = [
   { key: 'time', label: 'Time', width: '130px' },
   { key: 'severity', label: 'Severity', width: '90px' },
   { key: 'category', label: 'Category', width: '160px' },
-  { key: 'mcp', label: 'MCP', width: '180px' },
+  { key: 'mcp', label: 'Source', width: '180px' },
   { key: 'tool', label: 'Tool', width: '1fr' },
 ];
 

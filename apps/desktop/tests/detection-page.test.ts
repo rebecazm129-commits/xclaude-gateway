@@ -76,7 +76,11 @@ function referenceIds(events: readonly EnrichableEvent[], filter: DetectionFilte
         const t = Date.parse(e.ts);
         if (Number.isNaN(t) || t < cutoff) return false;
       }
-      return catSet.has(e.detection.category) && sevSet.has(e.detection.severity);
+      if (!catSet.has(e.detection.category)) return false;
+      // Normal activity has no severity: it passes only an un-narrowed
+      // severity axis (same rule as matchesSeverity).
+      if (e.detection.category === 'tool_call_allowed') return SEVS.every((s) => sevSet.has(s));
+      return sevSet.has(e.detection.severity);
     })
     .slice()
     .sort(cmp)
@@ -88,7 +92,8 @@ describe('paginate — filter before cut', () => {
     const events: EnrichableEvent[] = [];
     // 50 low events (newer) then 3 criticals (older) — criticals are "deep".
     for (let i = 0; i < 50; i++) events.push(req(`low${i}`, new Date(NOW - i * 1000).toISOString()));
-    for (let i = 0; i < 3; i++) events.push(req(`crit${i}`, new Date(NOW - (100 + i) * 1000).toISOString(), { severity: 'critical' }));
+    // A real finding: normal activity carries no severity to filter on.
+    for (let i = 0; i < 3; i++) events.push(req(`crit${i}`, new Date(NOW - (100 + i) * 1000).toISOString(), { category: 'credential_detected', severity: 'critical' }));
     const filter = { ...ALL, severities: ['critical'] as Severity[] };
     const p = paginate(events, filter, 2, null, NOW);
     expect(p.rows.map((r) => r.id)).toEqual(['crit0', 'crit1']);
@@ -99,14 +104,16 @@ describe('paginate — filter before cut', () => {
 
 describe('paginate — counts', () => {
   it('severityCounts and categoryFilteredTotal reflect the category-filtered set', () => {
+    // Real findings: normal activity counts toward no severity (tested in its
+    // own block), so this one counts categories that carry a grade.
     const events = [
-      req('a', new Date(NOW).toISOString(), { severity: 'low' }),
-      req('b', new Date(NOW - 1000).toISOString(), { severity: 'critical' }),
-      req('c', new Date(NOW - 2000).toISOString(), { severity: 'critical' }),
+      req('a', new Date(NOW).toISOString(), { category: 'credential_detected', severity: 'low' }),
+      req('b', new Date(NOW - 1000).toISOString(), { category: 'credential_detected', severity: 'critical' }),
+      req('c', new Date(NOW - 2000).toISOString(), { category: 'credential_detected', severity: 'critical' }),
       req('d', new Date(NOW - 3000).toISOString(), { category: 'pii_detected', severity: 'high' }),
     ];
     // Category filter excludes pii_detected → d drops from the counted set.
-    const filter = { ...ALL, categories: ['tool_call_allowed'] as Category[] };
+    const filter = { ...ALL, categories: ['credential_detected'] as Category[] };
     const p = paginate(events, filter, 10, null, NOW);
     expect(p.categoryFilteredTotal).toBe(3);
     expect(p.severityCounts).toEqual({ low: 1, medium: 0, high: 0, critical: 2 });
@@ -738,5 +745,115 @@ describe('outcome backfill through the store (delta final — long-running tool)
     // And the status filter sees it through the real path.
     const errs = await store.getPage({ filter: { ...ALL, status: ['error'] }, limit: 10, cursor: null });
     expect(errs.rows.map((r) => r.id)).toEqual(['slow1']);
+  });
+});
+
+describe('concrete sources (sourceNames)', () => {
+  const T = '2026-07-02T11:00:00.000Z';
+  const events = [
+    req('n1', T, { mcp: 'notion' }),
+    req('s1', T, { mcp: 'stripe' }),
+    req('c1', T, { mcp: 'claude-code', source: 'claude-code' }),
+    // Claude Code calling an MCP tool: its mcp is the server, its source is
+    // Claude Code — and Claude Code is what it counts as.
+    req('c2', T, { mcp: 'notion', source: 'claude-code' }),
+  ];
+
+  it('the facet lists each connector once, plus Claude Code', () => {
+    expect(paginate(events, ALL, 50, null, NOW).facets.sourceNames).toEqual([
+      'claude-code',
+      'notion',
+      'stripe',
+    ]);
+  });
+
+  it('Claude Code selects everything its hook recorded, MCP calls included', () => {
+    const p = paginate(events, { ...ALL, sourceNames: ['claude-code'] }, 50, null, NOW);
+    expect(p.rows.map((r) => r.id).sort()).toEqual(['c1', 'c2']);
+  });
+
+  it('a connector selects only its wrapper traffic', () => {
+    const p = paginate(events, { ...ALL, sourceNames: ['notion'] }, 50, null, NOW);
+    expect(p.rows.map((r) => r.id)).toEqual(['n1']);
+  });
+
+  it('absent, null and [] are all "no filter"', () => {
+    for (const sourceNames of [undefined, null, []]) {
+      const p = paginate(events, { ...ALL, sourceNames }, 50, null, NOW);
+      expect(p.totalMatching).toBe(4);
+    }
+  });
+
+  it('the facet does not shrink under its own selection', () => {
+    const p = paginate(events, { ...ALL, sourceNames: ['stripe'] }, 50, null, NOW);
+    expect(p.facets.sourceNames).toHaveLength(3);
+  });
+});
+
+describe('normal activity has no severity', () => {
+  const T = '2026-07-02T11:00:00.000Z';
+  // The engine writes `low` on every tool_call_allowed line; that stays in
+  // the trail, and the product reads it as "no severity".
+  const events = [
+    req('b1', T, { category: 'tool_call_allowed', severity: 'low' }),
+    req('b2', T, { category: 'tool_call_allowed', severity: 'low' }),
+    req('p1', T, { category: 'pii_detected', severity: 'low' }),
+    req('x1', T, { category: 'credential_detected', severity: 'critical' }),
+  ];
+
+  it('TOTAL counts it; no severity card does', () => {
+    const p = paginate(events, ALL, 50, null, NOW);
+    expect(p.categoryFilteredTotal).toBe(4);
+    expect(p.severityCounts).toEqual({ low: 1, medium: 0, high: 0, critical: 1 });
+  });
+
+  it('it is listed while the severity axis is not narrowed', () => {
+    expect(paginate(events, ALL, 50, null, NOW).totalMatching).toBe(4);
+  });
+
+  it('narrowing to LOW shows the real LOW findings only', () => {
+    const p = paginate(events, { ...ALL, severities: ['low'] }, 50, null, NOW);
+    expect(p.rows.map((r) => r.id)).toEqual(['p1']);
+  });
+
+  it('matchesFilter agrees, so the export filters the same way', () => {
+    const f = { ...ALL, severities: ['low'] as Severity[] };
+    expect(events.filter((e) => matchesFilter(e, f, NOW)).map((e) => e.id)).toEqual(['p1']);
+  });
+});
+
+describe('search — a Claude Code MCP call answers to its tool, raw and connector names', () => {
+  const T = '2026-07-02T11:00:00.000Z';
+  const events = [
+    req('mcp', T, { mcp: 'claude_ai_Notion', source: 'claude-code', toolName: 'notion_search' }),
+    req('cat', T, { mcp: 'notion', source: 'claude-code', toolName: 'notion-fetch' }),
+    req('nat', T, { mcp: 'claude-code', source: 'claude-code', toolName: 'Bash' }),
+    req('gw', T, { mcp: 'notion', toolName: 'search' }),
+  ];
+  const hits = (text: string): string[] =>
+    paginate(events, { ...ALL, text }, 50, null, NOW).rows.map((r) => r.id).sort();
+
+  it('the raw name Claude Code uses', () => {
+    expect(hits('mcp__claude_ai_Notion__notion_search')).toEqual(['mcp']);
+    expect(hits('mcp__notion__')).toEqual(['cat']);
+  });
+
+  it('the connector by its visible name, as "via Notion" shows it', () => {
+    // claude_ai_Notion and notion are both "Notion"; the Desktop connector's
+    // own row is not a Claude Code call and has no "via".
+    expect(hits('Notion')).toEqual(['cat', 'mcp']);
+  });
+
+  it('the raw name still carries the claude_ai_ prefix', () => {
+    expect(hits('claude_ai_Notion')).toEqual(['mcp']);
+  });
+
+  it('the bare tool name, as before', () => {
+    expect(hits('notion_search')).toEqual(['mcp']);
+    expect(hits('Bash')).toEqual(['nat']);
+  });
+
+  it('a Desktop connector row is not given a raw name it never had', () => {
+    expect(hits('mcp__notion__search')).toEqual([]);
   });
 });

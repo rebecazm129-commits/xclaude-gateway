@@ -1,4 +1,4 @@
-import type { Category, SourceKind } from '../../shared/types.js';
+import type { Category, Severity, SourceKind } from '../../shared/types.js';
 
 // Shared by the Source filter pill (Detections) and the DetailDrawer line.
 export const SOURCE_LABELS: Record<SourceKind, string> = {
@@ -51,6 +51,15 @@ export function categoryLabel(category: Category, method?: string): string {
     return 'Protocol call';
   }
   return CATEGORY_LABELS[category];
+}
+
+// What the SEVERITY column shows. Normal activity — tool_call_allowed, both
+// "Tool call" and "Protocol call" — is NONE: nothing matched, the bottom of
+// the scale. The trail keeps the `low` the engine writes on those lines; this is
+// a reading of the category, done here and nowhere else, so the two list
+// views and the panel header cannot disagree about it.
+export function displaySeverity(row: { category: Category; severity: Severity }): Severity | 'none' {
+  return row.category === 'tool_call_allowed' ? 'none' : row.severity;
 }
 
 const MONTH_SHORT: readonly string[] = [

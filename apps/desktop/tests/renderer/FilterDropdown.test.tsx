@@ -49,3 +49,40 @@ describe('FilterDropdown — All/None footer', () => {
     expect(onChange).toHaveBeenCalledWith([]);
   });
 });
+
+describe('FilterDropdown — a chip with one option', () => {
+  function renderChip(options: readonly string[], selected: readonly string[]): void {
+    render(
+      <FilterDropdown
+        label="Section"
+        options={options}
+        selected={selected}
+        onChange={() => {}}
+        isOpen={false}
+        onToggle={() => {}}
+      />,
+    );
+  }
+
+  it('is hidden: "Section (1/1)" filters nothing', () => {
+    renderChip(['tools'], ['tools']);
+    expect(screen.queryByRole('button', { name: /Section/ })).toBeNull();
+  });
+
+  it('is hidden with no options at all', () => {
+    renderChip([], []);
+    expect(screen.queryByRole('button', { name: /Section/ })).toBeNull();
+  });
+
+  it('comes back as soon as a second option exists', () => {
+    renderChip(['tools', 'prompts'], ['tools', 'prompts']);
+    expect(screen.getByRole('button', { name: /Section \(2\/2\)/ })).toBeDefined();
+  });
+
+  it('stays visible while it is narrowing, so a selection never vanishes with its way back', () => {
+    // The inventory shrank to one option under an active selection of a value
+    // that is no longer in it (a time window moved, say).
+    renderChip(['tools'], ['prompts']);
+    expect(screen.getByRole('button', { name: /Section/ })).toBeDefined();
+  });
+});

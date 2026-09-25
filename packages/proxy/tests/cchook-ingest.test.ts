@@ -99,6 +99,12 @@ describe('splitToolName', () => {
     expect(splitToolName('Bash')).toEqual({ mcp: 'claude-code', tool: 'Bash' });
     // Non-greedy: a tool containing '__' splits at the FIRST separator.
     expect(splitToolName('mcp__srv__tool__extra')).toEqual({ mcp: 'srv', tool: 'tool__extra' });
+    // Underscores inside a server name are not separators: claude.ai's own
+    // connectors are named claude_ai_<Service>.
+    expect(splitToolName('mcp__claude_ai_Notion__notion_search')).toEqual({
+      mcp: 'claude_ai_Notion',
+      tool: 'notion_search',
+    });
   });
 });
 

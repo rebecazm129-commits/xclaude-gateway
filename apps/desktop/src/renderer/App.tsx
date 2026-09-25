@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { ConnectResult, RemoveRemoteResult, StatusResult } from '@xcg/shared/config';
 
-import type { SourceKind } from '../shared/types.js';
+import { CLAUDE_CODE_SOURCE } from '../shared/types.js';
 
 import { ClaudeCode } from './components/ClaudeCode.js';
 import { Changes } from './components/Changes.js';
@@ -83,7 +83,7 @@ export function App(): JSX.Element {
   // and cleared here — unlike mcpFilter, the sources selection LIVES in
   // Detections; App only hands over the initial value.
   const [detectionsSourcesPreset, setDetectionsSourcesPreset] =
-    useState<readonly SourceKind[] | null>(null);
+    useState<readonly string[] | null>(null);
   // Connectors whose remove left Keychain credentials behind (F1-02). Memory-
   // only, lives here because the inspector that ran the remove unmounts with
   // the removed entry; cleared by the notice's explicit Dismiss.
@@ -215,7 +215,7 @@ export function App(): JSX.Element {
   // server name for MCP tools consumed via hooks).
   const handleOpenClaudeCodeInDetections = useCallback(() => {
     setDetectionsMcpFilter(null);
-    setDetectionsSourcesPreset(['claude-code']);
+    setDetectionsSourcesPreset([CLAUDE_CODE_SOURCE]);
     setActiveTab('detections');
     writeLastTab('detections');
   }, []);

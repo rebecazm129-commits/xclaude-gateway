@@ -33,7 +33,9 @@ interface CatalogEntry {
   readonly setupCatalog?: keyof typeof SETUP_CATALOGS;
 }
 
-const CATALOG: readonly CatalogEntry[] = [
+// Exported for the test that pins each card's label to CONNECTOR_LABELS
+// (shared/tool-names.ts), which is what the SOURCE column reads.
+export const CATALOG: readonly CatalogEntry[] = [
   {
     label: 'Claude Code', name: 'claude-code', logo: 'terminal', group: 'apps', kind: 'app',
     description: 'Bash, file edits and MCP tools — calls recorded and classified.',

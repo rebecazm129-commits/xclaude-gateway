@@ -311,13 +311,45 @@ describe('csvRow — RFC 4180 escaping', () => {
     } as EnrichableEvent;
   }
   it('quotes a comma field', () => {
-    expect(csvRow(reqEvent({ mcp: 'a,b' }))).toBe('t,"a,b",mcp.request,tools/call,echo,tool_call_allowed,low,0,,');
+    // Severity empty: normal activity has none in the report (see below).
+    expect(csvRow(reqEvent({ mcp: 'a,b' }))).toBe('t,"a,b",mcp.request,tools/call,echo,tool_call_allowed,,0,,');
   });
   it('doubles inner quotes', () => {
     expect(csvRow(reqEvent({ toolName: 'we"ird' }))).toContain('"we""ird"');
   });
   it('quotes an embedded newline', () => {
     expect(csvRow(reqEvent({ mcp: 'a\nb' }))).toContain('"a\nb"');
+  });
+});
+
+describe('csvRow — severity', () => {
+  function ev(category: string, severity: string): EnrichableEvent {
+    return {
+      id: 'x', ts: 't', session: 's', mcp: 'm', type: 'mcp.request',
+      method: 'tools/call', rpcId: 1, direction: 'client_to_server', toolName: 'echo',
+      detection: { category, severity, findings: [] },
+    } as unknown as EnrichableEvent;
+  }
+  const severityCol = (row: string): string => row.split(',')[6]!;
+
+  it('is empty for normal activity: a `low` on every tool call would read as a finding', () => {
+    expect(severityCol(csvRow(ev('tool_call_allowed', 'low')))).toBe('');
+  });
+
+  it('is kept for a real finding, LOW included', () => {
+    expect(severityCol(csvRow(ev('pii_detected', 'low')))).toBe('low');
+    expect(severityCol(csvRow(ev('credential_detected', 'critical')))).toBe('critical');
+  });
+});
+
+describe('exportAudit — JSONL is the raw record', () => {
+  it('keeps the baseline line exactly as written, `low` and all', async () => {
+    const line = reqLine('raw', iso(0));
+    expect(line).toContain('"tool_call_allowed"');
+    await writeSession('raw.jsonl', line);
+    const dest = join(root, 'raw-out.jsonl');
+    await exportAudit({ dir, destPath: dest, filter: ALL, format: 'jsonl', now: NOW });
+    expect(readFileSync(dest, 'utf8')).toBe(`${line}\n`);
   });
 });
 

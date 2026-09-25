@@ -21,7 +21,7 @@ const EMPTY_COUNTS: Record<Severity, number> = {
   critical: 0,
 };
 
-const EMPTY_FACETS: DetectionFacets = { tools: [], ccSessions: [], projects: [] };
+const EMPTY_FACETS: DetectionFacets = { tools: [], ccSessions: [], projects: [], sourceNames: [] };
 
 export interface PolledPage {
   rows: DetectionRowSlim[];

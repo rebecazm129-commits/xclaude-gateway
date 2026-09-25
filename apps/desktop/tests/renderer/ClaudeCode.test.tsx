@@ -25,7 +25,7 @@ const EMPTY_PAGE: DetectionPageResult = {
   severityCounts: { low: 0, medium: 0, high: 0, critical: 0 },
   categoryFilteredTotal: 0,
   nextCursor: null,
-  facets: { tools: [], ccSessions: [], projects: [] },
+  facets: { tools: [], ccSessions: [], projects: [], sourceNames: [] },
   authAlerts: [],
   retention: null,
 };
@@ -78,7 +78,10 @@ const PAGE_WITH_ROWS: DetectionPageResult = {
       { id: 'uuid-B', started: '2026-07-17T19:13:22.000Z', where: 'claude-code' },
       { id: 'uuid-C', started: '2026-07-16T10:00:00.000Z', where: 'proj-c' },
     ],
-    projects: ['proj-a'],
+    // Two projects: a chip with ONE option is hidden (it filters nothing), so
+    // the Project chip needs a second one to be on screen at all.
+    projects: ['proj-a', 'proj-c'],
+    sourceNames: ['claude-code'],
   },
 };
 
@@ -331,7 +334,7 @@ describe('ClaudeCode view (F2.4 commit 4)', () => {
     });
   });
 
-  it('Project chip is hidden with no projects loaded, visible when one exists', async () => {
+  it('Project chip is hidden with no projects loaded, visible when there is a choice', async () => {
     const { listDetectionPage } = stubXcgForView(EMPTY_PAGE);
     render(<ClaudeCode />);
     await waitFor(() => expect(listDetectionPage).toHaveBeenCalled());
@@ -342,7 +345,7 @@ describe('ClaudeCode view (F2.4 commit 4)', () => {
     // the second render's measuring effect throws and unmounts the tree.
     vi.stubGlobal('ResizeObserver', ResizeObserverStub);
 
-    stubXcgForView(PAGE_WITH_ROWS); // r1 carries proj-a
+    stubXcgForView(PAGE_WITH_ROWS); // proj-a and proj-c
     render(<ClaudeCode />);
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Project/ })).toBeDefined();
@@ -435,25 +438,28 @@ describe('ClaudeCode view (F2.4 commit 4)', () => {
     }
   });
 
-  it('single-option chip: plain toggleable checkbox, never ships a filter (all ≡ none ≡ null)', async () => {
+  it('single-option chip: hidden, and never ships a filter', async () => {
+    // A chip with one option filters nothing — all ≡ none ≡ null — so it is
+    // not shown until a second option exists. (It used to render as a plain
+    // toggleable checkbox; "Tool (1/1)" only ever looked like a control.)
     const singleTool: DetectionPageResult = {
       ...EMPTY_PAGE,
       rows: [CC_ROWS[1]!], // only r2: toolName 'Bash', ccSession 'uuid-B'
       total: 1,
       totalMatching: 1,
-      facets: { tools: ['Bash'], ccSessions: [{ id: 'uuid-B', started: '2026-07-17T19:13:22.000Z', where: 'claude-code' }], projects: [] },
+      facets: {
+        tools: ['Bash'],
+        ccSessions: [{ id: 'uuid-B', started: '2026-07-17T19:13:22.000Z', where: 'claude-code' }],
+        projects: [],
+        sourceNames: ['claude-code'],
+      },
     };
     const { listDetectionPage } = stubXcgForView(singleTool);
     render(<ClaudeCode />);
-    await waitFor(() => expect(screen.getByRole('button', { name: /Tool/ })).toBeDefined());
-    fireEvent.click(screen.getByRole('button', { name: /Tool/ }));
-    const checkbox = screen.getByLabelText('Bash') as HTMLInputElement;
-    // Commit 6: no locked state — a 1-option toggle is legitimate because
-    // all-unchecked ≡ all-checked ≡ null (no ghost narrowing possible).
-    expect(checkbox.disabled).toBe(false);
-    fireEvent.click(checkbox); // all → none ≡ null
-    fireEvent.click(checkbox); // none → all ≡ null
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Flagged only' })).toBeDefined());
     await waitFor(() => expect(listDetectionPage).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: /^Tool/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Session/ })).toBeNull();
     expect(shippedFilters(listDetectionPage).every((f) => f.tool === null)).toBe(true);
   });
 

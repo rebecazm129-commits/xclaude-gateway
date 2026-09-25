@@ -48,18 +48,7 @@
   color: var(--kraft-ink-body);
 }
 
-/* Claude Code source badge — entryKind mini-pill pattern (Setup.module.css). */
-.sourceBadgeCc {
-  margin-left: 6px;
-  color: var(--kraft-ink-soft);
-  background: var(--kraft-filter-bg);
-  border-radius: var(--kraft-radius-sm);
-  padding: 1px 5px;
-  font-size: 9px;
-  letter-spacing: 0.04em;
-}
-
-/* Paired-badge (frente 3): sibling of sourceBadgeCc, same visual treatment. */
+/* Paired-badge (frente 3): the same tool-use recorded by the other source. */
 .pairedBadge {
   margin-left: 6px;
   color: var(--kraft-ink-soft);

@@ -279,6 +279,16 @@ export function normalizeSource(v: unknown): SourceKind {
   return v === 'claude-code' ? 'claude-code' : 'gateway';
 }
 
+// The concrete source an event belongs to, as the Source filter lists it: one
+// entry per connector, plus Claude Code. Everything the Claude Code hook
+// recorded is Claude Code — including its calls to MCP tools, whose `mcp` is
+// the server's name — because that is the source the Sources tab shows and the
+// one its "Open in Detections" asks for. Wrapper traffic is its connector.
+export const CLAUDE_CODE_SOURCE = 'claude-code';
+export function sourceName(source: SourceKind, mcp: string): string {
+  return source === 'claude-code' ? CLAUDE_CODE_SOURCE : mcp;
+}
+
 // The full filter the renderer sends to the main. Applied server-side BEFORE the
 // top-N cut so the page (and its counts) never lie.
 export interface DetectionFilter {
@@ -297,6 +307,10 @@ export interface DetectionFilter {
   tool?: string[] | null;
   ccSession?: string[] | null;
   project?: string[] | null;
+  // Concrete sources (see sourceName): membership, same absent ≡ null ≡ []
+  // rule as the CC filters. Independent of `sources`, the SourceKind axis the
+  // Claude Code tab fixes.
+  sourceNames?: string[] | null;
   // Búsqueda libre (delta final): case-insensitive contra toolName y
   // argsSummary (solo requests — un enrichment no tiene ninguno de los dos).
   text?: string | null;
@@ -329,6 +343,8 @@ export interface DetectionFacets {
   tools: string[];
   ccSessions: CcSessionFacet[];
   projects: string[];
+  /** Concrete sources present (see sourceName), sorted. */
+  sourceNames: string[];
 }
 
 // Compound cursor for stable pagination over a total (ts desc, id desc) order.

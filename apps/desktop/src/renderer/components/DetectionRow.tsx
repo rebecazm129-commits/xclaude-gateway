@@ -1,8 +1,16 @@
 import type { KeyboardEvent } from 'react';
 
+import { displayToolName, rawToolName, sourceLabel } from '../../shared/tool-names.js';
+import { sourceName } from '../../shared/types.js';
 import type { DetectionRowSlim } from '../../shared/types.js';
 import { Badge } from './Badge.js';
-import { PAIRED_SOURCE_LABELS, categoryLabel, enrichmentToolLabel, formatTimestamp } from './detections-format.js';
+import {
+  PAIRED_SOURCE_LABELS,
+  categoryLabel,
+  displaySeverity,
+  enrichmentToolLabel,
+  formatTimestamp,
+} from './detections-format.js';
 
 import styles from './DetectionRow.module.css';
 
@@ -20,6 +28,11 @@ export function DetectionRow({ row, selected, onClick }: DetectionRowProps): JSX
     }
   }
 
+  // The raw name Claude Code uses (mcp__notion__notion-fetch), on hover, only
+  // where the cell shows a cleaned-up one.
+  const raw = rawToolName(row);
+  const toolTitle = raw !== undefined && raw !== displayToolName(row) ? raw : undefined;
+
   const className = selected
     ? `${styles['row']} ${styles['rowSelected']}`
     : styles['row'];
@@ -33,19 +46,14 @@ export function DetectionRow({ row, selected, onClick }: DetectionRowProps): JSX
       onKeyDown={handleKeyDown}
     >
       <span className={styles['timestamp']}>{formatTimestamp(row.ts)}</span>
-      <Badge severity={row.severity} />
+      <Badge severity={displaySeverity(row)} />
       <span className={styles['category']}>
         {categoryLabel(row.category, row.method)}
       </span>
       <span className={styles['mcp']}>
-        {row.mcp}
-        {row.source === 'claude-code' ? (
-          // Mini-pill in the entryKind style (Setup list): suffix badge, not a
-          // sixth column — Claude Code rows stay scannable in the MCP cell.
-          <span className={styles['sourceBadgeCc']} data-testid="source-badge-cc" title="Claude Code">
-            CC
-          </span>
-        ) : null}
+        {/* Plain text, the Source chip's own label: "Claude Code", "Notion".
+            No pill — the server of a Claude Code MCP call is in TOOL. */}
+        {sourceLabel(sourceName(row.source, row.mcp))}
         {row.pairedSource !== undefined ? (
           // Paired-badge (frente 3): the same tool-use exists in the OTHER
           // source's record. Independent of the CC badge — a paired wrapper
@@ -60,15 +68,15 @@ export function DetectionRow({ row, selected, onClick }: DetectionRowProps): JSX
         ) : null}
       </span>
       {row.type === 'mcp.request' ? (
-        <span className={styles['method']}>
-          {row.toolName ?? row.method}
+        <span className={styles['method']} title={toolTitle}>
+          {displayToolName(row) ?? row.method}
         </span>
       ) : row.toolName !== undefined ? (
         // Orden DELIBERADO (contrato: real tool > real method > synthetic):
         // desde 4c7f859 los enrichments casados heredan el toolName real de
         // su request. El manifest-change nunca hereda toolName — tools/list
         // no lo tiene — así que su rama sigue efectiva.
-        <span className={styles['method']}>{row.toolName}</span>
+        <span className={styles['method']} title={toolTitle}>{displayToolName(row)}</span>
       ) : row.category === 'tool_manifest_changed' ? (
         // Manifest-change enrichment: it rides on the tools/list response, not
         // the async NER path, so label the source method, not [NER].

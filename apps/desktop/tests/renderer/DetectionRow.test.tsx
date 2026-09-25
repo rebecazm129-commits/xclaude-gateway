@@ -145,22 +145,88 @@ describe('DetectionRow — tool column', () => {
   });
 });
 
-describe('DetectionRow — source badge (F1.3b)', () => {
-  it('shows the CC badge only on claude-code rows', () => {
+describe('DetectionRow — SOURCE cell', () => {
+  // The cell says what the Source chip says: one function names both.
+  it('a catalog connector reads its catalog name', () => {
+    render(<DetectionRow row={row({ mcp: 'drive' })} selected={false} onClick={() => {}} />);
+    expect(screen.getByText('Google Drive')).toBeTruthy();
+  });
+
+  it('a hand-wrapped server keeps the name it was wrapped with', () => {
+    render(<DetectionRow row={row({ mcp: 'xcg-toy' })} selected={false} onClick={() => {}} />);
+    expect(screen.getByText('xcg-toy')).toBeTruthy();
+  });
+
+  it("Claude Code's own tools read Claude Code", () => {
     render(
       <DetectionRow
-        row={row({ source: 'claude-code', type: 'mcp.request', toolName: 'Bash', method: 'tools/call' })}
+        row={row({ mcp: 'claude-code', source: 'claude-code', type: 'mcp.request', toolName: 'Bash', method: 'tools/call' })}
         selected={false}
         onClick={() => {}}
       />,
     );
-    expect(screen.getByTestId('source-badge-cc')).toBeTruthy();
-    expect(screen.getByTestId('source-badge-cc').textContent).toBe('CC');
+    expect(screen.getByText('Claude Code')).toBeTruthy();
+    expect(screen.getByText('Bash')).toBeTruthy();
   });
 
-  it('no badge on gateway rows', () => {
-    render(<DetectionRow row={row()} selected={false} onClick={() => {}} />);
-    expect(screen.queryByTestId('source-badge-cc')).toBeNull();
+  it('Claude Code calling an MCP tool: SOURCE plain "Claude Code", TOOL the tool alone', () => {
+    render(
+      <DetectionRow
+        row={row({ mcp: 'notion', source: 'claude-code', type: 'mcp.request', toolName: 'notion-fetch', method: 'tools/call' })}
+        selected={false}
+        onClick={() => {}}
+      />,
+    );
+    expect(screen.getByText('Claude Code')).toBeTruthy();
+    // No pill of any kind in SOURCE — neither the old CC one nor a server one.
+    expect(screen.queryByText('CC')).toBeNull();
+    // The server is named in the panel ("server: Notion"), not in the row.
+    const tool = screen.getByText('notion-fetch');
+    expect(tool.getAttribute('title')).toBe('mcp__notion__notion-fetch');
+    expect(screen.queryByText(/Notion/)).toBeNull();
+  });
+
+  it('a Desktop connector row keeps its tool name, with no tooltip', () => {
+    render(
+      <DetectionRow
+        row={row({ mcp: 'notion', source: 'gateway', type: 'mcp.request', toolName: 'search', method: 'tools/call' })}
+        selected={false}
+        onClick={() => {}}
+      />,
+    );
+    expect(screen.getByText('search').getAttribute('title')).toBeNull();
+  });
+});
+
+describe('DetectionRow — severity of normal activity', () => {
+  // The engine writes `low` on every baseline line; the row reads the
+  // category and shows NONE — the bottom of the scale, a pill like the rest.
+  it('a tool call that matched nothing reads NONE, not LOW', () => {
+    render(
+      <DetectionRow
+        row={row({ type: 'mcp.request', category: 'tool_call_allowed', severity: 'low', toolName: 'search', method: 'tools/call' })}
+        selected={false}
+        onClick={() => {}}
+      />,
+    );
+    expect(screen.getByText('NONE')).toBeTruthy();
+    expect(screen.queryByText('LOW')).toBeNull();
+  });
+
+  it('a protocol call reads NONE too', () => {
+    render(
+      <DetectionRow
+        row={row({ type: 'mcp.request', category: 'tool_call_allowed', severity: 'low', method: 'initialize' })}
+        selected={false}
+        onClick={() => {}}
+      />,
+    );
+    expect(screen.getByText('NONE')).toBeTruthy();
+  });
+
+  it('a real LOW finding keeps its pill', () => {
+    render(<DetectionRow row={row({ category: 'pii_detected', severity: 'low' })} selected={false} onClick={() => {}} />);
+    expect(screen.getByText('LOW')).toBeTruthy();
   });
 });
 
@@ -181,8 +247,8 @@ describe('DetectionRow — paired badge (frente 3)', () => {
     );
     const pill = screen.getByTestId('paired-badge');
     expect(pill.getAttribute('title')).toBe('Also recorded by the Claude Code hook');
-    // Paired wrapper row: the pill shows WITHOUT the CC badge.
-    expect(screen.queryByTestId('source-badge-cc')).toBeNull();
+    // Paired wrapper row: the pill shows on its own.
+    expect(screen.queryByText('CC')).toBeNull();
   });
 
   it('no pill on rows without pairedSource', () => {

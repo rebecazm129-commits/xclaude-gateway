@@ -74,6 +74,14 @@
   margin-right: 8px;
 }
 
+/* "via Notion" — the connector a Claude Code MCP call went to. UI font like
+   the category tag, but soft: it is context, not a finding. */
+.via {
+  font-family: var(--kraft-font-ui);
+  color: var(--kraft-ink-soft);
+  margin-right: 8px;
+}
+
 /* Discreet error dot before the tool name (delta final) — critical token,
    small enough to scan without shouting. */
 .errorDot {

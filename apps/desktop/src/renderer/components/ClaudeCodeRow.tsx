@@ -1,8 +1,9 @@
 import type { KeyboardEvent } from 'react';
 
+import { calledServerLabel, displayToolName, rawToolName } from '../../shared/tool-names.js';
 import type { DetectionRowSlim } from '../../shared/types.js';
 import { Badge } from './Badge.js';
-import { CATEGORY_LABELS, enrichmentToolLabel, formatTimestamp } from './detections-format.js';
+import { CATEGORY_LABELS, displaySeverity, enrichmentToolLabel, formatTimestamp } from './detections-format.js';
 import { Tooltip } from './Tooltip.js';
 
 import styles from './ClaudeCodeRow.module.css';
@@ -44,6 +45,13 @@ export function ClaudeCodeRow({ row, selected, onClick }: ClaudeCodeRowProps): J
     : styles['row'];
 
   const flagged = row.category !== 'tool_call_allowed';
+  // The tool's own name in TOOL, mcp__notion__notion-fetch on hover, and the
+  // connector as "via Notion" in DETAILS — only on a Claude Code call to an
+  // MCP tool; native tools are untouched.
+  const shown = displayToolName(row);
+  const via = calledServerLabel(row);
+  const raw = rawToolName(row);
+  const toolTitle = raw !== undefined && raw !== shown ? raw : undefined;
 
   return (
     <div
@@ -54,9 +62,9 @@ export function ClaudeCodeRow({ row, selected, onClick }: ClaudeCodeRowProps): J
       onKeyDown={handleKeyDown}
     >
       <span className={styles['timestamp']}>{formatTimestamp(row.ts)}</span>
-      <Badge severity={row.severity} />
+      <Badge severity={displaySeverity(row)} />
       {row.type === 'mcp.request' ? (
-        <span className={styles['tool']}>
+        <span className={styles['tool']} title={toolTitle}>
           {row.outcome === 'error' && (
             // Discreet error dot (delta final): real outcome data from the
             // request↔response correlation. Wrapped in the house Tooltip
@@ -70,12 +78,12 @@ export function ClaudeCodeRow({ row, selected, onClick }: ClaudeCodeRowProps): J
               />
             </Tooltip>
           )}
-          {row.toolName ?? row.method}
+          {shown ?? row.method}
         </span>
       ) : row.toolName !== undefined ? (
         // Tool real heredado de la request (4c7f859) — gana a la etiqueta
         // sintética del productor.
-        <span className={styles['tool']}>{row.toolName}</span>
+        <span className={styles['tool']} title={toolTitle}>{shown}</span>
       ) : (
         <span className={styles['toolSoft']}>{enrichmentToolLabel(row.category)}</span>
       )}
@@ -84,7 +92,9 @@ export function ClaudeCodeRow({ row, selected, onClick }: ClaudeCodeRowProps): J
           {flagged && (
             <span className={styles['categoryTag']}>{CATEGORY_LABELS[row.category]}</span>
           )}
-          {row.argsSummary ?? row.project ?? row.mcp}
+          {via !== null && <span className={styles['via']}>via {via}</span>}
+          {/* The mcp fallback would repeat the server "via" already names. */}
+          {row.argsSummary ?? row.project ?? (via === null ? row.mcp : null)}
         </span>
       ) : (
         <span className={styles['context']}>{CATEGORY_LABELS[row.category]}</span>

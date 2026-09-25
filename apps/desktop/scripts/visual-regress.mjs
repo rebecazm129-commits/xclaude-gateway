@@ -52,6 +52,13 @@ const SCENARIOS = (
     // The connector cards in Add source carry their own one-line copy, twelve
     // times over. Nothing else opens that modal.
     'baseline#+ Add source',
+    // Real-trail shapes: normal activity as "None", every kind of source the
+    // SOURCE column has to name, and the Flagged only chip in both states.
+    'detections-activity',
+    'detections-activity#Flagged only',
+    'claude-code-activity',
+    // Historical changes are out of view by default; the note is the way in.
+    'historical#2 historical changes',
   ].join(',')
 ).split(',');
 // Two widths: a narrow one where the 1fr column is squeezed and the chips wrap,

@@ -25,6 +25,8 @@ import type {
   DetectionRowSlim,
   Severity,
 } from '../../shared/types.js';
+import { sourceName } from '../../shared/types.js';
+import { calledServerLabel, rawToolName } from '../../shared/tool-names.js';
 import type { Scenario } from './fixtures.js';
 
 const active = (v: readonly string[] | null | undefined): v is readonly string[] =>
@@ -64,9 +66,14 @@ function matchesPreSeverity(row: DetectionRowSlim, filter: DetectionFilter, now:
   if (active(filter.project) && (row.project === undefined || !filter.project.includes(row.project))) {
     return false;
   }
+  if (active(filter.sourceNames) && !filter.sourceNames.includes(sourceName(row.source, row.mcp))) {
+    return false;
+  }
   if (filter.text !== undefined && filter.text !== null && filter.text !== '') {
     const q = filter.text.toLowerCase();
-    const hitTool = row.toolName !== undefined && row.toolName.toLowerCase().includes(q);
+    const hitTool = [row.toolName, rawToolName(row), calledServerLabel(row) ?? undefined].some(
+      (n) => n !== undefined && n.toLowerCase().includes(q),
+    );
     const hitArgs = row.argsSummary !== undefined && row.argsSummary.toLowerCase().includes(q);
     if (!hitTool && !hitArgs) return false;
   }
@@ -88,10 +95,12 @@ function matchesPreSeverity(row: DetectionRowSlim, filter: DetectionFilter, now:
 function facetsOf(rows: readonly DetectionRowSlim[], filter: DetectionFilter, now: number): DetectionFacets {
   const tools = new Set<string>();
   const projects = new Set<string>();
+  const sourceNames = new Set<string>();
   const sessions = new Map<string, { started: string; newestTs: string; newestMcp: string; proj?: string }>();
   for (const row of rows) {
     if (!withinTime(row, filter, now)) continue;
     if (!filter.sources.includes(row.source)) continue;
+    sourceNames.add(sourceName(row.source, row.mcp));
     if (row.toolName !== undefined) tools.add(row.toolName);
     if (row.project !== undefined) projects.add(row.project);
     if (row.ccSession !== undefined) {
@@ -116,6 +125,7 @@ function facetsOf(rows: readonly DetectionRowSlim[], filter: DetectionFilter, no
   return {
     tools: [...tools].sort(),
     projects: [...projects].sort(),
+    sourceNames: [...sourceNames].sort(),
     ccSessions: [...sessions.entries()]
       .map(([id, s]) => ({ id, started: s.started, where: s.proj ?? s.newestMcp }))
       .sort((a, b) => b.started.localeCompare(a.started)),
@@ -128,10 +138,17 @@ export function fakePage(s: Scenario, filter: DetectionFilter): DetectionPageRes
   const now = Date.parse('2026-09-24T12:30:00.000Z');
   const all = s.rows;
   const preSeverity = all.filter((r) => matchesPreSeverity(r, filter, now));
-  const matching = preSeverity.filter((r) => filter.severities.includes(r.severity));
+  // Mirrors matchesSeverity: normal activity has no severity, so it counts
+  // toward none and passes only an un-narrowed severity axis.
+  const allSeverities = (['low', 'medium', 'high', 'critical'] as const).every((s) =>
+    filter.severities.includes(s),
+  );
+  const matching = preSeverity.filter((r) =>
+    r.category === 'tool_call_allowed' ? allSeverities : filter.severities.includes(r.severity),
+  );
 
   const severityCounts: Record<Severity, number> = { low: 0, medium: 0, high: 0, critical: 0 };
-  for (const r of preSeverity) severityCounts[r.severity] += 1;
+  for (const r of preSeverity) if (r.category !== 'tool_call_allowed') severityCounts[r.severity] += 1;
 
   return {
     rows: matching,

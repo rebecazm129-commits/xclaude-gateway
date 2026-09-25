@@ -37,7 +37,7 @@ export function FilterDropdown<T extends string>({
   dropdownRef,
   formatOption,
   tooltip,
-}: Props<T>): JSX.Element {
+}: Props<T>): JSX.Element | null {
   const selectedSet = new Set(selected);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [menuMaxHeight, setMenuMaxHeight] = useState<number | null>(null);
@@ -64,6 +64,13 @@ export function FilterDropdown<T extends string>({
     return () => window.removeEventListener('resize', measure);
   }, [isOpen]);
 
+  // A chip with one option filters nothing: "Section (1/1)" can only be
+  // switched off, which empties the list. Hide it until a second option
+  // exists — but only while it is not narrowing, so a selection the user made
+  // can never vanish with its only way back.
+  const narrowing = selected.length !== options.length || options.some((o) => !selectedSet.has(o));
+  const hidden = options.length <= 1 && !narrowing;
+
   function toggle(option: T): void {
     const next = new Set(selectedSet);
     if (next.has(option)) {
@@ -83,6 +90,8 @@ export function FilterDropdown<T extends string>({
       {label} ({selected.length}/{options.length}) {isOpen ? '▴' : '▾'}
     </button>
   );
+
+  if (hidden) return null;
 
   return (
     <div className={styles['dropdown']} ref={dropdownRef}>

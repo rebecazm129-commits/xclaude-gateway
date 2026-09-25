@@ -66,7 +66,10 @@ export function csvRow(
     method,
     tool,
     e.detection.category,
-    e.detection.severity,
+    // Empty for normal activity: the CSV is read as a report, where a `low` on
+    // every tool call would read as a finding. The JSONL export is the raw
+    // record and keeps the line exactly as written.
+    e.detection.category === 'tool_call_allowed' ? '' : e.detection.severity,
     String(e.detection.findings.length),
     ccToolUseId,
     pairedSource,

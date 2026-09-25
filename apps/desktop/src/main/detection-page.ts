@@ -16,7 +16,8 @@ import type {
   Severity,
   TimeRange,
 } from '../shared/types.js';
-import { normalizeSource } from '../shared/types.js';
+import { calledServerLabel, rawToolName } from '../shared/tool-names.js';
+import { normalizeSource, sourceName } from '../shared/types.js';
 
 const TIME_WINDOW_MS: Record<Exclude<TimeRange, 'all' | 'custom'>, number> = {
   '1h': 60 * 60 * 1000,
@@ -114,12 +115,26 @@ export function matchesPreSeverity(
       return false;
     }
   }
+  if (
+    filter.sourceNames !== undefined &&
+    filter.sourceNames !== null &&
+    filter.sourceNames.length > 0 &&
+    !filter.sourceNames.includes(sourceName(normalizeSource(e.source), e.mcp))
+  ) {
+    return false;
+  }
   // Free-text search (delta final): case-insensitive against toolName and
   // argsSummary. Campo ausente = no-match; los enrichments no llevan
   // argsSummary — deliberado, los args pertenecen a la request.
   if (filter.text !== undefined && filter.text !== null && filter.text !== '') {
     const q = filter.text.toLowerCase();
-    const hitTool = e.toolName !== undefined && e.toolName.toLowerCase().includes(q);
+    // A Claude Code MCP call answers to its tool name, to the raw name Claude
+    // Code uses (mcp__notion__notion-fetch) and to the connector it went to
+    // ("Notion", as "via Notion" shows it).
+    const named = { source: normalizeSource(e.source), mcp: e.mcp, toolName: e.toolName };
+    const hitTool = [e.toolName, rawToolName(named), calledServerLabel(named) ?? undefined].some(
+      (n) => n !== undefined && n.toLowerCase().includes(q),
+    );
     const hitArgs =
       e.type === 'mcp.request' &&
       e.argsSummary !== undefined &&
@@ -139,6 +154,23 @@ export function matchesPreSeverity(
   return filter.categories.includes(e.detection.category);
 }
 
+// Normal activity carries no severity in the product, whatever the engine
+// wrote on the line: tool_call_allowed is emitted when nothing matched, and
+// the `low` stamped on it is not a finding. So it never adds to a severity
+// count, and it survives the severity axis only while that axis is not
+// narrowed — picking LOW must show the real LOW findings, not every tool call
+// ever made. The trail itself is untouched; this is a reading of it.
+function isBaseline(e: EnrichableEvent): boolean {
+  return e.detection.category === 'tool_call_allowed';
+}
+
+const ALL_SEVERITIES: readonly Severity[] = ['low', 'medium', 'high', 'critical'];
+
+function matchesSeverity(e: EnrichableEvent, filter: DetectionFilter): boolean {
+  if (isBaseline(e)) return ALL_SEVERITIES.every((s) => filter.severities.includes(s));
+  return filter.severities.includes(e.detection.severity);
+}
+
 // Full filter (mcp + time + category + severity). Equals paginate's `matching`
 // predicate by construction — the audit exporter reuses exactly this, so the
 // export and the view filter identically.
@@ -147,10 +179,7 @@ export function matchesFilter(
   filter: DetectionFilter,
   now: number,
 ): boolean {
-  return (
-    matchesPreSeverity(e, filter, now) &&
-    filter.severities.includes(e.detection.severity)
-  );
+  return matchesPreSeverity(e, filter, now) && matchesSeverity(e, filter);
 }
 
 export function toSlim(e: EnrichableEvent): DetectionRowSlim {
@@ -228,6 +257,7 @@ function computeFacets(
 ): DetectionFacets {
   const tools = new Set<string>();
   const projects = new Set<string>();
+  const sourceNames = new Set<string>();
   // Per-session accumulator (delta final): started = min ts; where = the
   // most recent project seen in the session, else the mcp of its newest
   // event. Same single pass as the other facets.
@@ -242,6 +272,7 @@ function computeFacets(
   for (const e of events) {
     if (!withinTimeWindow(e, filter, now)) continue;
     if (!filter.sources.includes(normalizeSource(e.source))) continue;
+    sourceNames.add(sourceName(normalizeSource(e.source), e.mcp));
     const proj =
       e.type === 'mcp.request' && e.cwd !== undefined ? basename(e.cwd) : undefined;
     if (e.ccSession !== undefined) {
@@ -277,6 +308,7 @@ function computeFacets(
     tools: [...tools].sort(),
     ccSessions,
     projects: [...projects].sort(),
+    sourceNames: [...sourceNames].sort(),
   };
 }
 
@@ -302,13 +334,15 @@ export function paginate(
     high: 0,
     critical: 0,
   };
-  for (const e of categoryFiltered) severityCounts[e.detection.severity] += 1;
+  // Findings only: the baseline is counted by TOTAL (categoryFilteredTotal)
+  // and by no severity.
+  for (const e of categoryFiltered) {
+    if (!isBaseline(e)) severityCounts[e.detection.severity] += 1;
+  }
   const categoryFilteredTotal = categoryFiltered.length;
 
   // Severity filter → the matching set.
-  const matching = categoryFiltered.filter((e) =>
-    filter.severities.includes(e.detection.severity),
-  );
+  const matching = categoryFiltered.filter((e) => matchesSeverity(e, filter));
   const totalMatching = matching.length;
 
   // Stable total order for the cursor walk.
