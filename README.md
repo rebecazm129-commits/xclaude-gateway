@@ -39,7 +39,7 @@ It audits. It doesn't block.
 ## What you get
 
 - **One reviewable history.** A **Detections** view over every recorded event, with severity, category, source and time-range filters — plus a dedicated **Claude Code** view grouped by session and project.
-- **Classification with severity.** Eight categories, from `credential_detected` at CRITICAL down to the `tool_call_allowed` baseline — see [Detectors](#detectors).
+- **Classification with severity.** Seven categories, from `credential_detected` at CRITICAL down to the `tool_call_allowed` baseline — see [Detectors](#detectors). Changes to a connector's own surface are not graded here: they get their own tab — see [MCP changes](#mcp-changes).
 - **The record stays yours.** Append-only JSONL under your own home directory, exportable to raw JSONL or CSV from the app.
 - **Credential masking.** Values the credential detector recognizes are masked before they are written.
 - **A menu-bar summary.** A dropdown listing the number of flagged events in the last 24 hours.
@@ -60,7 +60,7 @@ It audits. It doesn't block.
 Two limits worth stating up front:
 
 - **Claude Code events are recorded after each call completes,** so a tool call that never finishes may leave no event.
-- **Detector coverage is not identical on both paths.** Two detectors — `pii_detected` (on-device NER) and `tool_manifest_changed` — run only on wrapped MCP traffic, not on Claude Code events. Everything else runs on both.
+- **Detector coverage is not identical on both paths.** `pii_detected` (on-device NER) runs only on wrapped MCP traffic, not on Claude Code events, and so does the whole of [MCP changes](#mcp-changes) — a connector's advertised surface is only visible at the protocol level. Everything else runs on both.
 
 xCLAUDE is an audit trail for tool activity, not a transcript of your conversation with Claude.
 
@@ -120,7 +120,6 @@ Claude Code is audited on a different path: a session hook registered in `~/.cla
 | --- | --- | --- |
 | `credential_detected` | CRITICAL | Known formats of API keys (Anthropic, OpenAI, GitHub, AWS, and similar). |
 | `prompt_injection` | CRITICAL | Four families of injection / jailbreak phrasing: instruction override ("ignore all previous instructions"), role override ("act as an unrestricted…"), system-prompt extraction ("reveal your system prompt") and jailbreak markers ("DAN mode", "do anything now"). |
-| `tool_manifest_changed` | HIGH / MEDIUM | Changes to a connector's advertised `tools/list` versus a per-connector baseline — tool poisoning. Proxy path only. Since 0.7.0. |
 | `email_send_warning` | HIGH / MEDIUM | Imperative requests to send email in tool text, and send-semantics tool calls (see below). |
 | `data_export_warning` | MEDIUM | Imperative requests to export data. |
 | `pii_structured` | MEDIUM | Well-formed PII shapes, checksum-confirmed where the format has a checksum; digit-only formats also require a nearby context keyword (see below). |
@@ -131,11 +130,41 @@ Claude Code is audited on a different path: a session hook registered in `~/.cla
 
 **`pii_structured` shapes.** Fifteen rules: emails, IBANs (mod-97, country code checked against the IBAN registry), credit cards (Luhn, first digit in the ISO/IEC 7812 card ranges), US SSNs, UK National Insurance and NHS numbers, Spanish DNI/NIE, E.164 phone numbers, passport MRZ line 2 (ICAO 9303 TD3), French NIR, Italian codice fiscale (standard form; omocodia variants are out of scope), Dutch BSN, German Steuer-ID and Portuguese NIF. A regex preselects each candidate and, for every shape that carries one, a checksum confirms it. The three digit-only formats (Dutch BSN, Portuguese NIF, UK NHS) additionally require their context keyword near the match (BSN/NIF/NHS and equivalents) — a bare digit run that merely passes a mod-11 checksum is far more often a machine number than an identifier. Obviously functional email addresses (noreply@ local parts, example/invalid domains, GitHub's users.noreply host) are excluded. Emails and E.164 phone numbers have no checksum and match on their pattern alone. Findings record the matched type only — never the datum itself. Available since 0.4.4.
 
-**`tool_manifest_changed` baseline.** xCLAUDE keeps a small per-connector baseline (a hash plus per-tool signatures) of each server's `tools/list`. The first time a connector is seen the baseline is seeded silently — no detection — and a later change is recorded exactly once: a changed description or input schema flags at HIGH, an added or removed tool at MEDIUM. Since 0.7.0.
-
 **Named-entity PII is early stage.** The transformers.js NER enrichment records persons, organizations and locations found in tool-call payloads alongside the main detector chain. It complements the checksum-based `pii_structured` detector and is not yet part of the synchronous detector chain. It will mature in upcoming releases.
 
 <p align="center"><img src="docs/screenshots/detection-detail-2.png" alt="Event detail panel with tool call arguments, detection result and technical details" width="900" /></p>
+
+### MCP changes
+
+A connector changing its own surface is a different kind of event from a tool
+call, and since 0.8.0 it has its own tab rather than a severity in the table
+above.
+
+xCLAUDE keeps a per-connector reference snapshot of everything a server
+advertises — `tools/list`, `resources/list`, `resources/templates/list`,
+`prompts/list` and server discovery. The first time a section is seen it is
+recorded silently. Afterwards, every comparison produces **one** event, whatever
+it touched: a single vendor release in four months of real traffic moved 52
+tools at once.
+
+Each event separates two things that used to be conflated:
+
+- **changes** — what moved. A description, an input schema, an added or removed
+  tool. These carry no severity at all. Over four months, 197 of 217 real
+  changes were nothing else.
+- **findings** — what a security rule made of it, each stamped with the rule's
+  id and version so a judgement stays reproducible after the rule changes. Four
+  rules read a connector surface: a sensitive parameter name appearing, a
+  credential-file path being referenced, instruction-shaped text, and invisible
+  characters.
+
+A third field, **attention**, is a heuristic's opinion that a human should look
+even though no rule matched — text added to a description that already existed,
+on a single tool. It carries the heuristic's id and version for the same reason
+the findings carry the rule's.
+
+Changes with no findings never reach a counter, a badge or the tray. They are
+recorded so the surface has a history to compare against.
 
 ### What to expect in normal use
 
@@ -166,7 +195,7 @@ The hook lives in `~/.claude/settings.json`, a file any program — including Cl
 
 ### Wrapping Claude Code's MCP servers
 
-The native Claude Code audit already records MCP tool calls and their results. Wrapping a server adds what only the protocol level can show: the server's tool manifest (`tools/list`, which feeds `tool_manifest_changed` — the rug-pull detector), the server's stderr, and server-initiated traffic such as `roots/list` requests.
+The native Claude Code audit already records MCP tool calls and their results. Wrapping a server adds what only the protocol level can show: the server's advertised surface (`tools/list` and its siblings, which feed [MCP changes](#mcp-changes) — the rug-pull detector), the server's stderr, and server-initiated traffic such as `roots/list` requests.
 
 Setup is manual for now (there is no Install button for Claude Code yet). Register the wrapped server with `claude mcp add-json` — don't edit Claude Code's config files by hand:
 
@@ -303,7 +332,7 @@ What the audit adds on top of that:
 
 **Claude Code events are post-execution.** They arrive through `PostToolUse` / `PostToolUseFailure` hooks, so a call that never completes may leave no event.
 
-**Detector coverage differs by path.** `pii_detected` (NER) and `tool_manifest_changed` run only on the MCP proxy path, not on Claude Code events.
+**Detector coverage differs by path.** `pii_detected` (NER) and everything in [MCP changes](#mcp-changes) run only on the MCP proxy path, not on Claude Code events.
 
 **Durability is not transactional.** Writes are append-only but page-cache backed, with no `fsync` per line; the last writes before a power cut or kernel panic have no absolute guarantee.
 

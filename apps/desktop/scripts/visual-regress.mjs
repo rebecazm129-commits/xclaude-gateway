@@ -47,6 +47,8 @@ const SCENARIOS = (
     'detections-tab#stripe',
     'claude-code-tab#Bash',
     'needs-review#gmail',
+    // The About paragraph states the category count, which is public copy.
+    'detections-tab#Open settings',
   ].join(',')
 ).split(',');
 // Two widths: a narrow one where the 1fr column is squeezed and the chips wrap,

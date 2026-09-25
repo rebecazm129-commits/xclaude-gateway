@@ -19,14 +19,21 @@ import type { RuleId } from './connector-change.js';
 
 export type Severity = 'low' | 'medium' | 'high' | 'critical';
 
-// CANONICAL COUNT (product copy depends on it): 8 categories = 7 RISK
+// CANONICAL COUNT (product copy depends on it): 7 categories = 6 RISK
 // categories (credential_detected, prompt_injection, email_send_warning,
-// data_export_warning, pii_detected, pii_structured, tool_manifest_changed)
-// + tool_call_allowed, the non-risk BASELINE emitted when nothing matches.
-// Everywhere the product states a count, the formulation is "7 risk
+// data_export_warning, pii_detected, pii_structured) + tool_call_allowed, the
+// non-risk BASELINE emitted when nothing matches.
+//
+// Everywhere the product states a count, the formulation is "6 risk
 // categories, 4 severity levels" — tool_call_allowed is not a risk category.
+// It was SEVEN until 24/09, when tool_manifest_changed stopped being a
+// category of tool-call detection and became its own kind of event: a
+// connector_change, with facts in changes[] and rule verdicts in findings[].
+// The member stays in this union so four months of trail lines keep parsing;
+// nothing emits it any more.
+//
 // If you add or remove a member here, update every copy that states a count
-// (Settings drawer About, README, release notes).
+// (Settings drawer About, README, release notes, the website).
 export type Category =
   | 'credential_detected'
   | 'prompt_injection'

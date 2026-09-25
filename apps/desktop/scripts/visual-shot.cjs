@@ -53,7 +53,10 @@ async function capture(win, spec, width) {
          const want = ${JSON.stringify(clickLabel)};
          const exact = [...document.querySelectorAll('button')]
            .find((x) => x.textContent.trim() === want);
-         const target = exact ?? [...document.querySelectorAll('[role="button"]')]
+         // Then by aria-label, for the buttons that are an icon — Settings is
+         // a gear, and its About text is public copy that has to be captured.
+         const labelled = exact ?? document.querySelector('[aria-label="' + want + '"]');
+         const target = labelled ?? [...document.querySelectorAll('[role="button"]')]
            .find((x) => (x.textContent ?? '').includes(want));
          if (target === undefined) return false; target.click(); return true; })()`,
     );
