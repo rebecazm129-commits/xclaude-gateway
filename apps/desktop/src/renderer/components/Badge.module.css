@@ -33,3 +33,21 @@
   color: var(--kraft-low-text);
   border: var(--kraft-hairline) solid var(--kraft-low-border);
 }
+
+/* NOT severities. Outline only, no fill and no hue: the four above earn their
+   colour by asserting a risk level, and these two assert the opposite. Same
+   box as the rest so the column stays one column. */
+
+.badge_review {
+  background: transparent;
+  color: var(--kraft-ink-soft);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+}
+
+.badge_none {
+  background: transparent;
+  color: var(--kraft-ink-soft);
+  border: var(--kraft-hairline) solid transparent;
+  opacity: 0.55;
+  letter-spacing: 0;
+}
