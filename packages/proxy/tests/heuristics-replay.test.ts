@@ -7,8 +7,8 @@
 // which is what CI does.
 //
 // What it pins is the number the threshold was chosen against. 60 characters
-// on a single item was picked because it puts Needs review at 51 events over
-// 15.5 weeks of this trail — 3.3 a week. If a change to insertedChars, to the
+// on a single item was picked because it puts Needs review at ~3.3 events a
+// week over this trail. If a change to insertedChars, to the
 // scope, or to the threshold moves that number, this fails and someone has to
 // decide on purpose rather than discover it in production.
 
@@ -21,6 +21,12 @@ import { attentionFor, descriptionsOf } from '../src/detection/heuristics.js';
 import { buildManifest, extractTools, reportChanges, toolDeltas } from '../src/detection/manifest.js';
 
 const TRAIL = process.env['XCG_REPLAY_TRAIL'];
+// The trail is LIVE: the installed app keeps appending to it, so an absolute
+// count measured today fails tomorrow for a reason that has nothing to do with
+// the code. Cutting at a fixed instant makes the corpus stable, which is the
+// only way this can be a regression test rather than a clock. Raise it
+// deliberately, and re-pin the numbers in the same commit.
+const UNTIL = Date.parse(process.env['XCG_REPLAY_UNTIL'] ?? '2026-09-25T05:00:00.000Z');
 const RULES = new Set(['sensitive_param_added', 'sensitive_path_reference', 'injection_marker', 'hidden_characters']);
 
 /** The operator's own dev/test connectors, excluded so the corpus is traffic. */
@@ -59,7 +65,9 @@ function replay(dir: string): Replayed {
       const result = d['result'];
       if (result === null || typeof result !== 'object') continue;
       if (!Array.isArray((result as Record<string, unknown>)['tools'])) continue;
-      rows.push({ ts: typeof d['ts'] === 'string' ? d['ts'] : '', mcp, result });
+      const ts = typeof d['ts'] === 'string' ? d['ts'] : '';
+      if (Date.parse(ts) >= UNTIL) continue;
+      rows.push({ ts, mcp, result });
     }
   }
   rows.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
@@ -131,17 +139,21 @@ describe.skipIf(TRAIL === undefined || TRAIL === '')('production replay (XCG_REP
     expect(out().transitions).toBeGreaterThan(0);
   });
 
-  it('Needs review stays at 51 — not one more', () => {
-    // The number the threshold was calibrated against. Moving it is a
-    // decision, not a side effect.
-    expect(out().needsReview).toBe(51);
+  it('Needs review stays at 52 — not one more', () => {
+    // The number the threshold was calibrated against, over the frozen window.
+    // It was 51 when first pinned on 24/09 and is 52 now: the trail gained
+    // three transitions overnight and one of them raised attention. That is
+    // data arriving, not behaviour changing — the word diff was proven
+    // identical pair by pair over the whole corpus when it moved to
+    // @xcg/shared. Moving this number is a decision, not a side effect.
+    expect(out().needsReview).toBe(52);
   });
 
-  it('the rules account for 20 and the heuristic adds 31, with no overlap', () => {
+  it('the rules account for 20 and the heuristic adds 32, with no overlap', () => {
     // The two mechanisms turn out to be disjoint on this trail: the edits a
     // rule can prove something about are not the ones the heuristic suspects.
     expect(out().withFindings).toBe(20);
-    expect(out().recommended).toBe(31);
+    expect(out().recommended).toBe(32);
     expect(out().withFindings + out().recommended).toBe(out().needsReview);
   });
 

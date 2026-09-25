@@ -29,7 +29,7 @@
 // more than one installation is expected, and it goes through
 // HEURISTIC_VERSION so every past verdict stays interpretable.
 
-import type { Attention } from '@xcg/shared';
+import { insertedChars as insertedCharsImpl, type Attention } from '@xcg/shared';
 
 export const HEURISTIC_ID = 'inserted_text_single_tool';
 export const HEURISTIC_VERSION = 1;
@@ -41,57 +41,11 @@ export const INSERTED_TEXT_MIN = 60;
  *  edit and starts being a release. */
 export const MAX_AFFECTED_ITEMS = 1;
 
-/** Above this the word-level table is not worth building; the answer at that
- *  size is never in doubt anyway. */
-const LCS_CELL_BUDGET = 4_000_000;
-
-/**
- * Characters present in `after` that are not part of the longest common word
- * subsequence with `before`.
- *
- * Word-level rather than character-level on purpose: a character diff of two
- * prose paragraphs finds common letters everywhere and under-reports a real
- * insertion, while a word diff tracks what a reader would call added text.
- */
-export function insertedChars(before: string, after: string): number {
-  if (before === after) return 0;
-  if (before === '') return after.length;
-  const A = before.split(/(\s+)/);
-  const B = after.split(/(\s+)/);
-  const n = A.length;
-  const m = B.length;
-  // Degrade to net growth rather than spend unbounded time on a pathological
-  // pair: a description that large is already its own signal.
-  if (n * m > LCS_CELL_BUDGET) return Math.max(0, after.length - before.length);
-
-  const dp: Uint32Array[] = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
-  for (let i = n - 1; i >= 0; i--) {
-    const row = dp[i]!;
-    const nextRow = dp[i + 1]!;
-    for (let j = m - 1; j >= 0; j--) {
-      row[j] = A[i] === B[j] ? nextRow[j + 1]! + 1 : Math.max(nextRow[j]!, row[j + 1]!);
-    }
-  }
-  let i = 0;
-  let j = 0;
-  let inserted = 0;
-  while (i < n && j < m) {
-    if (A[i] === B[j]) {
-      i++;
-      j++;
-    } else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) {
-      i++;
-    } else {
-      inserted += B[j]!.length;
-      j++;
-    }
-  }
-  while (j < m) {
-    inserted += B[j]!.length;
-    j++;
-  }
-  return inserted;
-}
+// insertedChars lives in @xcg/shared: the panel highlights exactly the
+// segments this thresholds on, and two implementations of the same diff would
+// let the product flag a change on one measurement and explain it with
+// another.
+export { insertedChars } from '@xcg/shared';
 
 const NORMAL: Attention = { level: 'normal' };
 const RECOMMENDED: Attention = {
@@ -137,7 +91,7 @@ export function attentionFor(input: AttentionInput): Attention {
   for (const [name, after] of input.after) {
     const before = input.before.get(name);
     if (before === undefined) continue; // new item: not this heuristic's question
-    if (insertedChars(before, after) >= INSERTED_TEXT_MIN) return RECOMMENDED;
+    if (insertedCharsImpl(before, after) >= INSERTED_TEXT_MIN) return RECOMMENDED;
   }
   return NORMAL;
 }

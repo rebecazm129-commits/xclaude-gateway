@@ -67,6 +67,10 @@ export interface DetectionFinding {
 // judgements, and neither is a Category.
 export * from './connector-change.js';
 
+// Word-level diff, shared by the heuristic that measures an edit and the panel
+// that shows it. One implementation so the two can never disagree.
+export * from './word-diff.js';
+
 export interface DetectionBlock {
   category: Category;
   severity: Severity;
