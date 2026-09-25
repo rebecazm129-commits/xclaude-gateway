@@ -36,9 +36,9 @@ export function ChangeRow({ row, selected, onClick }: ChangeRowProps): JSX.Eleme
           problem" when the truth is "no problem any rule could name" — and
           that is 197 of 217 real changes. REVIEW is not a severity either: it
           is a heuristic asking for a look, and it looks different on purpose. */}
-      {/* One component for all three marks, so REVIEW and the no-findings dash
-          share the severity pill's exact box. A mark that is a couple of
-          pixels off reads as a different kind of thing. */}
+      {/* One component for every mark, so NONE and REVIEW share the severity
+          pill's exact box: NONE filled grey (the bottom of the scale), REVIEW
+          an outline (a heuristic asking for a look, not a level). */}
       <Badge severity={severity ?? (row.attention.level === 'review_recommended' ? 'review' : 'none')} />
       <span className={styles['change']}>
         {changeTitle(row)}

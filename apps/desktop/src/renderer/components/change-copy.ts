@@ -149,6 +149,39 @@ export function humanSummary(view: ConnectorChangeView): string {
   return `${sentence[0]!.toUpperCase()}${sentence.slice(1)}.`;
 }
 
+// What happened to one item, as a person would say it after the item's name.
+// Counted, because one tool can gain three parameters in a single release and
+// "new parameter added; new parameter added" is not a sentence.
+const ITEM_PHRASE: Record<ConnectorChangeEntryView['kind'], (n: number) => string> = {
+  item_added: () => 'added',
+  item_removed: () => 'removed',
+  description_changed: () => 'description changed',
+  surface_added: (n) => (n === 1 ? 'new parameter added' : `${n} new parameters added`),
+  surface_removed: (n) => (n === 1 ? 'parameter removed' : `${n} parameters removed`),
+  schema_changed: () => 'schema changed',
+  returned_to_seen_state: () => 'back to a state seen before',
+};
+
+/**
+ * The panel's per-item list: "list_issues — Description changed; new parameter
+ * added". One line per item in the order the change first names it, so the
+ * internal kinds (schema_changed, surface_added…) never have to be read to
+ * know what happened. They stay in Technical details, where the exact record
+ * belongs.
+ */
+export function itemLines(view: ConnectorChangeView): { target: string; text: string }[] {
+  const byTarget = new Map<string, Map<ConnectorChangeEntryView['kind'], number>>();
+  for (const c of view.changes) {
+    const kinds = byTarget.get(c.target) ?? new Map<ConnectorChangeEntryView['kind'], number>();
+    kinds.set(c.kind, (kinds.get(c.kind) ?? 0) + 1);
+    byTarget.set(c.target, kinds);
+  }
+  return [...byTarget.entries()].map(([target, kinds]) => {
+    const text = [...kinds.entries()].map(([kind, n]) => ITEM_PHRASE[kind](n)).join('; ');
+    return { target, text: `${text[0]!.toUpperCase()}${text.slice(1)}` };
+  });
+}
+
 export function historicalNote(view: ConnectorChangeView): string | null {
   if (view.source_format !== 'tool_manifest_changed_v1') return null;
   const date = new Date(view.ts).toLocaleDateString(undefined, {

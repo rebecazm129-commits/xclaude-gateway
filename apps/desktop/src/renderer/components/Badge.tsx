@@ -3,24 +3,17 @@ import type { Severity } from '../../shared/types.js';
 import styles from './Badge.module.css';
 
 /**
- * The severity pill, plus two marks that are NOT severities.
+ * The severity pill, plus NONE and REVIEW.
  *
- * `review` is a heuristic asking for a look and `none` is "no rule said
- * anything" — neither is a grade, so neither is tinted. They live here rather
- * than in their own component so they inherit the pill's exact size, padding
- * and baseline: a mark half a pixel off in the SEVERITY column reads as a
- * different kind of thing, which is the one impression it must not give.
+ * NONE is the bottom of the scale — CVSS's qualitative scale has "None" as a
+ * level too — so it is the same pill, same box, same alignment as LOW to
+ * CRITICAL, filled with the neutral grey rather than a risk hue. REVIEW is not
+ * a level at all but a heuristic asking for a look: an outline only, so the
+ * two never read as the same thing.
  */
 export type BadgeKind = Severity | 'review' | 'none';
 
 export function Badge({ severity }: { severity: BadgeKind }): JSX.Element {
-  if (severity === 'none') {
-    return (
-      <span className={`${styles['badge']} ${styles['badge_none']}`} title="No findings">
-        —
-      </span>
-    );
-  }
   return (
     <span className={`${styles['badge']} ${styles[`badge_${severity}`]}`}>
       {severity.toUpperCase()}

@@ -6,11 +6,14 @@
 // column header, the virtualized list, the detail drawer and the footer. What
 // is new is only what this tab counts and what its rows say.
 //
-// The card row is the one deliberate departure: CRITICAL is replaced by NEEDS
-// REVIEW. No rule produces critical for a manifest change, so that card would
-// sit at zero forever, while the question this tab exists to answer had
-// nowhere to appear. The slot is kept so the row stays a shape the eye
-// recognises from the other two tabs.
+// The card row is the one deliberate departure: NEEDS REVIEW · HIGH · MEDIUM ·
+// ALL CHANGES. The question this tab exists to answer comes first; CRITICAL and
+// LOW are gone because no rule produces critical for a manifest change, and
+// low is not what a change with no finding is.
+//
+// Changes recorded by the previous format are out of every count and list by
+// default, behind a quiet note that shows them. They are NOT marked reviewed
+// to get them out of the way: nobody reviewed them.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FixedSizeList } from 'react-window';
@@ -26,6 +29,7 @@ import {
 } from '../hooks/useChangePage.js';
 import { useListView } from '../hooks/useListView.js';
 import { AuditFooter } from './AuditFooter.js';
+import { Tooltip } from './Tooltip.js';
 import { ChangeRow } from './ChangeRow.js';
 import { ColumnHeader, columnsStyle, type Column } from './ColumnHeader.js';
 import { DetailDrawer } from './DetailDrawer.js';
@@ -42,6 +46,7 @@ import { DateRangePicker } from './DateRangePicker.js';
 // three tabs share one physical rule per element rather than three copies.
 import styles from './Detections.module.css';
 import bar from './ClaudeCode.module.css';
+import rowStyles from './ChangeRow.module.css';
 
 const ROW_HEIGHT = 40;
 
@@ -80,7 +85,7 @@ export function Changes(): JSX.Element {
   // Needs review is ON by default: the tab opens on the question it exists to
   // answer, not on four months of vendor edits.
   const [needsReviewOnly, setNeedsReviewOnly] = useState(true);
-  const [withFindingsOnly, setWithFindingsOnly] = useState(false);
+  const [includeHistorical, setIncludeHistorical] = useState(false);
   const [selectedSeverities, setSelectedSeverities] = useState<readonly Severity[]>(SEVERITY_OPTIONS);
   const [reviewFilter, setReviewFilter] = useState<readonly ReviewState[]>(REVIEW_OPTIONS);
   const [sectionFilter, setSectionFilter] = useState<readonly ConnectorChangeView['section'][] | null>(null);
@@ -91,7 +96,7 @@ export function Changes(): JSX.Element {
   const filter: ChangeFilter = useMemo(
     () => ({
       needsReviewOnly,
-      withFindingsOnly,
+      includeHistorical,
       severities: selectedSeverities,
       review: reviewFilter.length === REVIEW_OPTIONS.length ? [] : reviewFilter,
       sections: sectionFilter ?? [],
@@ -100,7 +105,7 @@ export function Changes(): JSX.Element {
       timeRange,
       customRange: customRange ?? null,
     }),
-    [needsReviewOnly, withFindingsOnly, selectedSeverities, reviewFilter, sectionFilter, mcpFilter, textFilter, timeRange, customRange],
+    [needsReviewOnly, includeHistorical, selectedSeverities, reviewFilter, sectionFilter, mcpFilter, textFilter, timeRange, customRange],
   );
 
   const page = useChangePage(filter);
@@ -112,48 +117,58 @@ export function Changes(): JSX.Element {
     setHasRows(hasRows);
   }, [setHasRows, hasRows]);
 
+  // Which card the user PRESSED, if any. The default view's filter comes from
+  // the "Needs review only" chip, not from a card, so opening the tab dims
+  // nothing — a card dims the others only once it has been pressed, as in
+  // Detections. A pressed card stops counting as pressed the moment the
+  // filter it set is changed by other means (the chip, the Severity chip).
+  const [pressedCard, setPressedCard] = useState<'needsreview' | 'medium' | 'high' | null>(null);
+
   const cards: BreakdownCard[] = useMemo(() => {
     const allSeverities = selectedSeverities.length === SEVERITY_OPTIONS.length;
-    const noCardFilter = allSeverities && !needsReviewOnly && !withFindingsOnly;
     const soleSeverity = (sev: Severity): boolean =>
-      !needsReviewOnly &&
-      !withFindingsOnly &&
-      !allSeverities &&
-      selectedSeverities.length === 1 &&
-      selectedSeverities[0] === sev;
-    const clearThen = (fn: () => void) => (): void => {
+      selectedSeverities.length === 1 && selectedSeverities[0] === sev;
+    const pressed =
+      pressedCard === 'needsreview'
+        ? needsReviewOnly && allSeverities
+          ? 'needsreview'
+          : null
+        : pressedCard !== null && !needsReviewOnly && soleSeverity(pressedCard)
+          ? pressedCard
+          : null;
+    const card = (key: 'needsreview' | 'medium' | 'high') => ({
+      active: pressed === key,
+      inactive: pressed !== null && pressed !== key,
+    });
+    const press = (key: 'needsreview' | 'medium' | 'high', apply: () => void) => (): void => {
+      if (pressed === key) {
+        // Pressing the pressed card again lets go of it, as in Detections.
+        setPressedCard(null);
+        if (key !== 'needsreview') setSelectedSeverities(SEVERITY_OPTIONS);
+        return;
+      }
       setSelectedSeverities(SEVERITY_OPTIONS);
       setNeedsReviewOnly(false);
-      setWithFindingsOnly(false);
-      fn();
+      apply();
+      setPressedCard(key);
     };
     return [
       {
+        // key 'total': the same card as TOTAL in the sibling tabs, style included.
         key: 'total',
-        label: 'Total',
+        label: 'All changes',
         count: page.total,
-        active: noCardFilter,
-        inactive: !noCardFilter,
-        onSelect: clearThen(() => undefined),
+        active: pressed === null,
+        inactive: pressed !== null,
+        onSelect: (): void => {
+          setPressedCard(null);
+          setSelectedSeverities(SEVERITY_OPTIONS);
+          setNeedsReviewOnly(false);
+        },
+        tooltip: includeHistorical
+          ? 'Every change, flagged or not, historical ones included'
+          : 'Every change, flagged or not, historical ones aside',
       },
-      {
-        // Neutral, like TOTAL: "carries a finding" is a fact about the set,
-        // not a severity, and colouring it would imply one.
-        key: 'withfindings',
-        label: 'With findings',
-        count: page.withFindingsCount,
-        active: withFindingsOnly,
-        inactive: !withFindingsOnly && !noCardFilter,
-        onSelect: clearThen(() => setWithFindingsOnly(true)),
-      },
-      ...(['medium', 'high'] as const).map((sev) => ({
-        key: sev,
-        label: sev[0]!.toUpperCase() + sev.slice(1),
-        count: page.severityCounts[sev],
-        active: soleSeverity(sev),
-        inactive: !noCardFilter && !soleSeverity(sev),
-        onSelect: clearThen(() => setSelectedSeverities([sev])),
-      })),
       {
         // The question the tab exists to answer. Prominent but NOT coloured:
         // a severity tint here would claim a risk level the set does not have —
@@ -161,24 +176,32 @@ export function Changes(): JSX.Element {
         key: 'needsreview',
         label: 'Needs review',
         count: page.needsReviewCount,
-        active: needsReviewOnly,
-        inactive: !needsReviewOnly && !noCardFilter,
-        onSelect: clearThen(() => setNeedsReviewOnly(true)),
+        ...card('needsreview'),
+        onSelect: press('needsreview', () => setNeedsReviewOnly(true)),
+        tooltip: 'Unreviewed changes a rule or the review heuristic flagged',
       },
+      ...(['medium', 'high'] as const).map((sev) => ({
+        key: sev,
+        label: sev[0]!.toUpperCase() + sev.slice(1),
+        count: page.severityCounts[sev],
+        ...card(sev),
+        onSelect: press(sev, () => setSelectedSeverities([sev])),
+        tooltip: `Changes whose highest finding is ${sev}`,
+      })),
     ];
   }, [
     page.total,
-    page.withFindingsCount,
     page.severityCounts,
     page.needsReviewCount,
     selectedSeverities,
     needsReviewOnly,
-    withFindingsOnly,
+    includeHistorical,
+    pressedCard,
   ]);
 
   const hasActiveFilters =
     needsReviewOnly ||
-    withFindingsOnly ||
+    includeHistorical ||
     selectedSeverities.length !== SEVERITY_OPTIONS.length ||
     reviewFilter.length !== REVIEW_OPTIONS.length ||
     sectionFilter !== null ||
@@ -188,13 +211,26 @@ export function Changes(): JSX.Element {
 
   function handleClearFilters(): void {
     setNeedsReviewOnly(false);
-    setWithFindingsOnly(false);
+    setIncludeHistorical(false);
+    setPressedCard(null);
     setSelectedSeverities(SEVERITY_OPTIONS);
     setReviewFilter(REVIEW_OPTIONS);
     setSectionFilter(null);
     setMcpFilter(null);
     view.resetShared();
   }
+
+  // Showing historical changes also lifts Needs review only: none of them can
+  // need review, so under that chip "show them" would show nothing.
+  function showHistorical(): void {
+    setIncludeHistorical(true);
+    setNeedsReviewOnly(false);
+    setPressedCard(null);
+  }
+  const plural = (n: number): string => `${n} historical change${n === 1 ? '' : 's'}`;
+  // Nothing in scope at all, and the only changes recorded are the hidden
+  // historical ones: say so, and offer the way in, rather than "no changes".
+  const onlyHistorical = page.total === 0 && page.historicalCount > 0 && !includeHistorical;
 
   const handleReview = useCallback(
     (row: ConnectorChangeView) => {
@@ -288,6 +324,23 @@ export function Changes(): JSX.Element {
               Clear filters
             </button>
           )}
+          {page.historicalCount > 0 && (
+            // A note, not a chip: a fact about the trail that doubles as the
+            // way in. Styled as the "Clear filters" link, so it reads as
+            // something you can press.
+            <span className={rowStyles['historicalNote']}>
+              <Tooltip text="Recorded by the previous format, before rules and review existed">
+                <button
+                  type="button"
+                  className={bar['clearInline']}
+                  aria-pressed={includeHistorical}
+                  onClick={() => (includeHistorical ? setIncludeHistorical(false) : showHistorical())}
+                >
+                  {includeHistorical ? `Hide ${plural(page.historicalCount)}` : plural(page.historicalCount)}
+                </button>
+              </Tooltip>
+            </span>
+          )}
         </div>
         {timeRange === 'custom' && (
           <div className={bar['toolbarRow']}>
@@ -305,9 +358,17 @@ export function Changes(): JSX.Element {
 
       {rows.length === 0 ? (
         <div className={styles['empty']}>
-          {page.loading
-            ? 'Loading changes…'
-            : needsReviewOnly
+          {page.loading ? (
+            'Loading changes…'
+          ) : onlyHistorical ? (
+            <span className={rowStyles['emptyHistorical']}>
+              No new changes. {plural(page.historicalCount)}{' '}
+              {page.historicalCount === 1 ? 'is' : 'are'} hidden.
+              <button type="button" className={bar['clearInline']} onClick={showHistorical}>
+                Show them
+              </button>
+            </span>
+          ) : needsReviewOnly
               ? 'Nothing needs review. Every change a rule flagged has been looked at.'
               : hasActiveFilters
                 ? 'No change matches these filters.'

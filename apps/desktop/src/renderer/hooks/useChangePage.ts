@@ -27,8 +27,10 @@ export type ReviewState = 'reviewed' | 'unreviewed';
 export interface ChangeFilter {
   /** Only what still wants a human: attention raised, or findings, unreviewed. */
   needsReviewOnly: boolean;
-  /** Only changes a rule said something about. */
-  withFindingsOnly: boolean;
+  /** Changes recorded by the previous format. OFF by default: they are out of
+   *  every count and every list until asked for, rather than marked reviewed
+   *  to get them out of the way — nobody reviewed them. */
+  includeHistorical: boolean;
   severities: readonly Severity[];
   /** Empty or absent = no filter. */
   review: readonly ReviewState[];
@@ -47,14 +49,16 @@ export interface ChangeFacets {
 
 export interface ChangePage {
   rows: ConnectorChangeView[];
-  /** Every change, unfiltered — what TOTAL counts. */
+  /** Every change in scope, unfiltered — what ALL CHANGES counts. In scope
+   *  means historical ones only when includeHistorical is on. */
   total: number;
   totalMatching: number;
   severityCounts: Record<Severity, number>;
-  /** Changes carrying at least one rule finding, reviewed or not. */
-  withFindingsCount: number;
-  /** Unreviewed changes that carry attention or findings. */
+  /** Unreviewed changes in scope that carry attention or findings. */
   needsReviewCount: number;
+  /** Changes recorded by the previous format, whether shown or not — what the
+   *  note next to the chips counts. */
+  historicalCount: number;
   facets: ChangeFacets;
   loading: boolean;
   refresh: () => void;
@@ -72,6 +76,11 @@ export function topSeverity(view: ConnectorChangeView): Severity | null {
     if (best === null || RANK[s] > RANK[best]) best = s;
   }
   return best;
+}
+
+/** Recorded by the tool_manifest_changed detector, before the facts model. */
+export function isHistorical(view: ConnectorChangeView): boolean {
+  return view.source_format === 'tool_manifest_changed_v1';
 }
 
 export function needsReview(view: ConnectorChangeView): boolean {
@@ -107,7 +116,6 @@ function matchesText(view: ConnectorChangeView, query: string): boolean {
  *  that severity has NOT yet narrowed — the same split detection-page makes. */
 function matchesPreSeverity(view: ConnectorChangeView, filter: ChangeFilter, now: number): boolean {
   if (filter.needsReviewOnly && !needsReview(view)) return false;
-  if (filter.withFindingsOnly && view.findings.length === 0) return false;
   if (filter.review.length > 0 && !filter.review.includes(view.review_status)) return false;
   if (filter.sections.length > 0 && !filter.sections.includes(view.section)) return false;
   if (filter.mcps.length > 0 && !filter.mcps.includes(view.mcp)) return false;
@@ -131,7 +139,11 @@ export function useChangePage(filter: ChangeFilter, nowMs?: number): ChangePage 
   useEffect(refresh, [refresh]);
 
   return useMemo(() => {
-    const rows = all ?? [];
+    const everything = all ?? [];
+    const historicalCount = everything.filter(isHistorical).length;
+    // Scope first: every count, every facet and the list agree on whether the
+    // previous format is in view, because they all start from this.
+    const rows = filter.includeHistorical ? everything : everything.filter((r) => !isHistorical(r));
     const now = nowMs ?? Date.now();
     const preSeverity = rows.filter((r) => matchesPreSeverity(r, filter, now));
 
@@ -160,8 +172,8 @@ export function useChangePage(filter: ChangeFilter, nowMs?: number): ChangePage 
       total: rows.length,
       totalMatching: matching.length,
       severityCounts,
-      withFindingsCount: rows.filter((r) => r.findings.length > 0).length,
       needsReviewCount: rows.filter(needsReview).length,
+      historicalCount,
       facets: { mcps, sections },
       loading: all === null,
       refresh,

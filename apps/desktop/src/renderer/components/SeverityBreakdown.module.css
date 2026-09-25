@@ -7,6 +7,7 @@
 
 .grid {
   display: grid;
+  /* Overridden inline by the card count; kept as the fallback. */
   grid-template-columns: repeat(5, 1fr);
   gap: 10px;
 }
@@ -120,20 +121,25 @@
   margin-top: 8px;
 }
 
-/* MCP changes: two cards that count something other than severity.
-   Neither is tinted. A severity colour here would claim a risk level the set
-   does not have — half of what lands in Needs review carries no finding at
-   all, and "carries a finding" is a fact about the set, not a grade. */
+/* A card inside a Tooltip is the wrapper's child, not the grid item, so it has
+   to fill the wrapper the way a bare card fills its track. */
+.cardWrapped {
+  width: 100%;
+}
 
-.card_withfindings {
+/* MCP changes: two cards that count something other than severity. Neither
+   is tinted. A severity colour here would claim a risk level the set does not
+   have — half of what lands in Needs review carries no finding at all. */
+
+.card_allchanges {
   background: var(--kraft-bg);
 }
 
-.card_withfindings .number {
+.card_allchanges .number {
   color: var(--kraft-ink);
 }
 
-.card_withfindings .label {
+.card_allchanges .label {
   color: var(--kraft-ink-soft);
 }
 

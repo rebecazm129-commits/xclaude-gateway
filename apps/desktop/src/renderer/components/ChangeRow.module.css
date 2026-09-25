@@ -96,3 +96,19 @@
   font-size: 13px;
   cursor: default;
 }
+
+/* The "N historical changes" note in the Changes chips row: pushed to the
+   row's end, away from the chips it is not one of. */
+.historicalNote {
+  margin-left: auto;
+}
+
+/* "No new changes. N historical changes are hidden. Show them" — the
+   sentence and its link on one line, the link at the house gap. */
+.emptyHistorical {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}

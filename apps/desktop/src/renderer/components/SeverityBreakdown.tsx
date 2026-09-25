@@ -19,6 +19,8 @@
 
 import type { Severity } from '../../shared/types.js';
 
+import { Tooltip } from './Tooltip.js';
+
 import styles from './SeverityBreakdown.module.css';
 
 export interface BreakdownCard {
@@ -31,6 +33,9 @@ export interface BreakdownCard {
   /** Dimmed: some other card is the selection. */
   inactive: boolean;
   onSelect: () => void;
+  /** What the number counts, on hover. Optional: TOTAL and the four
+   *  severities explain themselves, a card counting something else may not. */
+  tooltip?: string;
 }
 
 const SEVERITY_ORDER: readonly Severity[] = ['low', 'medium', 'high', 'critical'];
@@ -79,20 +84,33 @@ export function severityCards(args: {
 export function SeverityBreakdown({ cards }: { cards: readonly BreakdownCard[] }): JSX.Element {
   return (
     <div className={styles['banda']}>
-      <div className={styles['grid']}>
-        {cards.map((card) => (
-          <button
-            key={card.key}
-            type="button"
-            className={`${styles['card']} ${styles[`card_${card.key}`] ?? ''} ${
-              card.active ? styles['cardActive'] : ''
-            } ${card.inactive ? styles['cardInactive'] : ''}`}
-            onClick={card.onSelect}
-          >
-            <div className={styles['number']}>{card.count}</div>
-            <div className={styles['label']}>{card.label}</div>
-          </button>
-        ))}
+      {/* As many columns as cards: MCP changes has four. Five is the value the
+          stylesheet used to fix, so the other two tabs lay out as before. */}
+      <div className={styles['grid']} style={{ gridTemplateColumns: `repeat(${cards.length}, 1fr)` }}>
+        {cards.map((card) => {
+          const button = (
+            <button
+              key={card.key}
+              type="button"
+              className={`${styles['card']} ${styles[`card_${card.key}`] ?? ''} ${
+                card.active ? styles['cardActive'] : ''
+              } ${card.inactive ? styles['cardInactive'] : ''} ${
+                card.tooltip !== undefined ? styles['cardWrapped'] : ''
+              }`}
+              onClick={card.onSelect}
+            >
+              <div className={styles['number']}>{card.count}</div>
+              <div className={styles['label']}>{card.label}</div>
+            </button>
+          );
+          return card.tooltip !== undefined ? (
+            <Tooltip key={card.key} text={card.tooltip}>
+              {button}
+            </Tooltip>
+          ) : (
+            button
+          );
+        })}
       </div>
     </div>
   );

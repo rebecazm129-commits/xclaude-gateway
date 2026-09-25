@@ -15,10 +15,18 @@ import type { ConnectorChangeView } from '../lib/xcgApi.js';
 import { topSeverity } from '../hooks/useChangePage.js';
 import { Badge } from './Badge.js';
 import { ChangeDiff } from './ChangeDiff.js';
-import { SEVERITY_DISCLAIMER, changeTitle, historicalNote, humanSummary } from './change-copy.js';
+import {
+  SECTION_LABELS,
+  SEVERITY_DISCLAIMER,
+  changeTitle,
+  historicalNote,
+  humanSummary,
+  itemLines,
+} from './change-copy.js';
 import { formatTimestamp } from './detections-format.js';
 
 import styles from './DetailDrawer.module.css';
+import footer from './AuditFooter.module.css';
 
 interface Props {
   change: ConnectorChangeView;
@@ -73,6 +81,7 @@ export function ChangeDetail({ change, onReview, onClose }: Props): JSX.Element 
   const severity = topSeverity(change);
   const note = historicalNote(change);
   const findings = findingLines(change);
+  const items = itemLines(change);
   const diff = change.descriptionDiff ?? [];
 
   function handleCopyJson(): void {
@@ -122,40 +131,41 @@ export function ChangeDetail({ change, onReview, onClose }: Props): JSX.Element 
             </div>
             <div className={styles['kvRow']}>
               <span className={styles['kvKey']}>section:</span>
-              <span className={styles['kvValue']}>{change.section}</span>
+              <span className={styles['kvValue']}>{SECTION_LABELS[change.section]}</span>
             </div>
-            {change.changes.map((c, i) => (
-              <div key={`${c.kind}|${c.target}|${i}`} className={styles['kvRow']}>
-                <span className={styles['kvKey']}>{c.kind}:</span>
-                <span className={styles['kvValue']}>
-                  {c.target}
-                  {c.path !== undefined ? `  ${c.path}` : ''}
-                </span>
+          </div>
+          {/* One human line per item. The internal kinds are the record, not
+              the explanation, so they live in Technical details. */}
+          <div className={styles['itemList']}>
+            {items.map((item) => (
+              <div key={item.target} className={styles['itemLine']}>
+                <span className={styles['itemTarget']}>{item.target}</span>
+                <span className={styles['itemDash']}> — </span>
+                {item.text}
               </div>
             ))}
           </div>
         </section>
 
-        <section className={styles['block']}>
-          <div className={styles['blockLabel']}>Why this is flagged</div>
-          {findings.length === 0 ? (
-            <div className={styles['emptyFindings']}>No findings</div>
-          ) : (
-            <>
-              <div className={styles['findings']}>
-                {findings.map((f) => (
-                  <div key={f.key} className={styles['finding']}>
-                    <span className={styles['findingType']}>{f.type}</span>
-                    {f.where !== '' && <span className={styles['findingMatch']}>{f.where}</span>}
-                  </div>
-                ))}
-              </div>
-              {/* Fixed sentence, every time. Without it a HIGH pill reads as a
-                  verdict on the vendor rather than a description of the edit. */}
-              <div className={styles['emptyFindings']}>{SEVERITY_DISCLAIMER}</div>
-            </>
-          )}
-        </section>
+        {/* Only when something asked for a look. On a change nothing flagged,
+            a heading asking "why" over "No findings" answers a question the
+            panel itself raised. */}
+        {findings.length > 0 && (
+          <section className={styles['block']}>
+            <div className={styles['blockLabel']}>Why this is flagged</div>
+            <div className={styles['findings']}>
+              {findings.map((f) => (
+                <div key={f.key} className={styles['finding']}>
+                  <span className={styles['findingType']}>{f.type}</span>
+                  {f.where !== '' && <span className={styles['findingMatch']}>{f.where}</span>}
+                </div>
+              ))}
+            </div>
+            {/* Fixed sentence, every time. Without it a HIGH pill reads as a
+                verdict on the vendor rather than a description of the edit. */}
+            <div className={styles['emptyFindings']}>{SEVERITY_DISCLAIMER}</div>
+          </section>
+        )}
 
         <ChangeDiff diffs={diff} />
 
@@ -189,6 +199,19 @@ export function ChangeDetail({ change, onReview, onClose }: Props): JSX.Element 
                 </span>
               </div>
               <div className={styles['kvRow']}>
+                <span className={styles['kvKey']}>section:</span>
+                <span className={styles['kvValue']}>{change.section}</span>
+              </div>
+              {change.changes.map((c, i) => (
+                <div key={`${c.kind}|${c.target}|${i}`} className={styles['kvRow']}>
+                  <span className={styles['kvKey']}>{c.kind}:</span>
+                  <span className={styles['kvValue']}>
+                    {c.target}
+                    {c.path !== undefined ? `  ${c.path}` : ''}
+                  </span>
+                </div>
+              ))}
+              <div className={styles['kvRow']}>
                 <span className={styles['kvKey']}>review_status:</span>
                 <span className={styles['kvValue']}>{change.review_status}</span>
               </div>
@@ -216,12 +239,15 @@ export function ChangeDetail({ change, onReview, onClose }: Props): JSX.Element 
       </div>
 
       <div className={styles['footer']}>
-        <button className={styles['copyButton']} onClick={handleCopyJson} type="button">
+        {/* Copy is a utility, so it takes the audit footer's quiet link on the
+            left. Review is what the panel is for, so it takes the outline pill
+            on the right — the same pill as Export, never a filled button: the
+            app has none, and inventing one here would make this panel the
+            loudest surface in a product whose posture is "we observed, you
+            decide". */}
+        <button className={footer['footerLink']} onClick={handleCopyJson} type="button">
           Copy as JSON
         </button>
-        {/* Same button as Copy as JSON. The app has no filled button anywhere,
-            and inventing one here would make this panel the loudest surface in
-            a product whose whole posture is "we observed, you decide". */}
         <button className={styles['copyButton']} onClick={() => onReview(change)} type="button">
           {change.review_status === 'reviewed' ? 'Mark as unreviewed' : 'Mark as reviewed'}
         </button>
