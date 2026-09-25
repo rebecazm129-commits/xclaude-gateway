@@ -11,6 +11,7 @@ import { connectMessage, errorMessage } from './config-messages.js';
 import type { BaselineHistoryEntry } from '../lib/xcgApi.js';
 
 import styles from './ConnectorInspector.module.css';
+import { countsAsFlagged } from '../../shared/flagged.js';
 
 // The auditor's own lifecycle, phrased as what it did — not as a verdict on
 // the connector. `migrated` deliberately says "now also tracking", never
@@ -91,7 +92,7 @@ export function ConnectorInspector({ connector, authAlert, onOpenInDetections, o
       new Date(e.ts).getTime() >= weekAgoMs,
   );
   const flagged7d = calls7d.filter(
-    (e) => e.detection.category !== 'tool_call_allowed',
+    (e) => countsAsFlagged(e.detection.category),
   );
   const recentFlagged = flagged7d.slice(0, 8);
 

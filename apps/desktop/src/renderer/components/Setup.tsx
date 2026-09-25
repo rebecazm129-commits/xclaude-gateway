@@ -12,6 +12,7 @@ import { usePolledAudit } from '../hooks/usePolledAudit.js';
 import { usePolledCchookStatus } from '../hooks/usePolledCchookStatus.js';
 
 import styles from './Setup.module.css';
+import { countsAsFlagged } from '../../shared/flagged.js';
 
 export interface SetupProps {
   readonly status: StatusResult | null;
@@ -76,7 +77,7 @@ export function Setup({ status, addOpen, onAddOpenChange, onRefresh, onOpenInDet
     for (const e of detections) {
       if (
         e.type === 'mcp.request' &&
-        e.detection.category !== 'tool_call_allowed' &&
+        countsAsFlagged(e.detection.category) &&
         new Date(e.ts).getTime() >= weekAgoMs
       ) {
         map.set(e.mcp, (map.get(e.mcp) ?? 0) + 1);

@@ -12,6 +12,7 @@ import { Badge } from './Badge.js';
 import { CATEGORY_LABELS, formatTimestamp } from './detections-format.js';
 
 import styles from './ClaudeCodeInspector.module.css';
+import { countsAsFlagged } from '../../shared/flagged.js';
 
 // Axis duality (F1.5): connectors count by WIRE (e.mcp — every event a wrapper
 // observed for that server, whichever client produced it); everything Claude
@@ -25,7 +26,7 @@ export function isClaudeCodeFlagged(e: EnrichableEvent, sinceMs: number): e is D
   return (
     e.type === 'mcp.request' &&
     normalizeSource(e.source) === 'claude-code' &&
-    e.detection.category !== 'tool_call_allowed' &&
+    countsAsFlagged(e.detection.category) &&
     new Date(e.ts).getTime() >= sinceMs
   );
 }
