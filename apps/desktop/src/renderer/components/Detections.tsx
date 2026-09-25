@@ -37,6 +37,12 @@ export const SEVERITY_OPTIONS: readonly Severity[] = ['low', 'medium', 'high', '
 const SOURCE_OPTIONS: readonly SourceKind[] = ['gateway', 'claude-code'];
 // Exported so the default-filter membership is unit-testable. The filter is
 // server-side, so a category absent here is filtered OUT by default.
+// tool_manifest_changed is NOT here, and its absence is what keeps manifest
+// changes out of this view: the filter ships `categories`, and a category no
+// option lists can never be selected, so those events — historical ones
+// included — never match. They live in MCP changes, where a change with no
+// finding is a fact rather than a row graded medium so it could be seen at
+// all. Seven options remain: six risk categories plus tool_call_allowed.
 export const CATEGORY_OPTIONS: readonly Category[] = [
   'credential_detected',
   'prompt_injection',
@@ -45,7 +51,6 @@ export const CATEGORY_OPTIONS: readonly Category[] = [
   'tool_call_allowed',
   'pii_detected',
   'pii_structured',
-  'tool_manifest_changed',
 ];
 
 // Search debounce: fast enough to feel live, slow enough to not thrash the

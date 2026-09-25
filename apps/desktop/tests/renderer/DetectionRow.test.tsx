@@ -192,8 +192,23 @@ describe('DetectionRow — paired badge (frente 3)', () => {
 });
 
 describe('Detections CATEGORY_OPTIONS', () => {
-  it('includes tool_manifest_changed so it is filtered-in by default', () => {
-    expect(CATEGORY_OPTIONS).toContain('tool_manifest_changed');
-    expect(CATEGORY_OPTIONS).toHaveLength(8);
+  // INVERTED on 24/09. It used to assert the opposite — that
+  // tool_manifest_changed was filtered IN by default — and the inversion is
+  // the product decision, not a test fix: manifest changes moved to their own
+  // tab, where a change with no finding is a fact instead of a row graded
+  // medium so it could be seen at all.
+  it('excludes tool_manifest_changed — manifest changes live in MCP changes', () => {
+    expect(CATEGORY_OPTIONS).not.toContain('tool_manifest_changed');
+    expect(CATEGORY_OPTIONS).toHaveLength(7);
+  });
+
+  it('the exclusion is what filters them out, not a second rule', () => {
+    // The filter ships `categories`; a category no option lists can never be
+    // selected, so those events never match — historical ones included. If a
+    // future edit puts it back in this list, manifest rows silently reappear
+    // in Detections, which is what this asserts against.
+    expect(CATEGORY_OPTIONS.includes('tool_manifest_changed' as (typeof CATEGORY_OPTIONS)[number])).toBe(
+      false,
+    );
   });
 });
