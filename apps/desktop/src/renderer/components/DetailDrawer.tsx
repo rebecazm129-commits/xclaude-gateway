@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { Category, DetectionDetail, DetectionFinding, DetectionRowSlim } from '../../shared/types.js';
+import type { ConnectorChangeView } from '../lib/xcgApi.js';
+import { ChangeDetail } from './ChangeDetail.js';
 import { Badge } from './Badge.js';
 import { PAIRED_SOURCE_LABELS, SOURCE_LABELS, categoryLabel } from './detections-format.js';
 
@@ -22,10 +24,22 @@ function formatTimestamp(iso: string): string {
   return `${day} ${month}, ${hh}:${mm}:${ss}`;
 }
 
-interface DetailDrawerProps {
-  row: DetectionRowSlim;
-  onClose: () => void;
-}
+/**
+ * The drawer takes EITHER a tool-call detection or a connector change.
+ *
+ * A union rather than a second component: the chrome is the load-bearing part
+ * — the panel, the focus handling, Escape, the footer — and two copies of it
+ * would drift the moment one of them gets a fix. What differs is the body, and
+ * that is the only thing that branches.
+ */
+export type DetailDrawerProps =
+  | { row: DetectionRowSlim; onClose: () => void; change?: never; onReview?: never }
+  | {
+      change: ConnectorChangeView | null;
+      onReview: (change: ConnectorChangeView) => void;
+      onClose: () => void;
+      row?: never;
+    };
 
 // Findings with the same (type, location) are byte-identical — the shape
 // carries no raw datum — so repeats only encode multiplicity. Collapse them
@@ -65,7 +79,7 @@ type DetailState =
   | { kind: 'ready'; detail: DetectionDetail }
   | { kind: 'unavailable' };
 
-export function DetailDrawer({ row, onClose }: DetailDrawerProps): JSX.Element {
+function DetectionDetailPanel({ row, onClose }: { row: DetectionRowSlim; onClose: () => void }): JSX.Element {
   const drawerRef = useRef<HTMLDivElement>(null);
   const headingId = `drawer-heading-${row.id}`;
   const [technicalOpen, setTechnicalOpen] = useState(false);
@@ -232,7 +246,12 @@ export function DetailDrawer({ row, onClose }: DetailDrawerProps): JSX.Element {
                 aria-expanded={technicalOpen}
                 type="button"
               >
-                <span className={styles['caret']}>{technicalOpen ? '▾' : '▸'}</span>
+                <span
+                  className={
+                    technicalOpen ? `${styles['caret']} ${styles['caretOpen']}` : styles['caret']
+                  }
+                  aria-hidden="true"
+                />
                 <span className={styles['blockLabel']}>Technical details</span>
               </button>
               {technicalOpen && (
@@ -284,4 +303,11 @@ export function DetailDrawer({ row, onClose }: DetailDrawerProps): JSX.Element {
       </div>
     </div>
   );
+}
+
+/** Dispatch. Keeps one drawer in the tree and one set of chrome behaviours. */
+export function DetailDrawer(props: DetailDrawerProps): JSX.Element | null {
+  if (props.row !== undefined) return <DetectionDetailPanel row={props.row} onClose={props.onClose} />;
+  if (props.change === null || props.change === undefined) return null;
+  return <ChangeDetail change={props.change} onReview={props.onReview} onClose={props.onClose} />;
 }

@@ -117,10 +117,22 @@
   outline-offset: 2px;
 }
 
+/* Drawn with borders, not typed. U+25B8 rendered 5px wide in Inter — the UI
+   font has no small-triangle glyph, so it fell back to something that reads as
+   a comma at 10px. A shape the stylesheet draws itself is the same on every
+   machine and at every size. */
 .caret {
-  font-size: 10px;
-  color: var(--kraft-ink-soft);
-  font-family: var(--kraft-font-ui);
+  width: 0;
+  height: 0;
+  flex: none;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid var(--kraft-ink-soft);
+  transition: transform var(--kraft-transition-fast) ease;
+}
+
+.caretOpen {
+  transform: rotate(90deg);
 }
 
 .kvList {
@@ -142,7 +154,12 @@
 
 .kvValue {
   color: var(--kraft-ink);
-  word-break: break-all;
+  /* Break BETWEEN words, and inside one only when a single token is longer
+     than the line — a path, a hash, a sha256. break-all applied that rule to
+     ordinary prose too, which is how a value came out as "on / e item
+     changed". */
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .code {
@@ -179,7 +196,11 @@
 
 .findingMatch {
   color: var(--kraft-ink-soft);
-  word-break: break-all;
+  /* Same rule as .kvValue: a finding's "where" is usually a JSON path, which
+     has no spaces and must break; the heuristic's is a sentence, which must
+     not. */
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .findingCount {
@@ -219,9 +240,94 @@
   outline-offset: 2px;
 }
 
+/* Also carries the fixed severity sentence under "Why this is flagged", so it
+   takes the block's own vertical rhythm rather than sitting flush against the
+   next heading. */
 .emptyFindings {
   font-family: var(--kraft-font-ui);
   font-size: 13px;
   color: var(--kraft-ink-soft);
   font-style: italic;
+  /* The same 18px the blocks use between each other. Without it the italic
+     sentence sat flush against the next heading and read as its subtitle. */
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+/* --- connector changes: the diff blocks -----------------------------------
+   Layout only. Colours, type and the grey slab come from .code and the tokens
+   above; nothing here invents a new visual language. */
+
+/* Clamped to about five lines with a fade, so the panel's height never
+   depends on how much a vendor wrote. */
+.diffClamp {
+  position: relative;
+  max-height: 96px;
+  overflow: hidden;
+}
+
+.diffClamp::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 28px;
+  background: linear-gradient(to bottom, rgba(241, 235, 225, 0), var(--kraft-filter-bg));
+  pointer-events: none;
+}
+
+.diffAdded {
+  background: var(--kraft-low-bg);
+  color: var(--kraft-ink);
+  border-radius: 2px;
+}
+
+.diffRemoved {
+  background: var(--kraft-high-bg);
+  color: var(--kraft-ink-soft);
+  text-decoration: line-through;
+  border-radius: 2px;
+}
+
+/* Row of secondary actions under a diff block. */
+.diffActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+/* The full-diff sheet: nearly the whole window, its own scroll, the drawer's
+   own header/footer grammar inside. */
+.diffOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.diffSheet {
+  width: calc(100vw - 64px);
+  height: calc(100vh - 80px);
+  background: var(--kraft-surface);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  border-radius: var(--kraft-radius-md);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.diffSheetBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+.diffFull {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
