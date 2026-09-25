@@ -24,6 +24,7 @@ macOS 13+ · Apple Silicon · Open source · MIT
 
 </div>
 
+<!-- SCREENSHOT PENDING: detections-hero-2.png predates "None" for normal activity, the SOURCE column, the Flagged only chip in Detections and the panel footer; retake. -->
 <p align="center"><img src="docs/screenshots/detections-hero-2.png" alt="Detections view: tool calls recorded with their severity, category and source, filterable and exportable" width="900" /></p>
 
 <p align="center"><em>Tool activity, classified and kept — with severity, category and source.</em></p>
@@ -39,7 +40,7 @@ It audits. It doesn't block.
 ## What you get
 
 - **One reviewable history.** A **Detections** view over the recorded events, with severity, category, source and time-range filters — plus a dedicated **Claude Code** view grouped by session and project.
-- **Classification with severity.** Seven categories, from `credential_detected` at CRITICAL down to the `tool_call_allowed` baseline — see [Detectors](#detectors). Changes to a connector's definition are tracked separately, in [MCP changes](#mcp-changes).
+- **Classification with severity.** Six risk categories graded from CRITICAL to LOW, plus `tool_call_allowed` for activity that matched none of them, which is recorded and shown with no severity — see [Detectors](#detectors). Changes to a connector's definition are tracked separately, in [MCP changes](#mcp-changes).
 - **The record stays yours.** Append-only JSONL under your own home directory, exportable to raw JSONL or CSV from the app.
 - **Credential masking.** Values the credential detector recognizes are masked before they are written.
 - **A menu-bar summary.** A dropdown listing the number of flagged events in the last 24 hours.
@@ -109,7 +110,7 @@ Whether you connect a remote service through xCLAUDE (Notion, Linear, Atlassian,
 - **Both directions.** All five regex detectors scan tool-call results as well as outgoing arguments — a secret, an injected instruction or a checksum-valid identifier arriving in a server's response is classified too. Named-entity PII (async enrichment) runs on requests only.
 - **Captures latency overhead per response** (`overheadUs`) and end-to-end server response time (`latencyMs`).
 - **Captures the wrapped server's stderr output** as separate events.
-- **Lets you export the filtered trail** to raw JSONL or CSV from the Detections view.
+- **Lets you export the filtered trail** to raw JSONL or CSV from the Detections view. JSONL is the record exactly as written; CSV leaves the severity column empty for normal activity.
 - **Auto-configures `claude_desktop_config.json`** from the app: one click on **Install** (in the Settings drawer) wraps the eligible servers, another reverts them, with a backup of your original config preserved.
 
 Claude Code is audited on a different path: a session hook registered in `~/.claude/settings.json` reports tool calls after they run. Detection and credential masking apply to that stream too — see [Claude Code](#claude-code).
@@ -124,7 +125,7 @@ Claude Code is audited on a different path: a session hook registered in `~/.cla
 | `data_export_warning` | MEDIUM | Imperative requests to export data. |
 | `pii_structured` | MEDIUM | Well-formed PII shapes, checksum-confirmed where the format has a checksum; digit-only formats also require a nearby context keyword (see below). |
 | `pii_detected` | LOW | Named-entity PII — people, organizations, locations — found by the on-device NER model. Async enrichment; runs on requests only, proxy path only. |
-| `tool_call_allowed` | LOW | Baseline emitted for every tool call that matches none of the above — the "everything is normal" line, not an absence of analysis. |
+| `tool_call_allowed` | — | Normal activity: emitted for every call that matches none of the above — the "everything is normal" line, not an absence of analysis. Shown with no severity and counted in no severity total. |
 
 **`email_send_warning` branches.** An AI-executed send (`send`/`reply`/`forward` tools) flags at HIGH — an action that deserves human attention regardless of intent; an AI-composed draft (`draft`/`compose` tools) flags at MEDIUM, since a draft is content one click away from sent.
 
@@ -132,6 +133,7 @@ Claude Code is audited on a different path: a session hook registered in `~/.cla
 
 **Named-entity PII is early stage.** The transformers.js NER enrichment records persons, organizations and locations found in tool-call payloads alongside the main detector chain. It complements the checksum-based `pii_structured` detector and is not yet part of the synchronous detector chain. It will mature in upcoming releases.
 
+<!-- SCREENSHOT PENDING: detection-detail-2.png predates "None" for normal activity, the SOURCE column, the Flagged only chip in Detections and the panel footer; retake. -->
 <p align="center"><img src="docs/screenshots/detection-detail-2.png" alt="Event detail panel with tool call arguments, detection result and technical details" width="900" /></p>
 
 ### MCP changes
@@ -168,7 +170,7 @@ recorded so the surface has a history to compare against.
 
 ### What to expect in normal use
 
-In ordinary, day-to-day use, most events will be `tool_call_allowed` at LOW severity. That is the intended baseline, not a sign that "nothing is happening". The Detections view highlights events at MEDIUM, HIGH or CRITICAL only when a detector matches — which happens rarely in normal use, because Claude's own model already refuses many sensitive operations before any tool call is issued.
+In ordinary, day-to-day use, most events will be `tool_call_allowed`: normal activity, shown with no severity. That is the intended baseline, not a sign that "nothing is happening". The Detections view shows all of it by default, and **Flagged only** narrows it to the events a detector matched — which happens rarely in normal use, because Claude's own model already refuses many sensitive operations before any tool call is issued. A severity appears only on those.
 
 The value of xCLAUDE Gateway in this phase comes from three places: the **local audit trail**, the **classification of patterns when they do appear**, and the **foundation for richer detection and reporting** as the engine matures.
 
@@ -185,6 +187,7 @@ The value of xCLAUDE Gateway in this phase comes from three places: the **local 
 
 ## Claude Code
 
+<!-- SCREENSHOT PENDING: claude-code-tab.png predates "None" for normal activity, the SOURCE column, the Flagged only chip in Detections and the panel footer; retake. -->
 <p align="center"><img src="docs/screenshots/claude-code-tab.png" alt="Claude Code view with per-session audit trail, severity summary and faceted filters" width="900" /></p>
 
 Claude Code's activity — the tool calls in a session, built-in tools and MCP tools alike — is audited natively via a session hook (`PostToolUse` / `PostToolUseFailure`, matcher `*`, so every Claude Code tool is covered), with its own view in the app. Detection and credential masking run on this stream just as they do on wrapped traffic, keyed by the same salt.
