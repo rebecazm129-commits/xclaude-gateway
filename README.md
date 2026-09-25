@@ -24,7 +24,7 @@ macOS 13+ · Apple Silicon · Open source · MIT
 
 </div>
 
-<p align="center"><img src="docs/screenshots/detections-hero-2.png" alt="Detections view: every tool call recorded with its severity, category and source, filterable and exportable" width="900" /></p>
+<p align="center"><img src="docs/screenshots/detections-hero-2.png" alt="Detections view: tool calls recorded with their severity, category and source, filterable and exportable" width="900" /></p>
 
 <p align="center"><em>Tool activity, classified and kept — with severity, category and source.</em></p>
 
@@ -38,7 +38,7 @@ It audits. It doesn't block.
 
 ## What you get
 
-- **One reviewable history.** A **Detections** view over every recorded event, with severity, category, source and time-range filters — plus a dedicated **Claude Code** view grouped by session and project.
+- **One reviewable history.** A **Detections** view over the recorded events, with severity, category, source and time-range filters — plus a dedicated **Claude Code** view grouped by session and project.
 - **Classification with severity.** Seven categories, from `credential_detected` at CRITICAL down to the `tool_call_allowed` baseline — see [Detectors](#detectors). Changes to a connector's definition are tracked separately, in [MCP changes](#mcp-changes).
 - **The record stays yours.** Append-only JSONL under your own home directory, exportable to raw JSONL or CSV from the app.
 - **Credential masking.** Values the credential detector recognizes are masked before they are written.
@@ -112,7 +112,7 @@ Whether you connect a remote service through xCLAUDE (Notion, Linear, Atlassian,
 - **Lets you export the filtered trail** to raw JSONL or CSV from the Detections view.
 - **Auto-configures `claude_desktop_config.json`** from the app: one click on **Install** (in the Settings drawer) wraps the eligible servers, another reverts them, with a backup of your original config preserved.
 
-Claude Code is audited on a different path: a session hook registered in `~/.claude/settings.json` reports every tool call after it runs. Detection and credential masking apply to that stream too — see [Claude Code](#claude-code).
+Claude Code is audited on a different path: a session hook registered in `~/.claude/settings.json` reports tool calls after they run. Detection and credential masking apply to that stream too — see [Claude Code](#claude-code).
 
 ### Detectors
 
@@ -143,7 +143,7 @@ above.
 xCLAUDE keeps a per-connector reference snapshot of everything a server
 advertises — `tools/list`, `resources/list`, `resources/templates/list`,
 `prompts/list` and server discovery. The first time a section is seen it is
-recorded silently. Afterwards, each comparison produces **one** event, whatever
+recorded without an alert. Afterwards, each comparison produces **one** event, whatever
 it touched — a vendor release can rewrite most of a catalogue at once, and that
 is one row, not one per tool.
 
@@ -170,7 +170,7 @@ recorded so the surface has a history to compare against.
 
 In ordinary, day-to-day use, most events will be `tool_call_allowed` at LOW severity. That is the intended baseline, not a sign that "nothing is happening". The Detections view highlights events at MEDIUM, HIGH or CRITICAL only when a detector matches — which happens rarely in normal use, because Claude's own model already refuses many sensitive operations before any tool call is issued.
 
-The value of xCLAUDE Gateway in this phase comes from three places: the **complete local audit trail**, the **classification of patterns when they do appear**, and the **foundation for richer detection and reporting** as the engine matures.
+The value of xCLAUDE Gateway in this phase comes from three places: the **local audit trail**, the **classification of patterns when they do appear**, and the **foundation for richer detection and reporting** as the engine matures.
 
 ## How the audit trail is stored
 
@@ -218,7 +218,7 @@ To audit a service this way:
 1. If you already have it enabled as a native Connector in Claude Desktop, disconnect it there first. xCLAUDE audits its own bridged connection, not the native one.
 2. In xCLAUDE, open the **Sources** tab and click **+ Add source** to open the connector gallery. Pick the service and click **Connect**. (Not listed? Use the **Request a connector** link.)
 3. A browser window opens to authorize the service (standard OAuth). Approve it; the tab will say the login is complete.
-4. Restart Claude Desktop. Claude now reaches the service through xCLAUDE, and every call is recorded and classified like any other MCP traffic.
+4. Restart Claude Desktop. Claude now reaches the service through xCLAUDE, and its calls are recorded and classified like any other MCP traffic.
 
 Your authorization token is stored in the macOS Keychain, not in plain text. xCLAUDE never sees your password. The traffic still reaches the provider — xCLAUDE observes it on its way through, it does not withhold or reroute it. If a connector's authorization expires or is revoked, xCLAUDE flags a re-login alert on that connector (and a macOS notification); reconnect it and restart Claude Desktop to resume auditing. If a connector disappears from your Claude Desktop config outside the app — another program rewrote the file — xCLAUDE flags it within seconds and offers to re-add it.
 

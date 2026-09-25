@@ -36,48 +36,48 @@ interface CatalogEntry {
 const CATALOG: readonly CatalogEntry[] = [
   {
     label: 'Claude Code', name: 'claude-code', logo: 'terminal', group: 'apps', kind: 'app',
-    description: 'Bash, file edits and MCP tools — every call recorded and classified.',
+    description: 'Bash, file edits and MCP tools — calls recorded and classified.',
   },
   {
     label: 'Notion', name: 'notion', logo: 'notion', group: 'oneclick',
     url: 'https://mcp.notion.com/mcp',
-    description: 'Pages, databases and search — every call recorded and classified.',
+    description: 'Pages, databases and search — calls recorded and classified.',
   },
   {
     label: 'Linear', name: 'linear', logo: 'linear', group: 'oneclick',
     url: 'https://mcp.linear.app/mcp',
-    description: 'Issues, projects and comments — every call recorded and classified.',
+    description: 'Issues, projects and comments — calls recorded and classified.',
   },
   {
     label: 'Atlassian', name: 'atlassian', logo: 'atlassian', group: 'oneclick',
     url: 'https://mcp.atlassian.com/v1/mcp/authv2',
-    description: 'Jira and Confluence — every call recorded and classified.',
+    description: 'Jira and Confluence — calls recorded and classified.',
   },
   {
     label: 'GitHub', name: 'github', logo: 'github', group: 'oneclick',
     url: 'https://api.githubcopilot.com/mcp/', scope: 'repo read:org read:user',
-    description: 'Repositories, issues and pull requests — every call recorded and classified.',
+    description: 'Repositories, issues and pull requests — calls recorded and classified.',
   },
   {
     label: 'Stripe', name: 'stripe', logo: 'stripe', group: 'oneclick',
     url: 'https://mcp.stripe.com',
-    description: 'Payments, customers and invoices — every call recorded and classified.',
+    description: 'Payments, customers and invoices — calls recorded and classified.',
   },
   {
     label: 'Apollo', name: 'apollo', logo: 'apollo', group: 'oneclick',
     url: 'https://mcp.apollo.io/mcp',
-    description: 'Prospecting, contacts and enrichment — every call recorded and classified.',
+    description: 'Prospecting, contacts and enrichment — calls recorded and classified.',
   },
   {
     label: 'Slack', name: 'slack', logo: 'slack', group: 'slack', setupCatalog: 'slack',
     url: 'https://mcp.slack.com/mcp',
-    description: 'Search, messages and canvases — every call recorded and classified.',
+    description: 'Search, messages and canvases — calls recorded and classified.',
   },
   {
     label: 'Gmail', name: 'gmail', logo: 'gmail', group: 'google', setupCatalog: 'google',
     url: 'https://gmailmcp.googleapis.com/mcp/v1',
     scope: 'https://www.googleapis.com/auth/gmail.modify',
-    description: "Read, draft and organize your mail — every call recorded and classified.",
+    description: "Read, draft and organize your mail — calls recorded and classified.",
   },
   {
     label: 'Google Calendar', name: 'calendar', logo: 'googlecalendar', group: 'google',
@@ -85,14 +85,14 @@ const CATALOG: readonly CatalogEntry[] = [
     url: 'https://calendarmcp.googleapis.com/mcp/v1',
     scope:
       'https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.events',
-    description: 'Read and manage your calendar events — every call recorded and classified.',
+    description: 'Read and manage your calendar events — calls recorded and classified.',
   },
   {
     label: 'Google Drive', name: 'drive', logo: 'googledrive', group: 'google',
     setupCatalog: 'google',
     url: 'https://drivemcp.googleapis.com/mcp/v1',
     scope: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file',
-    description: 'Read and per-file access — every call recorded and classified.',
+    description: 'Read and per-file access — calls recorded and classified.',
   },
   {
     label: 'Asana', name: 'asana', logo: 'asana', group: 'comingsoon',

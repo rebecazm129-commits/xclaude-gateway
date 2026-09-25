@@ -189,7 +189,7 @@ const GOOGLE_CATALOG: SetupCatalog = {
 const SLACK_APP_MANIFEST = {
   display_information: {
     name: 'xCLAUDE Slack Connector',
-    description: 'Connects Slack to xCLAUDE Gateway — every call recorded and classified.',
+    description: 'Connects Slack to xCLAUDE Gateway — calls recorded and classified.',
   },
   features: {
     bot_user: { display_name: 'xCLAUDE Slack Connector', always_online: false },

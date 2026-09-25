@@ -49,6 +49,9 @@ const SCENARIOS = (
     'needs-review#gmail',
     // The About paragraph states the category count, which is public copy.
     'detections-tab#Open settings',
+    // The connector cards in Add source carry their own one-line copy, twelve
+    // times over. Nothing else opens that modal.
+    'baseline#+ Add source',
   ].join(',')
 ).split(',');
 // Two widths: a narrow one where the 1fr column is squeezed and the chips wrap,
