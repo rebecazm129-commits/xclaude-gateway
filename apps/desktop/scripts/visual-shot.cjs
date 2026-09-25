@@ -56,8 +56,13 @@ async function capture(win, spec, width) {
          // Then by aria-label, for the buttons that are an icon — Settings is
          // a gear, and its About text is public copy that has to be captured.
          const labelled = exact ?? document.querySelector('[aria-label="' + want + '"]');
-         const target = labelled ?? [...document.querySelectorAll('[role="button"]')]
-           .find((x) => (x.textContent ?? '').includes(want));
+         // Case-insensitive only as a fallback: a row that starts showing a
+         // display name ("stripe" → "Stripe") is still the same row, and a
+         // capture that stops at it compares nothing after it.
+         const rows = [...document.querySelectorAll('[role="button"]')];
+         const target = labelled
+           ?? rows.find((x) => (x.textContent ?? '').includes(want))
+           ?? rows.find((x) => (x.textContent ?? '').toLowerCase().includes(want.toLowerCase()));
          if (target === undefined) return false; target.click(); return true; })()`,
     );
     if (!clicked) throw new Error(`no button labelled "${clickLabel}" in ${scenario}`);
