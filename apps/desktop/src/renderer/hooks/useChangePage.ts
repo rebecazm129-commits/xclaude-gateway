@@ -27,6 +27,8 @@ export type ReviewState = 'reviewed' | 'unreviewed';
 export interface ChangeFilter {
   /** Only what still wants a human: attention raised, or findings, unreviewed. */
   needsReviewOnly: boolean;
+  /** Only changes a rule said something about. */
+  withFindingsOnly: boolean;
   severities: readonly Severity[];
   /** Empty or absent = no filter. */
   review: readonly ReviewState[];
@@ -49,6 +51,8 @@ export interface ChangePage {
   total: number;
   totalMatching: number;
   severityCounts: Record<Severity, number>;
+  /** Changes carrying at least one rule finding, reviewed or not. */
+  withFindingsCount: number;
   /** Unreviewed changes that carry attention or findings. */
   needsReviewCount: number;
   facets: ChangeFacets;
@@ -103,6 +107,7 @@ function matchesText(view: ConnectorChangeView, query: string): boolean {
  *  that severity has NOT yet narrowed — the same split detection-page makes. */
 function matchesPreSeverity(view: ConnectorChangeView, filter: ChangeFilter, now: number): boolean {
   if (filter.needsReviewOnly && !needsReview(view)) return false;
+  if (filter.withFindingsOnly && view.findings.length === 0) return false;
   if (filter.review.length > 0 && !filter.review.includes(view.review_status)) return false;
   if (filter.sections.length > 0 && !filter.sections.includes(view.section)) return false;
   if (filter.mcps.length > 0 && !filter.mcps.includes(view.mcp)) return false;
@@ -155,6 +160,7 @@ export function useChangePage(filter: ChangeFilter, nowMs?: number): ChangePage 
       total: rows.length,
       totalMatching: matching.length,
       severityCounts,
+      withFindingsCount: rows.filter((r) => r.findings.length > 0).length,
       needsReviewCount: rows.filter(needsReview).length,
       facets: { mcps, sections },
       loading: all === null,

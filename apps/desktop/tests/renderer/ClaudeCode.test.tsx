@@ -139,11 +139,16 @@ afterEach(() => {
 });
 
 describe('Claude Code tab (F2.4)', () => {
-  it('appears third in the tab bar and navigates to the view', async () => {
+  it('appears fourth in the tab bar and navigates to the view', async () => {
     stubXcgForApp();
     render(<App />);
     const tabs = screen.getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['Sources', 'Detections', 'Claude Code']);
+    expect(tabs.map((t) => t.textContent)).toEqual([
+      'Sources',
+      'Detections',
+      'MCP changes',
+      'Claude Code',
+    ]);
     fireEvent.click(screen.getByRole('tab', { name: 'Claude Code' }));
     await waitFor(() => {
       expect(screen.getByText(/No Claude Code activity yet/)).toBeDefined();

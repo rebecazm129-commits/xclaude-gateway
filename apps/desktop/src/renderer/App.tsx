@@ -5,6 +5,7 @@ import type { ConnectResult, RemoveRemoteResult, StatusResult } from '@xcg/share
 import type { SourceKind } from '../shared/types.js';
 
 import { ClaudeCode } from './components/ClaudeCode.js';
+import { Changes } from './components/Changes.js';
 import { Detections } from './components/Detections.js';
 import { Setup } from './components/Setup.js';
 import { SettingsDrawer } from './components/SettingsDrawer.js';
@@ -27,11 +28,14 @@ import { usePolledCchookStatus } from './hooks/usePolledCchookStatus.js';
 
 import styles from './App.module.css';
 
-type TabId = 'setup' | 'detections' | 'claude-code';
+type TabId = 'setup' | 'detections' | 'changes' | 'claude-code';
 
 const TAB_OPTIONS: readonly TabOption<TabId>[] = [
   { id: 'setup', label: 'Sources' },
   { id: 'detections', label: 'Detections' },
+  // "MCP changes", not "Changes": xCLAUDE audits Claude Code too, so the bare
+  // noun would not say whose surface moved.
+  { id: 'changes', label: 'MCP changes' },
   { id: 'claude-code', label: 'Claude Code' },
 ];
 
@@ -40,7 +44,7 @@ const LAST_TAB_STORAGE_KEY = 'xcg:lastTab';
 function readLastTab(): TabId | null {
   try {
     const stored = window.localStorage.getItem(LAST_TAB_STORAGE_KEY);
-    if (stored === 'setup' || stored === 'detections' || stored === 'claude-code') {
+    if (stored === 'setup' || stored === 'detections' || stored === 'changes' || stored === 'claude-code') {
       return stored;
     }
     return null;
@@ -329,6 +333,8 @@ export function App(): JSX.Element {
           onRemove={handleRemove}
           onOpenSettings={() => setSettingsOpen(true)}
         />
+      ) : activeTab === 'changes' ? (
+        <Changes />
       ) : activeTab === 'claude-code' ? (
         <ClaudeCode />
       ) : (

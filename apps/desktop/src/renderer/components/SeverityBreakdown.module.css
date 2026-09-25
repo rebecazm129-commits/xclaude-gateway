@@ -119,3 +119,38 @@
   letter-spacing: 0.1em;
   margin-top: 8px;
 }
+
+/* MCP changes: two cards that count something other than severity.
+   Neither is tinted. A severity colour here would claim a risk level the set
+   does not have — half of what lands in Needs review carries no finding at
+   all, and "carries a finding" is a fact about the set, not a grade. */
+
+.card_withfindings {
+  background: var(--kraft-bg);
+}
+
+.card_withfindings .number {
+  color: var(--kraft-ink);
+}
+
+.card_withfindings .label {
+  color: var(--kraft-ink-soft);
+}
+
+/* The question the tab exists to answer: prominent through weight and a
+   stronger edge, never through hue. */
+.card_needsreview {
+  background: var(--kraft-filter-bg);
+  border-color: var(--kraft-ink-soft);
+  border-width: 1.5px;
+}
+
+.card_needsreview .number {
+  color: var(--kraft-ink);
+  font-weight: 600;
+}
+
+.card_needsreview .label {
+  color: var(--kraft-ink);
+  font-weight: 500;
+}
