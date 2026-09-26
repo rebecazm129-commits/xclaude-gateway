@@ -13,7 +13,7 @@ xCLAUDE Gateway ships as a single line of releases. Only the latest published re
 
 Please report security issues **privately** — do not open a public issue, pull request, or discussion for a suspected vulnerability.
 
-Use GitHub's private reporting: open the **Security** tab of this repository and click **Report a vulnerability**. This creates a private advisory visible only to the maintainers. 
+Use GitHub's private reporting: open the **Security** tab of this repository and click **Report a vulnerability**. This creates a private advisory visible only to the maintainers.
 
 Where possible, include:
 - A description of the issue and its impact.
@@ -38,6 +38,6 @@ xCLAUDE Gateway audits MCP traffic locally and makes no network calls of its own
 
 ## Sensitive data in the audit log
 
-The audit log records MCP traffic as it crossed the wire (oversized values are size-truncated and flagged) — that is the point of a forensic trail. The one deliberate exception is credentials: values matched by the `credential_detected` detector (API-key and token shapes) are masked before they are written, replaced by a 10-character prefix plus an irreversible HMAC-SHA256 fingerprint keyed by a per-install salt (`~/Library/Application Support/xCLAUDE Gateway/audit-salt`). The same salt keys both the wrapped-MCP and Claude Code paths, so a credential fingerprints identically across sources while remaining unverifiable off your machine. The masking is irreversible and has no toggle.
+The audit log records MCP traffic as it crossed the wire (oversized values are size-truncated and flagged) — that is the point of a forensic trail. The one deliberate exception is credentials: values matched by the `credential_detected` detector (API-key and token shapes), and spent OAuth refresh tokens, are masked before they are written. The whole value is replaced by `[credential:<type> fp:<fingerprint>]`: the credential type plus a 64-bit HMAC-SHA256 fingerprint keyed by a per-install salt (`~/Library/Application Support/xCLAUDE Gateway/audit-salt`). No character of the value is kept. The same salt keys both the wrapped-MCP and Claude Code paths, so a credential fingerprints identically across sources while remaining unverifiable off your machine. If the salt file cannot be read or created, the process falls back to an ephemeral key: the value is still masked, but its fingerprint will not match other processes. The masking is irreversible and has no toggle.
 
 The log otherwise contains whatever crossed the wire, including any secret that does *not* match a known credential shape. Treat the `wrappers/` directory — and any trail you export — as sensitive.
