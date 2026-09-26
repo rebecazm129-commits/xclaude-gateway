@@ -247,9 +247,11 @@ function scanToolSurface(
   }
 
   // Invisible characters, graded by class (text-normalize.ts explains why):
-  // tag characters and bidi controls are high on their own, zero-width and
-  // ANSI are medium. The finding names the class, the codepoint and how many,
-  // so the reader can tell a stray joiner from a payload.
+  // tag characters, bidi controls and runs of variation selectors are high on
+  // their own; zero-width, ANSI and rare invisible controls are medium. The
+  // finding names the class, the codepoint and how many, so the reader can tell
+  // a stray joiner from a payload. The grading reads HIDDEN_CLASS_SEVERITY, so
+  // a class added there needs no change here or in severityOf below.
   let hidden = 0;
   for (const e of entries) {
     if (hidden >= MAX_SURFACE_FINDINGS) break;

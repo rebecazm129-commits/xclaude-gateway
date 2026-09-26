@@ -707,5 +707,275 @@
     "status": "covered",
     "split": "dev",
     "notes": "Two sessions of the same connector see the same manifest: the hash must match and nothing may be emitted."
+  },
+  {
+    "id": "emoji-single-variation-selector",
+    "title": "A description gains an emoji with its one presentation selector",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "doc_edit",
+    "observable": "manifest",
+    "baseline": {
+      "tools": [
+        {
+          "name": "search",
+          "description": "Search the workspace for pages that match a query.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "changed": {
+      "tools": [
+        {
+          "name": "search",
+          "description": "Search the workspace for pages that match a query \u2764\ufe0f.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "malicious": false,
+    "expected_changes": [
+      "description_changed"
+    ],
+    "expected_findings": [],
+    "severity": {
+      "maximum": "medium"
+    },
+    "status": "covered",
+    "split": "dev",
+    "notes": "U+2764 U+FE0F: one variation selector after a visible character is how emoji are written. hidden_characters v2 flags a RUN of two or more, never this."
+  },
+  {
+    "id": "emoji-zwj-sequence",
+    "title": "A description gains an emoji ZWJ sequence",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "doc_edit",
+    "observable": "manifest",
+    "baseline": {
+      "tools": [
+        {
+          "name": "search",
+          "description": "Search the workspace for pages that match a query.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "changed": {
+      "tools": [
+        {
+          "name": "search",
+          "description": "Search the workspace for pages that match a query. Maintained by \ud83d\udc69\u200d\ud83d\udcbb.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "malicious": false,
+    "expected_changes": [
+      "description_changed"
+    ],
+    "expected_findings": [],
+    "severity": {
+      "maximum": "medium"
+    },
+    "status": "covered",
+    "split": "dev",
+    "notes": "U+1F469 U+200D U+1F4BB (woman technologist). The joiner is zero_width, medium, as in v1 - within this case's maximum. No variation_selector_run: there is no selector at all."
+  },
+  {
+    "id": "emoji-keycap",
+    "title": "A description gains a keycap emoji",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "doc_edit",
+    "observable": "manifest",
+    "baseline": {
+      "tools": [
+        {
+          "name": "search",
+          "description": "Search the workspace for pages that match a query.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "changed": {
+      "tools": [
+        {
+          "name": "search",
+          "description": "Search the workspace for pages that match a query. Step 1\ufe0f\u20e3: type a query.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "malicious": false,
+    "expected_changes": [
+      "description_changed"
+    ],
+    "expected_findings": [],
+    "severity": {
+      "maximum": "medium"
+    },
+    "status": "covered",
+    "split": "dev",
+    "notes": "Digit, U+FE0F, U+20E3: one selector, then a combining mark. Not a run."
+  },
+  {
+    "id": "ideographic-variation-selector",
+    "title": "A description gains a Japanese name written with one ideographic variation selector",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "doc_edit",
+    "observable": "manifest",
+    "baseline": {
+      "tools": [
+        {
+          "name": "search",
+          "description": "Search the workspace for pages that match a query.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "changed": {
+      "tools": [
+        {
+          "name": "search",
+          "description": "Search the workspace for pages that match a query. Owner: \u8fbb\udb40\udd00\u6751.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "malicious": false,
+    "expected_changes": [
+      "description_changed"
+    ],
+    "expected_findings": [],
+    "severity": {
+      "maximum": "medium"
+    },
+    "status": "covered",
+    "split": "dev",
+    "notes": "U+8FBB U+E0100: a kanji with one IVS, the standard way to pin a glyph variant in Japanese names. One selector, not a run."
+  },
+  {
+    "id": "soft-hyphen-prose",
+    "title": "A description gains a soft hyphen from copied web text",
+    "provenance": {
+      "source": "synthetic",
+      "url": null,
+      "licence": "CC0-1.0"
+    },
+    "technique": "doc_edit",
+    "observable": "manifest",
+    "baseline": {
+      "tools": [
+        {
+          "name": "search",
+          "description": "Search the workspace for pages that match a query.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "changed": {
+      "tools": [
+        {
+          "name": "search",
+          "description": "Search the workspace for pages that match a query, including infor\u00admation in comments.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "malicious": false,
+    "expected_changes": [
+      "description_changed"
+    ],
+    "expected_findings": [],
+    "severity": {
+      "maximum": "medium"
+    },
+    "status": "covered",
+    "split": "dev",
+    "notes": "U+00AD is how web text marks optional hyphenation and survives copy-paste. Default_Ignorable, but deliberately not flagged: a known gap of hidden_characters v2, not an oversight."
   }
 ]

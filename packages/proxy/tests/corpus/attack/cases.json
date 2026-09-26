@@ -1888,9 +1888,9 @@
     "severity": {
       "minimum": "high"
     },
-    "status": "gap",
+    "status": "covered",
     "split": "holdout",
-    "notes": "Measured 24/09 with the class list already written: medium, description_changed only - no hidden_characters, no injection_marker, no sensitive_path_reference. Variation selectors (U+FE00-FE0F, U+E0100-E01EF) render as nothing and survive copy-paste; a run of them is a side channel. Written AFTER the class list, as a generalisation probe: the detector knows four classes and this is a fifth."
+    "notes": "Measured 24/09 with the class list already written: medium, description_changed only - no hidden_characters, no injection_marker, no sensitive_path_reference. Variation selectors (U+FE00-FE0F, U+E0100-E01EF) render as nothing and survive copy-paste; a run of them is a side channel. Written AFTER the class list, as a generalisation probe: the detector knows four classes and this is a fifth. Closed 26/09 by hidden_characters v2: a run of two or more variation selectors is its own class (variation_selector_run, high). A single selector behind a visible character stays unflagged - that is how emoji and ideographic variants are written."
   },
   {
     "id": "invisible-soft-hyphen-and-mvs",

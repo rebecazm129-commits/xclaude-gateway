@@ -28,9 +28,14 @@ export const RULE_VERSIONS: Readonly<Record<RuleId, number>> = {
   /** An instruction-shaped marker anywhere on the tool surface, matched on the
    *  normalized view. */
   injection_marker: 1,
-  /** Invisible characters, graded by class: tag/bidi high, zero-width/ANSI
-   *  medium. */
-  hidden_characters: 1,
+  /** Invisible characters, graded by class (text-normalize.ts).
+   *  v2: tag, bidi and a RUN of variation selectors high; zero-width, ANSI and
+   *  rare invisible controls (U+206A-U+206F, the unassigned tag plane) medium.
+   *  v1 was the same minus the two v2 classes.
+   *  Known gaps: a variation selector spread one at a time behind visible
+   *  characters, U+180E, U+00AD, LRM/RLM/ALM, and anything outside connector
+   *  tool definitions (tools/call results, resources, prompts). */
+  hidden_characters: 2,
 };
 
 export const RULE_IDS: readonly RuleId[] = Object.keys(RULE_VERSIONS) as RuleId[];
