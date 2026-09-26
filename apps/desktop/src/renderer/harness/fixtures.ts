@@ -219,6 +219,38 @@ function activityRows(): DetectionRowSlim[] {
 
 const ACTIVITY = activityRows();
 
+/**
+ * Protocol tripwires, both shapes: a request row (a connector asking the
+ * client to run a model — sampling/createMessage, server→client) and a
+ * response-side enrichment (a result whose resultType is input_required),
+ * among ordinary activity. Neither exists in the real trail; these are what
+ * the rows would look like.
+ */
+function tripwireRows(): DetectionRowSlim[] {
+  const base = Date.parse('2026-09-24T12:10:00.000Z');
+  const at = (i: number): string => new Date(base - i * 5 * 60_000).toISOString();
+  return [
+    {
+      id: 'trip-000', ts: at(0), mcp: 'notion', type: 'mcp.request', category: 'tool_call_allowed',
+      severity: 'low', source: 'gateway', method: 'tools/call', toolName: 'search', outcome: 'ok',
+    },
+    {
+      id: 'trip-001', ts: at(1), mcp: 'linear', type: 'mcp.request', category: 'protocol_tripwire',
+      severity: 'medium', source: 'gateway', method: 'sampling/createMessage',
+    },
+    {
+      id: 'trip-002', ts: at(2), mcp: 'stripe', type: 'mcp.detection_enrichment',
+      category: 'protocol_tripwire', severity: 'medium', source: 'gateway',
+    },
+    {
+      id: 'trip-003', ts: at(3), mcp: 'notion', type: 'mcp.request', category: 'tool_call_allowed',
+      severity: 'low', source: 'gateway', method: 'initialize',
+    },
+  ];
+}
+
+const TRIPWIRES = tripwireRows();
+
 
 // --- connector changes -------------------------------------------------------
 
@@ -690,6 +722,24 @@ export const SCENARIOS: readonly Scenario[] = [
     entries: TWO_CONNECTORS,
     events: rowsToEvents(ACTIVITY),
     rows: ACTIVITY,
+    authAlerts: [],
+    baseline: BASELINE_BOTH,
+    retention: null,
+    hookVanishedTs: null,
+  },
+  {
+    id: 'protocol-tripwire',
+    tab: 'detections',
+    label: 'Detections · protocol tripwire (request + enrichment)',
+    note:
+      'Two protocol tripwires among ordinary calls. linear: a request row — sampling/createMessage ' +
+      'sent BY the server — MEDIUM, category "Protocol tripwire", Tool column showing the method. ' +
+      'stripe: a response-side enrichment — a result with resultType input_required — MEDIUM, Tool ' +
+      'column "[protocol]" (never "[content]"). Category chip reads (8/8). Open each: findings ' +
+      'server_request / input_required, location method / result.',
+    entries: TWO_CONNECTORS,
+    events: rowsToEvents(TRIPWIRES),
+    rows: TRIPWIRES,
     authAlerts: [],
     baseline: BASELINE_BOTH,
     retention: null,

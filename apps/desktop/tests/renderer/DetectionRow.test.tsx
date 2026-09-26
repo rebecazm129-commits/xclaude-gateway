@@ -145,6 +145,23 @@ describe('DetectionRow — tool column', () => {
   });
 });
 
+describe('DetectionRow — protocol tripwire enrichment', () => {
+  it('labels the Tool column [protocol], never [content]', () => {
+    // It read a result's resultType, not its text: "[content]" would say the
+    // opposite of what raised it.
+    render(
+      <DetectionRow
+        row={row({ type: 'mcp.detection_enrichment', category: 'protocol_tripwire', severity: 'medium' })}
+        selected={false}
+        onClick={() => {}}
+      />,
+    );
+    expect(screen.getByText('[protocol]')).toBeTruthy();
+    expect(screen.queryByText('[content]')).toBeNull();
+    expect(screen.getByText('Protocol tripwire')).toBeTruthy();
+  });
+});
+
 describe('DetectionRow — SOURCE cell', () => {
   // The cell says what the Source chip says: one function names both.
   it('a catalog connector reads its catalog name', () => {
@@ -265,7 +282,11 @@ describe('Detections CATEGORY_OPTIONS', () => {
   // medium so it could be seen at all.
   it('excludes tool_manifest_changed — manifest changes live in MCP changes', () => {
     expect(CATEGORY_OPTIONS).not.toContain('tool_manifest_changed');
-    expect(CATEGORY_OPTIONS).toHaveLength(7);
+    expect(CATEGORY_OPTIONS).toHaveLength(8);
+  });
+
+  it('includes protocol_tripwire — absent from this list it would be filtered out by default', () => {
+    expect(CATEGORY_OPTIONS).toContain('protocol_tripwire');
   });
 
   it('the exclusion is what filters them out, not a second rule', () => {

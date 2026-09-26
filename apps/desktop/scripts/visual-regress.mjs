@@ -60,6 +60,12 @@ const SCENARIOS = (
     // The previous format is out of view by default; the Status filter, open
     // here, is the way in.
     'historical#Status (2/3) ▾',
+    // Protocol tripwire, both shapes: the table, then the panel of the request
+    // row (a server's sampling/createMessage) and of the response-side
+    // enrichment (input_required, Tool column "[protocol]").
+    'protocol-tripwire',
+    'protocol-tripwire#sampling/createMessage',
+    'protocol-tripwire#[protocol]',
   ].join(',')
 ).split(',');
 // Two widths: a narrow one where the 1fr column is squeezed and the chips wrap,

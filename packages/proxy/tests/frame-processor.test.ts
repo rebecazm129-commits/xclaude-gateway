@@ -469,3 +469,58 @@ describe('createFrameProcessor — tool_manifest_changed (tools/list)', () => {
     expect(events.map((e) => e.type)).toEqual(['mcp.response']);
   });
 });
+
+describe('createFrameProcessor — protocol tripwire, input_required', () => {
+  const TRIPWIRE = {
+    category: 'protocol_tripwire',
+    severity: 'medium',
+    findings: [{ type: 'input_required', location: 'result' }],
+  };
+
+  function respond(result: unknown, direction: Direction = 'server_to_client', method = 'tools/call'): EventBody[] {
+    const processFrame = createFrameProcessor(makeDeps());
+    const reqDirection: Direction = direction === 'server_to_client' ? 'client_to_server' : 'server_to_client';
+    processFrame({ kind: 'request', id: 5, method, params: {} }, reqDirection, 20, '<req>', TS_NS, TS_MS);
+    return processFrame({ kind: 'response', id: 5, result }, direction, 30, '<resp>', TS_NS, TS_MS);
+  }
+
+  it('a server result with resultType "input_required" adds one tripwire enrichment', () => {
+    const events = respond({ resultType: 'input_required', content: [] });
+    expect(events.map((e) => e.type)).toEqual(['mcp.response', 'mcp.detection_enrichment']);
+    const enr = events[1];
+    if (enr?.type !== 'mcp.detection_enrichment') throw new Error('expected enrichment');
+    expect(enr.detection).toEqual(TRIPWIRE);
+    expect(enr.rpcId).toBe(5);
+    expect(enr.direction).toBe('server_to_client');
+  });
+
+  it('applies to any method, not only tools/call', () => {
+    const events = respond({ resultType: 'input_required' }, 'server_to_client', 'prompts/get');
+    expect(events.map((e) => e.type)).toEqual(['mcp.response', 'mcp.detection_enrichment']);
+  });
+
+  it('only as the result field: the same words in the text are content, not protocol', () => {
+    const events = respond({ content: [{ type: 'text', text: 'resultType: input_required' }] });
+    expect(events.map((e) => e.type)).toEqual(['mcp.response']);
+  });
+
+  it('another resultType, or none, passes', () => {
+    expect(respond({ resultType: 'complete' }).map((e) => e.type)).toEqual(['mcp.response']);
+    expect(respond({ content: [] }).map((e) => e.type)).toEqual(['mcp.response']);
+  });
+
+  it('a CLIENT result with that field never trips it (server→client only)', () => {
+    const events = respond({ resultType: 'input_required' }, 'client_to_server', 'roots/list');
+    expect(events.map((e) => e.type)).toEqual(['mcp.response']);
+  });
+
+  it('an error response never trips it', () => {
+    const processFrame = createFrameProcessor(makeDeps());
+    processFrame({ kind: 'request', id: 6, method: 'tools/call', params: {} }, 'client_to_server', 20, '<req>', TS_NS, TS_MS);
+    const events = processFrame(
+      { kind: 'response', id: 6, error: { code: -32601, message: 'x' } },
+      'server_to_client', 30, '<resp>', TS_NS, TS_MS,
+    );
+    expect(events.map((e) => e.type)).toEqual(['mcp.response']);
+  });
+});

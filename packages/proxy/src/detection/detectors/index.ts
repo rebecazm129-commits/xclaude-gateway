@@ -3,7 +3,10 @@
 // Phase 3 Steps 2-5 ship the full vertical slice: two CRITICAL detectors
 // (credentialDetected, promptInjection), one HIGH detector (emailSendWarning),
 // and two MEDIUM detectors (dataExportWarning, then piiStructured — alphabetical
-// within the medium level: data_export_warning < pii_structured).
+// within the medium level: data_export_warning < pii_structured). protocolTripwire
+// closes the chain: medium at most (server_request), and alphabetically after
+// pii_structured. It reads the request's method, direction and params, never
+// its content, and is NOT in CONTENT_DETECTORS — a result has no method.
 // The baseline tool_call_allowed remains emitDetections' internal fallback
 // and is NOT registered here — that decision is deferred.
 
@@ -14,11 +17,27 @@ import { dataExportWarning, dataExportWarningInbound } from './data-export-warni
 import { emailSendWarning } from './email-send-warning.js';
 import { piiStructured } from './pii-structured.js';
 import { promptInjection } from './prompt-injection.js';
+import { protocolTripwire } from './protocol-tripwire.js';
 
-export { credentialDetected, dataExportWarning, dataExportWarningInbound, emailSendWarning, piiStructured, promptInjection };
+export {
+  credentialDetected,
+  dataExportWarning,
+  dataExportWarningInbound,
+  emailSendWarning,
+  piiStructured,
+  promptInjection,
+  protocolTripwire,
+};
 export { credentialMatches } from './credential.js';
 
-export const ACTIVE_DETECTORS: readonly Detector[] = [credentialDetected, promptInjection, emailSendWarning, dataExportWarning, piiStructured];
+export const ACTIVE_DETECTORS: readonly Detector[] = [
+  credentialDetected,
+  promptInjection,
+  emailSendWarning,
+  dataExportWarning,
+  piiStructured,
+  protocolTripwire,
+];
 
 // CONTENT_DETECTORS — the INBOUND chain, run over tools/call RESULT text.
 // Shared by BOTH ingest routes (the wrapper's frame-processor and the Claude

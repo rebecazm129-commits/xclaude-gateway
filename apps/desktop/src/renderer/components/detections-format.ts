@@ -20,10 +20,14 @@ export const PAIRED_SOURCE_LABELS: Record<'wrapper' | 'cc-hook', string> = {
 // tools/list response (labeled with that method, in DetectionRow). Only the
 // remaining enrichments get a synthetic bracket label here, derived from
 // category — never a blind literal: pii_detected is emitted ONLY by the async
-// NER worker; everything else is inline content classification over a
-// result/error text (wrapper inbound or Claude Code).
+// NER worker; protocol_tripwire only by the proxy's response branch (a result's
+// resultType, not its text — "[content]" would say the opposite of what it
+// read); everything else is inline content classification over a result/error
+// text (wrapper inbound or Claude Code).
 export function enrichmentToolLabel(category: Category): string {
-  return category === 'pii_detected' ? '[NER]' : '[content]';
+  if (category === 'pii_detected') return '[NER]';
+  if (category === 'protocol_tripwire') return '[protocol]';
+  return '[content]';
 }
 
 export const CATEGORY_LABELS: Record<Category, string> = {
@@ -34,6 +38,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   tool_call_allowed: 'Tool call',
   pii_detected: 'PII detected',
   pii_structured: 'Structured PII',
+  protocol_tripwire: 'Protocol tripwire',
   tool_manifest_changed: 'Tool manifest changed',
 };
 

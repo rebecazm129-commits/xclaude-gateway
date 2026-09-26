@@ -358,7 +358,7 @@ describe('Detections — Flagged only', () => {
     await waitFor(() => {
       const last = filters(listDetectionPage).at(-1)!;
       expect(last.categories).not.toContain('tool_call_allowed');
-      expect(last.categories).toHaveLength(6);
+      expect(last.categories).toHaveLength(7);
     });
     fireEvent.click(screen.getAllByRole('button', { name: 'Clear filters' })[0]!);
     await waitFor(() => {

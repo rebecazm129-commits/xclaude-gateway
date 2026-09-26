@@ -34,6 +34,11 @@ export type Severity = 'low' | 'medium' | 'high' | 'critical';
 //
 // If you add or remove a member here, update every copy that states a count
 // (Settings drawer About, README, release notes, the website).
+//
+// PENDING: protocol_tripwire (the shape of a JSON-RPC exchange, not its
+// content) was added after the count above was written. Whether it is a "risk
+// category" — and so whether the public copy becomes "7 risk categories" — is
+// an open product decision; the copy has NOT been changed yet.
 export type Category =
   | 'credential_detected'
   | 'prompt_injection'
@@ -42,6 +47,7 @@ export type Category =
   | 'tool_call_allowed'
   | 'pii_detected'
   | 'pii_structured'
+  | 'protocol_tripwire'
   | 'tool_manifest_changed';
 
 export interface DetectionFinding {

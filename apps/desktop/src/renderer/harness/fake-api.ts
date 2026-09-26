@@ -40,6 +40,30 @@ export function buildFakeApi(s: Scenario): XcgApi {
     detectionDetail: async (id) => {
       const row = s.rows.find((r) => r.id === id);
       if (row === undefined) return null;
+      // A protocol tripwire's panel has to show what the proxy would really
+      // write: its own findings, and for the response-side one an enrichment
+      // with no arguments. The generic detail below would dress it as a
+      // credential leak.
+      if (row.category === 'protocol_tripwire') {
+        const enrichment = row.type === 'mcp.detection_enrichment';
+        return {
+          id: row.id,
+          ts: row.ts,
+          session: '01M39D8KVX36DX7G2V353BDGPF',
+          mcp: row.mcp,
+          type: row.type,
+          rpcId: 42,
+          direction: 'server_to_client',
+          category: row.category,
+          severity: row.severity,
+          source: row.source,
+          findings: enrichment
+            ? [{ type: 'input_required', location: 'result' }]
+            : [{ type: 'server_request', location: 'method' }],
+          ...(row.method !== undefined ? { method: row.method } : {}),
+          ...(enrichment ? {} : { argumentsJson: JSON.stringify({ messages: [], maxTokens: 400 }, null, 2) }),
+        };
+      }
       return {
         id: row.id,
         ts: row.ts,

@@ -182,6 +182,32 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
             }
           }
         }
+        // Protocol tripwire, response side: a server answering with
+        // result.resultType === "input_required" is asking the client for more
+        // input mid-call. Any method, server→client only, and only as the
+        // result's own field — the same words inside a result's text or data
+        // are content, not protocol, and never trip this. One enrichment, like
+        // the content detectors above, so it lands as its own row.
+        if (
+          direction === 'server_to_client' &&
+          'result' in frame &&
+          typeof frame.result === 'object' &&
+          frame.result !== null &&
+          !Array.isArray(frame.result) &&
+          (frame.result as Record<string, unknown>)['resultType'] === 'input_required'
+        ) {
+          events.push({
+            type: 'mcp.detection_enrichment',
+            rpcId: frame.id,
+            direction,
+            detection: {
+              category: 'protocol_tripwire',
+              severity: 'medium',
+              findings: [{ type: 'input_required', location: 'result' }],
+            },
+            overheadUs: elapsedUs(tsObservedNs),
+          });
+        }
         // Connector surface: diff the tools/list manifest against the persisted
         // per-connector baseline. Separate from the tools/call block above; the
         // raw mcp.response (with result.tools) is unaffected. Hash runs on the
