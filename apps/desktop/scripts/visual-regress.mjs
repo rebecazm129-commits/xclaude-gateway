@@ -66,6 +66,13 @@ const SCENARIOS = (
     'protocol-tripwire',
     'protocol-tripwire#sampling/createMessage',
     'protocol-tripwire#[protocol]',
+    // Version source, one inspector per connector: npx without a version
+    // (Mutable + note), npx pinned (Pinned to <version>), docker without a
+    // digest (Mutable + tag note), and a remote (no row at all).
+    'launch-reference#filesystem',
+    'launch-reference#playwright',
+    'launch-reference#github',
+    'launch-reference#notion',
   ].join(',')
 ).split(',');
 // Two widths: a narrow one where the 1fr column is squeezed and the chips wrap,

@@ -44,8 +44,12 @@ describe('parseConfig — read-only classifier (Milestone 4 Phase 1)', () => {
         original: { command: '/usr/local/bin/npx', args: ['@mcpf/filesystem', '/x'] },
         transport: 'stdio',
         endpoint: '/usr/local/bin/npx',
+        launch: { launcher: 'npx', package: '@mcpf/filesystem', spec: '@mcpf/filesystem', mutable: true },
       },
-      { kind: 'skipped', name: 'wrapped', reason: 'already-wrapped', transport: 'stdio', endpoint: 'npx' },
+      {
+        kind: 'skipped', name: 'wrapped', reason: 'already-wrapped', transport: 'stdio', endpoint: 'npx',
+        launch: { launcher: 'npx', package: '@mcpf/fs', spec: '@mcpf/fs', mutable: true },
+      },
       { kind: 'skipped', name: 'remote', reason: 'no-command', transport: null, endpoint: null },
     ]);
   });
@@ -68,6 +72,7 @@ describe('parseConfig — read-only classifier (Milestone 4 Phase 1)', () => {
       reason: 'already-wrapped',
       transport: 'stdio',
       endpoint: 'npx',
+      launch: { launcher: 'npx', package: '@mcpf/fs', spec: '@mcpf/fs', mutable: true },
     });
   });
 
@@ -310,5 +315,65 @@ describe('isSafeRemoteName — validates xCLAUDE-chosen remote names (Hito 6 Pha
 
   it('accepts a 64-char name (at the limit)', () => {
     expect(isSafeRemoteName('a'.repeat(64))).toBe(true);
+  });
+});
+
+describe('classifyEntry launch reference', () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(osTmpdir(), 'xcg-config-test-'));
+  });
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  function entryFor(entry: object): { launch?: unknown } {
+    const p = join(tmp, 'claude_desktop_config.json');
+    writeFileSync(p, JSON.stringify({ mcpServers: { e: entry } }));
+    const r = parseConfig(p);
+    if (!r.ok) throw new Error('parse failed');
+    return r.plan.entries[0]!;
+  }
+
+  const FS = {
+    launcher: 'npx',
+    package: '@modelcontextprotocol/server-filesystem',
+    spec: '@modelcontextprotocol/server-filesystem',
+    mutable: true,
+  };
+
+  it('wrappable: read from command + args', () => {
+    expect(entryFor({ command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '/Users/me'] }).launch).toEqual(FS);
+  });
+
+  it('already-wrapped stdio: xCLAUDE\'s prefix is dropped, the wrapped launch is read', () => {
+    const e = entryFor({
+      command: '/x/xcg-proxy',
+      args: ['stdio', '--wrap', 'npx', '--name', 'e', '--', '-y', '@modelcontextprotocol/server-filesystem', '/Users/me'],
+    });
+    expect(e.launch).toEqual(FS);
+  });
+
+  it('already-wrapped legacy form: same', () => {
+    const e = entryFor({
+      command: '/x/xcg-proxy',
+      args: ['--wrap', 'npx', '--name', 'e', '--', '-y', '@modelcontextprotocol/server-filesystem', '/Users/me'],
+    });
+    expect(e.launch).toEqual(FS);
+  });
+
+  it('the xCLAUDE flags are never read as the package (a wrapped docker)', () => {
+    const e = entryFor({
+      command: '/x/xcg-proxy',
+      args: ['stdio', '--wrap', 'docker', '--name', 'gh', '--', 'run', '-i', '--rm', 'ghcr.io/github/github-mcp-server'],
+    });
+    expect(e.launch).toMatchObject({ launcher: 'docker', spec: 'ghcr.io/github/github-mcp-server', mutable: true });
+  });
+
+  it('http bridge, no-command and other launchers: no launch field', () => {
+    expect('launch' in entryFor({ command: '/x/xcg-proxy', args: ['http', '--url', 'https://x', '--name', 'e'] })).toBe(false);
+    expect('launch' in entryFor({ url: 'https://example.com/sse' })).toBe(false);
+    expect('launch' in entryFor({ command: 'node', args: ['server.js'] })).toBe(false);
   });
 });

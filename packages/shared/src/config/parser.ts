@@ -5,6 +5,8 @@
 
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
+
+import { launchReference } from './launch-reference.js';
 import type {
   ClaudeConfig,
   McpEntry,
@@ -108,7 +110,13 @@ function classifyEntry(name: string, raw: unknown): WrapPlanEntry {
       return { kind: 'skipped', name, reason: 'already-wrapped', transport: 'http', endpoint: args[2] };
     }
     const endpoint = args[0] === 'stdio' ? args[2] : args[1];
-    return { kind: 'skipped', name, reason: 'already-wrapped', transport: 'stdio', endpoint };
+    // The launch reference is the WRAPPED command's: drop xCLAUDE's own
+    // stdio/--wrap/--name/-- prefix (6 args, or 5 in the legacy form).
+    const launch = launchReference(endpoint!, args.slice(args[0] === 'stdio' ? 6 : 5));
+    return {
+      kind: 'skipped', name, reason: 'already-wrapped', transport: 'stdio', endpoint,
+      ...(launch !== null ? { launch } : {}),
+    };
   }
   // Preserve the entry as read; the writer (Phase 2) consumes `original`.
   const original: McpEntry = {
@@ -117,7 +125,11 @@ function classifyEntry(name: string, raw: unknown): WrapPlanEntry {
     ...(isPlainObject(raw.env) ? { env: raw.env as Record<string, string> } : {}),
     ...(typeof raw.cwd === 'string' ? { cwd: raw.cwd } : {}),
   };
-  return { kind: 'wrappable', name, original, transport: 'stdio', endpoint: command };
+  const launch = launchReference(command, args);
+  return {
+    kind: 'wrappable', name, original, transport: 'stdio', endpoint: command,
+    ...(launch !== null ? { launch } : {}),
+  };
 }
 
 // --- Public entrypoint: read + classify, never throws ---

@@ -62,4 +62,17 @@ describe('toConnectors — pure IpcConfigEntry → Connector mapping (Connectors
       { name: 'wrapped', type: 'unknown', status: 'audited', endpoint: null },
     ]);
   });
+
+  it('carries the launch reference through, and only when present', () => {
+    const launch = { launcher: 'npx' as const, package: 'pkg', spec: 'pkg', mutable: true };
+    const entries: IpcConfigEntry[] = [
+      { kind: 'wrappable', name: 'a', transport: 'stdio', endpoint: 'npx', launch },
+      { kind: 'skipped', name: 'b', reason: 'already-wrapped', transport: 'stdio', endpoint: 'npx', launch },
+      { kind: 'skipped', name: 'c', reason: 'already-wrapped', transport: 'http', endpoint: 'https://x' },
+    ];
+    const [a, b, c] = toConnectors(entries);
+    expect(a?.launch).toEqual(launch);
+    expect(b?.launch).toEqual(launch);
+    expect(c !== undefined && 'launch' in c).toBe(false);
+  });
 });

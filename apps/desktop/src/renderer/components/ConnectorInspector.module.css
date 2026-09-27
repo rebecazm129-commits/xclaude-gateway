@@ -405,3 +405,15 @@
   color: var(--kraft-ink-disabled);
   line-height: 1.5;
 }
+
+/* Secondary line under a row value (Version source). Same text style as
+ * .baselineNote, in the UI font: it is prose, not a value. */
+.valueNote {
+  margin: 4px 0 0;
+  font-family: var(--kraft-font-ui);
+  font-size: 11px;
+  color: var(--kraft-ink-disabled);
+  line-height: 1.5;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}

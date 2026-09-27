@@ -40,6 +40,19 @@ export type SkipReason =
 // (additive enrichment; null = underivable, i.e. no-command entries).
 export type EntryTransport = 'http' | 'stdio';
 
+// What a local connector's launch command pins (launch-reference.ts). Only
+// npx, uvx and docker run produce one; `mutable` means the same configuration
+// can start a different version or image later. `pinned` is the exact version,
+// or the short digest (sha256:<12 hex>), when mutable is false. Informational,
+// never a detection.
+export interface LaunchReference {
+  launcher: 'npx' | 'uvx' | 'docker';
+  package?: string;
+  spec?: string;
+  mutable: boolean;
+  pinned?: string;
+}
+
 // One decision per mcpServers entry. Discriminated by `kind`.
 // transport/endpoint are derived, optional enrichment (never consumed by the
 // writer, which only reads `original`):
@@ -54,6 +67,7 @@ export type WrapPlanEntry =
       original: McpEntry;    // entry as read, untouched
       transport?: EntryTransport | null;
       endpoint?: string | null;
+      launch?: LaunchReference; // present only for npx/uvx/docker launches
     }
   | {
       kind: 'skipped';
@@ -61,6 +75,7 @@ export type WrapPlanEntry =
       reason: SkipReason;
       transport?: EntryTransport | null;
       endpoint?: string | null;
+      launch?: LaunchReference; // already-wrapped stdio: of the WRAPPED command
     };
 
 // Result of reading + classifying the config. Descriptive only.
@@ -122,9 +137,11 @@ export interface IpcConfigSummary {
   skippedOther: number;
 }
 
+// `launch` is the computed LaunchReference only — the raw args it was read
+// from never cross IPC (they may carry secrets).
 export type IpcConfigEntry =
-  | { kind: 'wrappable'; name: string; transport?: EntryTransport | null; endpoint?: string | null }
-  | { kind: 'skipped'; name: string; reason: SkipReason; transport?: EntryTransport | null; endpoint?: string | null };
+  | { kind: 'wrappable'; name: string; transport?: EntryTransport | null; endpoint?: string | null; launch?: LaunchReference }
+  | { kind: 'skipped'; name: string; reason: SkipReason; transport?: EntryTransport | null; endpoint?: string | null; launch?: LaunchReference };
 
 export interface StatusOk {
   ok: true;

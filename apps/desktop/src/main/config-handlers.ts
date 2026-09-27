@@ -84,11 +84,14 @@ export function resolveXcgTargetPathFromMain(): string {
 
 // Exported so runConfigConnect can reuse the EXACT plan→IPC→toConnectors
 // classification (rather than re-deriving "is this ours" from arg shapes).
+// Only the computed launch reference crosses IPC — `original` (with its raw
+// args) stays in main.
 export function entryToIpc(entry: WrapPlanEntry): IpcConfigEntry {
+  const launch = entry.launch !== undefined ? { launch: entry.launch } : {};
   if (entry.kind === 'wrappable') {
-    return { kind: 'wrappable', name: entry.name, transport: entry.transport ?? null, endpoint: entry.endpoint ?? null };
+    return { kind: 'wrappable', name: entry.name, transport: entry.transport ?? null, endpoint: entry.endpoint ?? null, ...launch };
   }
-  return { kind: 'skipped', name: entry.name, reason: entry.reason, transport: entry.transport ?? null, endpoint: entry.endpoint ?? null };
+  return { kind: 'skipped', name: entry.name, reason: entry.reason, transport: entry.transport ?? null, endpoint: entry.endpoint ?? null, ...launch };
 }
 
 function summarize(entries: readonly WrapPlanEntry[]): IpcConfigSummary {

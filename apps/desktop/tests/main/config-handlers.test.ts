@@ -95,7 +95,15 @@ describe('config IPC handlers (Milestone 4 Phase 5.1 sub-step C2)', () => {
       // The entry list uses camelCase IpcConfigEntry shape (no nested original).
       if (result.ok) {
         expect(result.entries).toEqual([
-          { kind: 'wrappable', name: 'filesystem', transport: 'stdio', endpoint: '/usr/local/bin/npx' },
+          {
+            kind: 'wrappable', name: 'filesystem', transport: 'stdio', endpoint: '/usr/local/bin/npx',
+            launch: {
+              launcher: 'npx',
+              package: '@modelcontextprotocol/server-filesystem',
+              spec: '@modelcontextprotocol/server-filesystem',
+              mutable: true,
+            },
+          },
         ]);
       }
     });

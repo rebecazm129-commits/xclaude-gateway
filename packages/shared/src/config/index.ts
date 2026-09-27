@@ -6,6 +6,7 @@
 
 export { isAlreadyWrapped, isSafeRemoteName, parseConfig } from './parser.js';
 export { toConnectors } from './connectors.js';
+export { launchReference } from './launch-reference.js';
 export type { Connector } from './connectors.js';
 export { addRemoteToConfig, applyWrap, isHttpUrl, removeRemoteFromConfig, replaceRemoteInConfig, unwrap } from './transform.js';
 export type { AddRemoteToConfigResult, RemoveRemoteFromConfigResult } from './transform.js';
@@ -34,6 +35,7 @@ export type {
   IpcConfigSummary,
   IsConnectedOk,
   IsConnectedResult,
+  LaunchReference,
   McpEntry,
   ParseError,
   ParseResult,

@@ -7,19 +7,23 @@
 //   skipped/no-command (shape we can't bridge)→ unknown, unsupported
 // endpoint carries through verbatim (remote url / wrapped command / command).
 
-import type { IpcConfigEntry } from './types.js';
+import type { IpcConfigEntry, LaunchReference } from './types.js';
 
 export interface Connector {
   name: string;
   type: 'remote' | 'local' | 'unknown';
   status: 'audited' | 'not-audited' | 'unsupported';
   endpoint: string | null;
+  // Present only for npx/uvx/docker launches (the inspector's Launch
+  // reference row).
+  launch?: LaunchReference;
 }
 
 export function toConnectors(entries: readonly IpcConfigEntry[]): Connector[] {
   return entries.map((e) => {
+    const launch = e.launch !== undefined ? { launch: e.launch } : {};
     if (e.kind === 'wrappable') {
-      return { name: e.name, type: 'local', status: 'not-audited', endpoint: e.endpoint ?? null };
+      return { name: e.name, type: 'local', status: 'not-audited', endpoint: e.endpoint ?? null, ...launch };
     }
     if (e.reason === 'already-wrapped') {
       return {
@@ -27,6 +31,7 @@ export function toConnectors(entries: readonly IpcConfigEntry[]): Connector[] {
         type: e.transport === 'http' ? 'remote' : e.transport === 'stdio' ? 'local' : 'unknown',
         status: 'audited',
         endpoint: e.endpoint ?? null,
+        ...launch,
       };
     }
     // no-command: a shape the bridge can't represent (e.g. bare url entry).

@@ -61,6 +61,15 @@ const TRANSPORT_LABEL: Record<Connector['type'], string> = {
   unknown: '—',
 };
 
+// Version source: informational, not a detection — no icon, no severity
+// colour. The value is the fact; the note under a mutable one says why it
+// matters and what would pin it.
+function launchNote(launch: NonNullable<Connector['launch']>): string {
+  return launch.launcher === 'docker'
+    ? 'This tag can point to a different image over time. Pin a digest for reproducible launches.'
+    : 'This reference can resolve to a different version on a future launch. Pin a version for reproducible launches.';
+}
+
 interface ConnectorInspectorProps {
   connector: Connector;
   authAlert: ConnectorAuthAlert | null;
@@ -306,6 +315,17 @@ export function ConnectorInspector({ connector, authAlert, onOpenInDetections, o
           <dt className={styles['label']}>Endpoint</dt>
           <dd className={styles['value']}>{connector.endpoint ?? '—'}</dd>
         </div>
+        {connector.launch !== undefined ? (
+          <div className={styles['row']} data-testid="launch-reference">
+            <dt className={styles['label']}>Version source</dt>
+            <dd className={styles['value']}>
+              {connector.launch.mutable ? 'Mutable' : `Pinned to ${connector.launch.pinned ?? ''}`}
+              {connector.launch.mutable ? (
+                <p className={styles['valueNote']}>{launchNote(connector.launch)}</p>
+              ) : null}
+            </dd>
+          </div>
+        ) : null}
         {connector.type === 'remote' ? (
           <div className={styles['row']}>
             <dt className={styles['label']}>Auth</dt>

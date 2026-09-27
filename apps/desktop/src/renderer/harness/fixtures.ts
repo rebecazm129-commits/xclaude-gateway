@@ -72,6 +72,53 @@ const TWO_CONNECTORS: readonly IpcConfigEntry[] = [
   remote('stripe', 'https://mcp.stripe.com'),
 ];
 
+// Local connectors as the main process delivers them: the launch reference is
+// already computed (launchReference in @xcg/shared/config), the raw args never
+// reach the renderer. Written out by hand so the harness does not pull the
+// node-side config index into the renderer bundle.
+const LAUNCH_CONNECTORS: readonly IpcConfigEntry[] = [
+  {
+    kind: 'skipped',
+    name: 'filesystem',
+    reason: 'already-wrapped',
+    transport: 'stdio',
+    endpoint: 'npx',
+    launch: {
+      launcher: 'npx',
+      package: '@modelcontextprotocol/server-filesystem',
+      spec: '@modelcontextprotocol/server-filesystem',
+      mutable: true,
+    },
+  },
+  {
+    kind: 'skipped',
+    name: 'playwright',
+    reason: 'already-wrapped',
+    transport: 'stdio',
+    endpoint: 'npx',
+    launch: {
+      launcher: 'npx',
+      package: '@playwright/mcp',
+      spec: '@playwright/mcp@0.0.41',
+      mutable: false,
+      pinned: '0.0.41',
+    },
+  },
+  {
+    kind: 'wrappable',
+    name: 'github',
+    transport: 'stdio',
+    endpoint: 'docker',
+    launch: {
+      launcher: 'docker',
+      package: 'ghcr.io/github/github-mcp-server',
+      spec: 'ghcr.io/github/github-mcp-server',
+      mutable: true,
+    },
+  },
+  remote('notion', 'https://mcp.notion.com/mcp'),
+];
+
 // --- baseline lifecycle ------------------------------------------------------
 
 const bl = (
@@ -761,6 +808,24 @@ export const SCENARIOS: readonly Scenario[] = [
     rows: CC_ACTIVITY,
     authAlerts: [],
     baseline: BASELINE_BOTH,
+    retention: null,
+    hookVanishedTs: null,
+  },
+  {
+    id: 'launch-reference',
+    tab: 'setup',
+    label: 'Connector card · version source',
+    note:
+      'Setup → pick each connector. filesystem: "Version source" row reads "Mutable" with the ' +
+      'secondary line "This reference can resolve to a different version on a future launch…". ' +
+      'playwright: "Pinned to 0.0.41", no secondary line. github (docker, not audited): "Mutable" ' +
+      'with "This tag can point to a different image over time…". notion (remote): no Version ' +
+      'source row. No package name in the notes, no alert icon, no severity colour in the row.',
+    entries: LAUNCH_CONNECTORS,
+    events: [],
+    rows: [],
+    authAlerts: [],
+    baseline: {},
     retention: null,
     hookVanishedTs: null,
   },

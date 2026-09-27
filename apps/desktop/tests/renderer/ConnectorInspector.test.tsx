@@ -96,3 +96,83 @@ describe('ConnectorInspector — re-login alert', () => {
     expect(tokenCount(screen.getByRole('button', { name: 'Reconnect' }))).toBeLessThan(2);
   });
 });
+
+describe('ConnectorInspector — version source', () => {
+  function renderConnector(connector: Connector): void {
+    render(
+      <ConnectorInspector
+        connector={connector}
+        authAlert={null}
+        onOpenInDetections={noop}
+        onAudit={noop}
+        onReconnect={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+  }
+  const local = (launch?: Connector['launch']): Connector => ({
+    name: 'filesystem',
+    type: 'local',
+    status: 'audited',
+    endpoint: 'npx',
+    ...(launch !== undefined ? { launch } : {}),
+  });
+
+  it('mutable npx: "Mutable" plus the version note, no package name', () => {
+    stubXcg();
+    renderConnector(local({
+      launcher: 'npx',
+      package: '@modelcontextprotocol/server-filesystem',
+      spec: '@modelcontextprotocol/server-filesystem',
+      mutable: true,
+    }));
+    const row = screen.getByTestId('launch-reference');
+    expect(row.textContent).toContain('Version source');
+    expect(row.textContent).toContain('Mutable');
+    expect(screen.getByText(
+      'This reference can resolve to a different version on a future launch. Pin a version for reproducible launches.',
+    )).toBeDefined();
+    expect(row.textContent).not.toContain('@modelcontextprotocol/server-filesystem');
+  });
+
+  it('mutable docker: the image note', () => {
+    stubXcg();
+    renderConnector(local({
+      launcher: 'docker',
+      package: 'ghcr.io/github/github-mcp-server',
+      spec: 'ghcr.io/github/github-mcp-server',
+      mutable: true,
+    }));
+    expect(screen.getByText(
+      'This tag can point to a different image over time. Pin a digest for reproducible launches.',
+    )).toBeDefined();
+    expect(screen.getByTestId('launch-reference').textContent).not.toContain('ghcr.io');
+  });
+
+  it('pinned: "Pinned to" the version or short digest, no note', () => {
+    stubXcg();
+    renderConnector(local({ launcher: 'npx', package: '@playwright/mcp', spec: '@playwright/mcp@0.0.41', mutable: false, pinned: '0.0.41' }));
+    const row = screen.getByTestId('launch-reference');
+    expect(row.querySelector('dd')?.textContent).toBe('Pinned to 0.0.41');
+    expect(row.querySelector('p')).toBeNull();
+    cleanup();
+    renderConnector(local({ launcher: 'docker', package: 'mcp/fetch', spec: 'mcp/fetch@sha256:…', mutable: false, pinned: 'sha256:aaaaaaaaaaaa' }));
+    expect(screen.getByTestId('launch-reference').querySelector('dd')?.textContent).toBe('Pinned to sha256:aaaaaaaaaaaa');
+  });
+
+  it('no launch reference (remote, other launchers): no row', () => {
+    stubXcg();
+    renderConnector(CONNECTOR);
+    expect(screen.queryByTestId('launch-reference')).toBeNull();
+    cleanup();
+    renderConnector(local());
+    expect(screen.queryByText('Version source')).toBeNull();
+  });
+
+  it('no alert icon in the row', () => {
+    stubXcg();
+    renderConnector(local({ launcher: 'npx', package: 'p', spec: 'p', mutable: true }));
+    expect(screen.getByTestId('launch-reference').textContent).not.toContain('⚠');
+  });
+});
+
