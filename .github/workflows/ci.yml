@@ -8,6 +8,7 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       # Tests never launch Electron; skip the ~100 MB binary download in
       # the root postinstall. Remove if a future test needs the binary.

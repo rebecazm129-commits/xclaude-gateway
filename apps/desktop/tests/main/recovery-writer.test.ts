@@ -1,4 +1,4 @@
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -153,9 +153,15 @@ describe('writeReloginNotified (B4)', () => {
     expect(parsed.outcomes?.size ?? 0).toBe(0);
   });
 
-  it('never throws on an unwritable directory', () => {
+  it('never throws on an unwritable directory', async () => {
+    // A path UNDER a regular file: mkdirSync fails with ENOTDIR on every
+    // platform. /proc/nonexistent failed fast on macOS but hung the Linux CI
+    // runner, where /proc is procfs. The file lives in this suite's tmpDir,
+    // which afterAll removes.
+    const notADir = join(tmpDir, 'not-a-dir');
+    await writeFile(notADir, '');
     expect(() =>
-      writeReloginNotified({ mcp: 'x', lastFailureTs: 'T', shown: true }, '/proc/nonexistent/xcg'),
+      writeReloginNotified({ mcp: 'x', lastFailureTs: 'T', shown: true }, join(notADir, 'xcg')),
     ).not.toThrow();
   });
 });
