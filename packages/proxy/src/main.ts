@@ -23,7 +23,8 @@ import { refreshLockPath } from './refresh-lock.js';
 
 import { JsonlWriter } from './audit.js';
 import { DetectionEngine } from './detection/engine.js';
-import { ACTIVE_DETECTORS } from './detection/detectors/index.js';
+import { ACTIVE_DETECTORS, credentialMatches } from './detection/detectors/index.js';
+import { canonicalizeUrl, redactLaunchArgs } from './detection/launch-redaction.js';
 import { createSectionStore } from './detection/section-store.js';
 
 // Which build wrote a v2 baseline. Diagnostic only — nothing branches on it.
@@ -32,7 +33,7 @@ import { createSectionStore } from './detection/section-store.js';
 const APP_VERSION = process.env['XCG_VERSION'] ?? 'unknown';
 import { resolveAuditKey } from './detection/masking.js';
 import { AsyncDetectorNer } from './detection/ner/async-detector.js';
-import { EventSink, createEnrichmentSink, type Direction } from './events.js';
+import { EventSink, attachMaskSecrets, createEnrichmentSink, type Direction, type EventBody } from './events.js';
 import { createFrameProcessor, type FrameProcessor } from './frame-processor.js';
 import { InflightTracker } from './latency.js';
 import { classify, classifyFromMessage, type ClassifiedFrame } from './parser.js';
@@ -130,15 +131,18 @@ export function runStdio(opts: ParsedArgs): void {
 
   // Credential-masking key, loaded once per wrapper process (lazy salt with an
   // ephemeral fallback — a detected credential is never persisted in clear).
-  const sink = new EventSink(name, [writer], session, resolveAuditKey(baseDir));
+  // The same key fingerprints the redacted launch args below.
+  const auditKey = resolveAuditKey(baseDir);
+  const sink = new EventSink(name, [writer], session, auditKey);
 
   const startMs = Date.now();
 
+  // What is recorded is redacted; what is spawned is childArgs as given.
   sink.emit({
     type: 'proxy.started',
     pid: process.pid,
     wrap,
-    wrappedArgs: childArgs,
+    wrappedArgs: redactLaunchArgs(childArgs, auditKey),
   });
 
   const child = spawn(wrap, childArgs, {
@@ -211,12 +215,7 @@ export function runStdio(opts: ParsedArgs): void {
     framesStderr += lines.length;
     for (const line of lines) {
       const bytes = Buffer.byteLength(line, 'utf8') + 1;
-      sink.emit({
-        type: 'mcp.stderr',
-        text: line,
-        bytes,
-        overheadUs: elapsedUs(tsObservedNs),
-      });
+      sink.emit(stderrEvent(line, bytes, elapsedUs(tsObservedNs)));
     }
   });
 
@@ -345,6 +344,15 @@ export function forwardFailureResponse(
   };
 }
 
+/** One line of the wrapped server's stderr, tagged for masking: a server that
+ *  logs its own key gets it masked like a tool call's (same formats, same
+ *  mask), before the sink writes anything. */
+export function stderrEvent(line: string, bytes: number, overheadUs: number): EventBody {
+  const event: EventBody = { type: 'mcp.stderr', text: line, bytes, overheadUs };
+  attachMaskSecrets(event, credentialMatches(line));
+  return event;
+}
+
 async function runHttp(opts: HttpArgs): Promise<void> {
   const { url, name } = opts;
 
@@ -363,9 +371,17 @@ async function runHttp(opts: HttpArgs): Promise<void> {
 
   // Credential-masking key, loaded once per wrapper process (lazy salt with an
   // ephemeral fallback — a detected credential is never persisted in clear).
-  const sink = new EventSink(name, [writer], session, resolveAuditKey(baseDir));
+  // The same key fingerprints the redacted URL below.
+  const auditKey = resolveAuditKey(baseDir);
+  const sink = new EventSink(name, [writer], session, auditKey);
 
   const startMs = Date.now();
+
+  sink.emit({
+    type: 'proxy.http_started',
+    pid: process.pid,
+    url: canonicalizeUrl(url, auditKey),
+  });
 
   const tracker = new InflightTracker();
   const engine = new DetectionEngine(ACTIVE_DETECTORS);

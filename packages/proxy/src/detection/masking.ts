@@ -35,6 +35,13 @@ function maskFor(hmacKey: Buffer, secret: string, type: string): string {
   return `[credential:${type} fp:${fingerprint(hmacKey, secret)}]`;
 }
 
+/** The mask for ONE value, for callers that locate the secret themselves
+ *  (launch-arg redaction) rather than masking a serialized event line. Same
+ *  format, same fingerprint, same salt as maskCredentials. */
+export function maskValue(hmacKey: Buffer, secret: string, type: string): string {
+  return maskFor(hmacKey, secret, type);
+}
+
 /**
  * Replaces EVERY occurrence of each matched secret in an already-serialized
  * event line with `[credential:<type> fp:<64-bit hex>]`. NO character of the

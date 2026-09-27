@@ -64,7 +64,16 @@ export type EventBody =
       type: 'proxy.started';
       pid: number;
       wrap: string;
+      /** Redacted by LaunchRedactor before emit (launch-redaction.ts). */
       wrappedArgs: readonly string[];
+    }
+  | {
+      // The http wrapper's startup line — the stdio one is proxy.started,
+      // whose wrap/wrappedArgs an http wrapper does not have. `url` is
+      // canonical and redacted (LaunchRedactor.canonicalUrl).
+      type: 'proxy.http_started';
+      pid: number;
+      url: string;
     }
   | {
       type: 'proxy.child_spawned';

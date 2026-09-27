@@ -84,6 +84,31 @@ export const SENSITIVE_COMPOUNDS: ReadonlySet<string> = new Set([
   'apikey', 'accesstoken', 'authtoken', 'privatekey', 'secretkey',
 ]);
 
+// Rule-1 tokens that name a CREDENTIAL, as opposed to a destination, a
+// recipient or a transport. A subset of SENSITIVE_TOKENS, not a second list:
+// launch-arg redaction must only ever act on evidence of a secret, and `url`,
+// `endpoint`, `header` or `upload` in a flag name say where something goes,
+// not that its value is secret.
+const CREDENTIAL_TOKENS: ReadonlySet<string> = new Set([
+  'token', 'secret', 'credential', 'credentials', 'password', 'auth',
+]);
+
+/** Does this flag or variable NAME carry a credential? Same tokenizer, pairs
+ *  and compounds as isSensitiveParamName, restricted to CREDENTIAL_TOKENS.
+ *  API_KEY, --access-token, figmaApiKey, DB_PASSWORD: yes. DATABASE_URL,
+ *  --base-url, --header, --key: no. */
+export function isCredentialName(name: string): boolean {
+  const t = tokenizeParamName(name);
+  if (t.length === 0) return false;
+  if (t.some((x) => CREDENTIAL_TOKENS.has(x) || SENSITIVE_COMPOUNDS.has(x))) return true;
+  for (let i = 0; i < t.length - 1; i++) {
+    for (const [a, b] of SENSITIVE_PAIRS) {
+      if (t[i] === a && t[i + 1] === b) return true;
+    }
+  }
+  return false;
+}
+
 export function isSensitiveParamName(name: string): boolean {
   const t = tokenizeParamName(name);
   if (t.length === 0) return false;
