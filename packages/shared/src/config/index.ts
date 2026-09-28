@@ -10,7 +10,7 @@ export { launchReference } from './launch-reference.js';
 export type { Connector } from './connectors.js';
 export { addRemoteToConfig, applyWrap, isHttpUrl, removeRemoteFromConfig, replaceRemoteInConfig, unwrap } from './transform.js';
 export type { AddRemoteToConfigResult, RemoveRemoteFromConfigResult } from './transform.js';
-export { CLAUDE_DESKTOP_CONFIG_PATH, STABLE_XCG_PROXY_PATH } from './paths.js';
+export { CLAUDE_DESKTOP_CONFIG_PATH, STABLE_XCG_PROXY_PATH, xcgDataDir } from './paths.js';
 export { writeAtomic } from './io.js';
 export type { WriteAtomicError, WriteAtomicResult } from './io.js';
 export {

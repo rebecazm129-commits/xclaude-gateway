@@ -64,6 +64,37 @@ export function buildFakeApi(s: Scenario): XcgApi {
           ...(enrichment ? {} : { argumentsJson: JSON.stringify({ messages: [], maxTokens: 400 }, null, 2) }),
         };
       }
+      // audit_trail_modification: the finding the detector writes (subtype and
+      // tool) and the call it came from.
+      if (row.category === 'audit_trail_modification') {
+        const deletes = row.toolName === 'Bash';
+        const trail = '/Users/you/Library/Application Support/xCLAUDE Gateway/wrappers';
+        return {
+          id: row.id,
+          ts: row.ts,
+          session: '01M39D8KVX36DX7G2V353BDGPF',
+          mcp: row.mcp,
+          type: 'mcp.request',
+          rpcId: 42,
+          direction: 'client_to_server',
+          category: row.category,
+          severity: row.severity,
+          source: row.source,
+          findings: deletes
+            ? [{ type: 'delete', location: 'Bash', rule: 'rm' }]
+            : [{ type: 'write', location: 'Edit' }],
+          ...(row.method !== undefined ? { method: row.method } : {}),
+          ...(row.toolName !== undefined ? { toolName: row.toolName } : {}),
+          argumentsJson: JSON.stringify(
+            deletes
+              ? { command: `rm "${trail}/01M3DG5Y000000000000000000.jsonl"`, description: 'Remove old trail file' }
+              : { file_path: `${trail}/app-events.jsonl`, old_string: '"to":"unreviewed"', new_string: '"to":"reviewed"' },
+            null,
+            2,
+          ),
+          overheadUs: 0,
+        };
+      }
       return {
         id: row.id,
         ts: row.ts,

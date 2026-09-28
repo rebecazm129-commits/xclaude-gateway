@@ -12,6 +12,7 @@
 
 import type { Detector } from '../types.js';
 
+import { auditTrailModification } from './audit-trail-modification.js';
 import { credentialDetected } from './credential.js';
 import { dataExportWarning, dataExportWarningInbound } from './data-export-warning.js';
 import { emailSendWarning } from './email-send-warning.js';
@@ -20,6 +21,7 @@ import { promptInjection } from './prompt-injection.js';
 import { protocolTripwire } from './protocol-tripwire.js';
 
 export {
+  auditTrailModification,
   credentialDetected,
   dataExportWarning,
   dataExportWarningInbound,
@@ -33,6 +35,22 @@ export { credentialMatches } from './credential.js';
 export const ACTIVE_DETECTORS: readonly Detector[] = [
   credentialDetected,
   promptInjection,
+  emailSendWarning,
+  dataExportWarning,
+  piiStructured,
+  protocolTripwire,
+];
+
+// CLAUDE_CODE_DETECTORS — the request chain for Claude Code's hook: the same
+// chain plus audit_trail_modification, which only means something for Claude
+// Code's own file tools (Write/Edit/MultiEdit/Bash) and reads the hook's cwd.
+// It is NOT in ACTIVE_DETECTORS: a wrapped MCP server's paths may live on
+// another machine, and its text naming a path is not a file operation. Same
+// ordering rule: high, alphabetically before email_send_warning.
+export const CLAUDE_CODE_DETECTORS: readonly Detector[] = [
+  credentialDetected,
+  promptInjection,
+  auditTrailModification,
   emailSendWarning,
   dataExportWarning,
   piiStructured,

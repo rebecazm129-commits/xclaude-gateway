@@ -298,6 +298,30 @@ function tripwireRows(): DetectionRowSlim[] {
 
 const TRIPWIRES = tripwireRows();
 
+/**
+ * audit_trail_modification, both subtypes, among ordinary Claude Code and
+ * connector activity: an Edit of a file in xCLAUDE's data folder (write) and a
+ * Bash rm of a trail file (delete). Only the delete row uses Bash, so a capture
+ * can open it by its tool name.
+ */
+function auditTrailRows(): DetectionRowSlim[] {
+  const base = Date.parse('2026-09-24T12:30:00.000Z');
+  const at = (i: number): string => new Date(base - i * 4 * 60_000).toISOString();
+  const cc = { source: 'claude-code' as const, type: 'mcp.request' as const, method: 'tools/call', outcome: 'ok' as const, mcp: 'claude-code' };
+  return [
+    { id: 'atm-000', ts: at(0), ...cc, category: 'tool_call_allowed', severity: 'low', toolName: 'Read' },
+    { id: 'atm-001', ts: at(1), ...cc, category: 'audit_trail_modification', severity: 'high', toolName: 'Edit' },
+    {
+      id: 'atm-002', ts: at(2), mcp: 'notion', type: 'mcp.request', category: 'tool_call_allowed',
+      severity: 'low', source: 'gateway', method: 'tools/call', toolName: 'search', outcome: 'ok',
+    },
+    { id: 'atm-003', ts: at(3), ...cc, category: 'audit_trail_modification', severity: 'high', toolName: 'Bash' },
+    { id: 'atm-004', ts: at(4), ...cc, category: 'tool_call_allowed', severity: 'low', toolName: 'Grep' },
+  ];
+}
+
+const AUDIT_TRAIL = auditTrailRows();
+
 
 // --- connector changes -------------------------------------------------------
 
@@ -869,6 +893,23 @@ export const SCENARIOS: readonly Scenario[] = [
     retention: null,
     hookVanishedTs: null,
     changes: [BASELINE_REVIEW, BCC],
+  },
+  {
+    id: 'audit-trail',
+    tab: 'detections',
+    label: 'Detections · audit trail modification (write + delete)',
+    note:
+      'Two Claude Code rows in category "Audit trail modification", HIGH, among ordinary calls: ' +
+      'an Edit (write) and a Bash rm (delete). Open the Bash one: Detection shows "delete  Bash" ' +
+      'and the sentence "Tool call targeted xCLAUDE audit data with a delete operation". ' +
+      'The Category chip reads (9/9).',
+    entries: TWO_CONNECTORS,
+    events: rowsToEvents(AUDIT_TRAIL),
+    rows: AUDIT_TRAIL,
+    authAlerts: [],
+    baseline: BASELINE_BOTH,
+    retention: null,
+    hookVanishedTs: null,
   },
 ];
 

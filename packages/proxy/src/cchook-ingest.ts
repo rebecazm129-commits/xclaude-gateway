@@ -26,7 +26,7 @@
 //   Baseline tool_call_allowed only on the request (emitDetections); inbound
 //   emits nothing when no detector fires, like the wrapper.
 
-import { ACTIVE_DETECTORS, CONTENT_DETECTORS, credentialMatches } from './detection/detectors/index.js';
+import { CLAUDE_CODE_DETECTORS, CONTENT_DETECTORS, credentialMatches } from './detection/detectors/index.js';
 import { buildDetectorInput, emitDetections, runDetectors } from './detection/engine.js';
 import type { DetectorInput, McpRequestEnvelope, RpcId } from './detection/types.js';
 import type { Envelope } from './audit.js';
@@ -424,8 +424,11 @@ export function classify(
         ...buildDetectorInput(mcpEnvelope),
         paramsJson: requestScanText(parsed),
         toolName: tool,
+        // The session's working directory, for detectors that resolve
+        // relative paths (audit_trail_modification). Absent before F2.4.
+        ...(parsed.cwd !== undefined ? { cwd: parsed.cwd } : {}),
       };
-      const detections = emitDetections(input, ACTIVE_DETECTORS); // baseline included
+      const detections = emitDetections(input, CLAUDE_CODE_DETECTORS); // baseline included
       // (0k): one mcp.request PER detection, same rpcId/method/params.
       const reqEvents: Envelope[] = [
         { ...env, detection: detections[0] },

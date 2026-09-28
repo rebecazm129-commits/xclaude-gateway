@@ -282,11 +282,15 @@ describe('Detections CATEGORY_OPTIONS', () => {
   // medium so it could be seen at all.
   it('excludes tool_manifest_changed — manifest changes live in MCP changes', () => {
     expect(CATEGORY_OPTIONS).not.toContain('tool_manifest_changed');
-    expect(CATEGORY_OPTIONS).toHaveLength(8);
+    expect(CATEGORY_OPTIONS).toHaveLength(9);
   });
 
   it('includes protocol_tripwire — absent from this list it would be filtered out by default', () => {
     expect(CATEGORY_OPTIONS).toContain('protocol_tripwire');
+  });
+
+  it('includes audit_trail_modification, for the same reason', () => {
+    expect(CATEGORY_OPTIONS).toContain('audit_trail_modification');
   });
 
   it('the exclusion is what filters them out, not a second rule', () => {

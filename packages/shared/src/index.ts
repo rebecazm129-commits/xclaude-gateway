@@ -36,9 +36,11 @@ export type Severity = 'low' | 'medium' | 'high' | 'critical';
 // (Settings drawer About, README, release notes, the website).
 //
 // PENDING: protocol_tripwire (the shape of a JSON-RPC exchange, not its
-// content) was added after the count above was written. Whether it is a "risk
-// category" — and so whether the public copy becomes "7 risk categories" — is
-// an open product decision; the copy has NOT been changed yet.
+// content) and audit_trail_modification (a Claude Code tool call that writes
+// to or deletes xCLAUDE's own data folder) were added after the count above
+// was written. Whether they are "risk categories" — and so what the public
+// count becomes — is an open product decision; the copy has NOT been changed
+// yet.
 export type Category =
   | 'credential_detected'
   | 'prompt_injection'
@@ -48,6 +50,7 @@ export type Category =
   | 'pii_detected'
   | 'pii_structured'
   | 'protocol_tripwire'
+  | 'audit_trail_modification'
   | 'tool_manifest_changed';
 
 export interface DetectionFinding {

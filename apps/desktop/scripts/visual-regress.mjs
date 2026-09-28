@@ -80,6 +80,10 @@ const SCENARIOS = (
     // MCP changes with the Needs review only chip lifted: nothing narrows the
     // list, so All changes is the card that reads as the filter.
     'needs-review#Needs review only',
+    // audit_trail_modification: the table with both subtypes, then the panel
+    // of the delete row (the only Bash row).
+    'audit-trail',
+    'audit-trail#Bash',
   ].join(',')
 ).split(',');
 // Two widths: a narrow one where the 1fr column is squeezed and the chips wrap,

@@ -40,6 +40,10 @@ export interface DetectorInput {
   envelope: McpRequestEnvelope;
   paramsJson: string;
   toolName: string | undefined;
+  /** Working directory of the session that made the call, when the source
+   *  knows it — Claude Code's hook does (from F2.4); a wrapped MCP server does
+   *  not. Only detectors that resolve relative paths read it. */
+  cwd?: string;
 }
 
 export type Detector = (input: DetectorInput) => DetectorOutput | null;

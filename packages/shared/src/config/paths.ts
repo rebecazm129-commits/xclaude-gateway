@@ -21,14 +21,18 @@ export const CLAUDE_DESKTOP_CONFIG_PATH = join(
   'claude_desktop_config.json',
 );
 
+/**
+ * xCLAUDE Gateway's data folder: the audit trail (wrappers/), the connector
+ * baselines (manifests/), the masking salt, the Claude Code spool, locks and
+ * the stable bin/ symlinks. One function so nothing re-joins it by hand; the
+ * home directory is a parameter so a detector can be tested against a fixed
+ * one.
+ */
+export function xcgDataDir(home: string = homedir()): string {
+  return join(home, 'Library', 'Application Support', 'xCLAUDE Gateway');
+}
+
 // Stable symlink that the .app bootstraps on first launch (F3b) and that
 // the wrap plan references in claude_desktop_config.json. Survives moving
 // or reinstalling the .app, so the wrap entry never points at a dead path.
-export const STABLE_XCG_PROXY_PATH = join(
-  homedir(),
-  'Library',
-  'Application Support',
-  'xCLAUDE Gateway',
-  'bin',
-  'xcg-proxy',
-);
+export const STABLE_XCG_PROXY_PATH = join(xcgDataDir(), 'bin', 'xcg-proxy');

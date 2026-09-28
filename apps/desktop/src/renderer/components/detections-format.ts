@@ -39,8 +39,21 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   pii_detected: 'PII detected',
   pii_structured: 'Structured PII',
   protocol_tripwire: 'Protocol tripwire',
+  audit_trail_modification: 'Audit trail modification',
   tool_manifest_changed: 'Tool manifest changed',
 };
+
+/** What an audit_trail_modification finding says, one sentence per kind of
+ *  operation found (write, delete), in that order. Empty for any other
+ *  category. */
+export function auditTrailSentences(
+  category: Category,
+  findings: readonly { type: string }[],
+): string[] {
+  if (category !== 'audit_trail_modification') return [];
+  const ops = (['write', 'delete'] as const).filter((op) => findings.some((f) => f.type === op));
+  return ops.map((op) => `Tool call targeted xCLAUDE audit data with a ${op} operation`);
+}
 
 // Baseline rows whose method is NOT tools/call used to render as "Tool call".
 // That is a lie on 6,132 rows of the production trail (initialize 2,705,

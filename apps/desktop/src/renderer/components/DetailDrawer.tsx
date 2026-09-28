@@ -5,7 +5,13 @@ import type { ConnectorChangeView } from '../lib/xcgApi.js';
 import { ChangeDetail } from './ChangeDetail.js';
 import { Badge } from './Badge.js';
 import { calledServerLabel, rawToolName } from '../../shared/tool-names.js';
-import { PAIRED_SOURCE_LABELS, SOURCE_LABELS, categoryLabel, displaySeverity } from './detections-format.js';
+import {
+  PAIRED_SOURCE_LABELS,
+  SOURCE_LABELS,
+  auditTrailSentences,
+  categoryLabel,
+  displaySeverity,
+} from './detections-format.js';
 
 import styles from './DetailDrawer.module.css';
 import footer from './AuditFooter.module.css';
@@ -260,6 +266,11 @@ function DetectionDetailPanel({ row, onClose }: { row: DetectionRowSlim; onClose
                   ))}
                 </div>
               )}
+              {auditTrailSentences(row.category, detail.findings).map((sentence) => (
+                <div key={sentence} className={styles['emptyFindings']}>
+                  {sentence}
+                </div>
+              ))}
             </section>
 
             <section className={styles['blockCollapsible']}>

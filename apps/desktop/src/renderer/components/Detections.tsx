@@ -46,9 +46,11 @@ const SOURCE_OPTIONS: readonly SourceKind[] = ['gateway', 'claude-code'];
 // option lists can never be selected, so those events — historical ones
 // included — never match. They live in MCP changes, where a change with no
 // finding is a fact rather than a row graded medium so it could be seen at
-// all. Eight options remain: six risk categories, protocol_tripwire (the shape
-// of a JSON-RPC exchange rather than its content — whether it counts as a
-// "risk category" in public copy is still open) and tool_call_allowed.
+// all. Nine options remain: six risk categories, protocol_tripwire (the shape
+// of a JSON-RPC exchange rather than its content), audit_trail_modification (a
+// Claude Code tool call that wrote to or deleted xCLAUDE's own data) — whether
+// those two count as "risk categories" in public copy is still open — and
+// tool_call_allowed.
 export const CATEGORY_OPTIONS: readonly Category[] = [
   'credential_detected',
   'prompt_injection',
@@ -58,6 +60,7 @@ export const CATEGORY_OPTIONS: readonly Category[] = [
   'pii_detected',
   'pii_structured',
   'protocol_tripwire',
+  'audit_trail_modification',
 ];
 
 // Flagged = everything the detectors actually flagged: every category except
