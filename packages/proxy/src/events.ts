@@ -13,10 +13,12 @@ import { monotonicFactory, ulid } from 'ulid';
 // La fuente de verdad es @xcg/shared; este re-export es fachada explícita.
 import type {
   Attention,
+  ChangeReview,
   ConnectorChangeEntry,
   ConnectorFinding,
   ConnectorSection,
   Direction,
+  ReviewedWith,
   SnapshotRef,
 } from '@xcg/shared';
 export type { Direction };
@@ -293,6 +295,10 @@ export type EventBody =
       changes: ConnectorChangeEntry[];
       findings: ConnectorFinding[];
       attention: Attention;
+      /** A catalog review: no changes, findings about the definition as it
+       *  stands, and the rule versions the review ran with. */
+      review?: ChangeReview;
+      reviewed_with?: ReviewedWith;
       overheadUs: number;
     };
 

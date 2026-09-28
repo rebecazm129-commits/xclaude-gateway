@@ -13,9 +13,24 @@
 
 import type { ConnectorChangeEntryView, ConnectorChangeView } from '../lib/xcgApi.js';
 
+/** The sentence a catalog review adds: the finding is real, the edit is not. */
+export function baselineNote(mcp: string): string {
+  return `Found in ${mcp}'s existing definition. This does not mean it changed recently.`;
+}
+
 /** The fixed sentence under every "Why this is flagged" block. */
 export const SEVERITY_DISCLAIMER =
   "Severity describes the change xCLAUDE observed. It doesn't mean the connector is malicious.";
+
+/** The same sentence for a catalog review, where there was no change to
+ *  describe. */
+export const BASELINE_SEVERITY_DISCLAIMER =
+  'Severity describes what xCLAUDE found in this existing definition.';
+
+/** The sentence under "Why this is flagged" for this row. */
+export function severityDisclaimer(view: ConnectorChangeView): string {
+  return view.review === 'baseline' ? BASELINE_SEVERITY_DISCLAIMER : SEVERITY_DISCLAIMER;
+}
 
 const SECTION_NOUN: Record<ConnectorChangeView['section'], string> = {
   tools: 'Tool',
@@ -47,6 +62,12 @@ function targetsOf(view: ConnectorChangeView): string[] {
  */
 export function changeTitle(view: ConnectorChangeView): string {
   const targets = targetsOf(view);
+  // A catalog review changed nothing: the title must not say it did.
+  if (view.review === 'baseline') {
+    return targets.length > 1
+      ? `${targets.length} existing ${SECTION_PLURAL[view.section]} flagged`
+      : `Existing ${SECTION_NOUN[view.section].toLowerCase()} definition flagged`;
+  }
   if (targets.length > 1) return `${targets.length} ${SECTION_PLURAL[view.section]} changed`;
   return `${SECTION_NOUN[view.section]} definition changed`;
 }
@@ -121,6 +142,7 @@ export function detailsLine(view: ConnectorChangeView): string {
 
 /** The plain sentence at the top of the detail panel. */
 export function humanSummary(view: ConnectorChangeView): string {
+  if (view.review === 'baseline') return baselineSummary(view);
   const param = view.findings.find((f) => f.rule_id === 'sensitive_param_added');
   if (param !== undefined) {
     const name = leaf(param.evidence.path) ?? 'a parameter';
@@ -147,6 +169,26 @@ export function humanSummary(view: ConnectorChangeView): string {
   if (only === undefined) return `${view.mcp} changed.`;
   const sentence = CHANGE_PHRASE[only.kind](only.target);
   return `${sentence[0]!.toUpperCase()}${sentence.slice(1)}.`;
+}
+
+/** A catalog review: what a rule found and where — never "appeared" or
+ *  "added", because nothing moved — then the baseline note. */
+function baselineSummary(view: ConnectorChangeView): string {
+  const note = baselineNote(view.mcp);
+  const injected = view.findings.find((f) => f.rule_id === 'injection_marker');
+  if (injected !== undefined) {
+    return `Instruction-like text in ${injected.evidence.target ?? 'a tool'}, at ${injected.evidence.path ?? 'its definition'}. ${note}`;
+  }
+  const path = view.findings.find((f) => f.rule_id === 'sensitive_path_reference');
+  if (path !== undefined) {
+    return `A reference to a credential file in ${path.evidence.target ?? 'a tool'}, at ${path.evidence.path ?? 'its definition'}. ${note}`;
+  }
+  const hidden = view.findings.find((f) => f.rule_id === 'hidden_characters');
+  if (hidden !== undefined) {
+    const n = hidden.evidence.count ?? 1;
+    return `${n} invisible character${n === 1 ? '' : 's'} (${hidden.evidence.codepoint ?? 'unknown'}) in ${hidden.evidence.target ?? 'a tool'}. ${note}`;
+  }
+  return note;
 }
 
 // What happened to one item, as a person would say it after the item's name.

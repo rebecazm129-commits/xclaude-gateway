@@ -81,6 +81,9 @@ export interface ConnectorChangeView {
   review_status: 'unreviewed' | 'reviewed';
   review_history: { ts: string; from: string; to: string }[];
   source_format?: 'tool_manifest_changed_v1';
+  /** A catalog review: the findings are about the definition as it stands. */
+  review?: 'baseline';
+  reviewed_with?: Record<string, number>;
   /** Previous and new text of the descriptions that moved. Native events only:
    *  a historical one has no snapshot to diff against. */
   descriptionDiff?: { target: string; before: string; after: string }[];

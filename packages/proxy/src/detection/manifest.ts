@@ -19,10 +19,12 @@ import type {
   ConnectorFinding,
   DetectionBlock,
   DetectionFinding,
+  RuleId,
   Severity,
   SnapshotRef,
 } from '@xcg/shared';
 
+import { crossToolRule, looksLikeIdentifier } from './detectors/cross-tool.js';
 import { injectionFindings } from './detectors/prompt-injection.js';
 import { isSensitiveParamName } from './detectors/sensitive-params.js';
 import {
@@ -218,17 +220,25 @@ function scanToolSurface(
   let high = false;
   let medium = false;
 
-  // Injection markers anywhere on the surface, matched on the normalized view.
-  const injectionPaths = entries
-    .filter((e) => injectionFindings(e.normalized).length > 0)
-    .map((e) => e.path);
-  for (const path of injectionPaths.slice(0, MAX_SURFACE_FINDINGS)) {
+  // Injection markers anywhere on the surface, matched on the normalized view:
+  // the prompt-injection patterns first (rule `injection_pattern`), then, v2,
+  // the cross-tool phrasings (rule = which one). One finding per path.
+  const injectionHits: { path: string; rule: string }[] = [];
+  for (const e of entries) {
+    if (injectionFindings(e.normalized).length > 0) {
+      injectionHits.push({ path: e.path, rule: 'injection_pattern' });
+      continue;
+    }
+    const cross = crossToolRule(e.normalized, e.kind === 'key' || looksLikeIdentifier(e.normalized));
+    if (cross !== null) injectionHits.push({ path: e.path, rule: cross });
+  }
+  for (const hit of injectionHits.slice(0, MAX_SURFACE_FINDINGS)) {
     findings.push({
       type: 'injection_marker',
       ...ruleStamp('injection_marker'),
       location: name,
-      path,
-      rule: 'injection_pattern',
+      path: hit.path,
+      rule: hit.rule,
     });
     high = true;
   }
@@ -542,28 +552,66 @@ export function reportChanges(
       });
     }
     for (const f of scanRules(delta).findings) {
-      if (f.rule_id === undefined) continue; // external_ref: evidence, not a verdict
-      const evidence: ConnectorFinding['evidence'] = {};
-      if (f.rule_id === 'sensitive_param_added' && f.location !== undefined) {
-        evidence.target = delta.name;
-        evidence.path = f.location;
-      } else if (f.location !== undefined) {
-        evidence.target = f.location;
-      }
-      if (f.path !== undefined) evidence.path = f.path;
-      if (f.rule !== undefined) evidence.rule = f.rule;
-      if (f.codepoint !== undefined) evidence.codepoint = f.codepoint;
-      if (f.count !== undefined) evidence.count = f.count;
-      findings.push({
-        rule_id: f.rule_id,
-        rule_version: f.rule_version ?? 1,
-        severity: severityOf(f),
-        evidence,
-      });
+      const finding = toConnectorFinding(f, delta.name);
+      if (finding !== null) findings.push(finding);
     }
   }
   if (changes.length === 0 && findings.length === 0) return null;
   return { changes, findings };
+}
+
+/** A rule's DetectionFinding in the facts-model shape. null for evidence that
+ *  is not a verdict (external_ref). Shared by the change path and the catalog
+ *  review so the same finding reads — and grades — the same in both. */
+function toConnectorFinding(f: DetectionFinding, toolName: string): ConnectorFinding | null {
+  if (f.rule_id === undefined) return null; // external_ref: evidence, not a verdict
+  const evidence: ConnectorFinding['evidence'] = {};
+  if (f.rule_id === 'sensitive_param_added' && f.location !== undefined) {
+    evidence.target = toolName;
+    evidence.path = f.location;
+  } else if (f.location !== undefined) {
+    evidence.target = f.location;
+  }
+  if (f.path !== undefined) evidence.path = f.path;
+  if (f.rule !== undefined) evidence.rule = f.rule;
+  if (f.codepoint !== undefined) evidence.codepoint = f.codepoint;
+  if (f.count !== undefined) evidence.count = f.count;
+  return {
+    rule_id: f.rule_id,
+    rule_version: f.rule_version ?? 1,
+    severity: severityOf(f),
+    evidence,
+  };
+}
+
+/** The rules a catalog review runs: the ones that judge what a definition
+ *  SAYS. sensitive_param_added is never among them — it judges what was
+ *  ADDED, and in a catalog seen for the first time everything is "added" (80
+ *  high findings on the 361 real tools, every one a url/to/pageToken). */
+export const REVIEW_RULES: readonly RuleId[] = [
+  'injection_marker',
+  'sensitive_path_reference',
+  'hidden_characters',
+];
+
+/**
+ * Review a whole catalog as it stands — not a delta. Runs the full-surface
+ * scan on every tool and keeps the findings of `rules` only. Same findings,
+ * same severities as the change path would give the same definition.
+ */
+export function reviewToolSurfaces(
+  tools: readonly ToolDef[],
+  rules: ReadonlySet<RuleId>,
+): ConnectorFinding[] {
+  const out: ConnectorFinding[] = [];
+  for (const tool of tools) {
+    for (const f of scanToolSurface(tool, tool.name).findings) {
+      if (f.rule_id === undefined || !rules.has(f.rule_id)) continue;
+      const finding = toConnectorFinding(f, tool.name);
+      if (finding !== null) out.push(finding);
+    }
+  }
+  return out;
 }
 
 export function diffManifest(

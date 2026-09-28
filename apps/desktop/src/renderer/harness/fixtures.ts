@@ -326,6 +326,27 @@ const change = (over: Partial<ConnectorChangeView>): ConnectorChangeView => ({
   ...over,
 });
 
+/** A catalog review: nothing moved, a rule matched the definition as it
+ *  stands. The first time the auditor saw this catalog, or once after a rule
+ *  got a new version. */
+const BASELINE_REVIEW = change({
+  event_id: 'evt-baseline-review',
+  ts: '2026-09-27T09:12:00.000Z',
+  mcp: 'acme-docs',
+  snapshot: { before: null, after: 'sha256:cccc3333' },
+  changes: [],
+  findings: [
+    {
+      rule_id: 'injection_marker',
+      rule_version: 2,
+      severity: 'high',
+      evidence: { target: 'search_docs', path: '$.description', rule: 'ignore_other_tools' },
+    },
+  ],
+  review: 'baseline',
+  reviewed_with: { injection_marker: 2, sensitive_path_reference: 1, hidden_characters: 2 },
+});
+
 /** A sensitive parameter appeared on an existing tool. */
 const BCC = change({
   event_id: 'evt-bcc',
@@ -828,6 +849,26 @@ export const SCENARIOS: readonly Scenario[] = [
     baseline: {},
     retention: null,
     hookVanishedTs: null,
+  },
+  {
+    id: 'baseline-review',
+    tab: 'changes',
+    label: 'MCP changes · catalog review (baseline)',
+    note:
+      'Two rows. acme-docs is a catalog review: CHANGE reads "Existing tool definition flagged" — ' +
+      'never "changed" — HIGH, DETAILS "instruction-like text in search_docs". Open it: Summary ' +
+      '"Instruction-like text in search_docs, at $.description. Found in acme-docs\'s existing ' +
+      'definition. This does not mean it changed recently."; no per-item change lines; under Why ' +
+      'this is flagged: "Severity describes what xCLAUDE found in this existing definition." The ' +
+      'gmail row is an ordinary change and keeps "Severity describes the change xCLAUDE observed…".',
+    entries: TWO_CONNECTORS,
+    events: [],
+    rows: [],
+    authAlerts: [],
+    baseline: BASELINE_BOTH,
+    retention: null,
+    hookVanishedTs: null,
+    changes: [BASELINE_REVIEW, BCC],
   },
 ];
 

@@ -242,6 +242,22 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
                 ...(e.toVersion !== undefined ? { toVersion: e.toVersion } : {}),
               });
             }
+            // A catalog review BEFORE a change of the same observation: the
+            // review is about the catalog as it stood, the change about what
+            // moved from it.
+            if (obs.review !== undefined) {
+              events.push({
+                type: 'mcp.connector_change',
+                section: obs.section,
+                snapshot: obs.review.snapshot,
+                changes: [],
+                findings: obs.review.findings,
+                attention: { level: 'normal' },
+                review: 'baseline',
+                reviewed_with: obs.review.reviewedWith,
+                overheadUs: elapsedUs(tsObservedNs),
+              });
+            }
             if (obs.change !== undefined) {
               events.push({
                 type: 'mcp.connector_change',

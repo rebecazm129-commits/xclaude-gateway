@@ -32,7 +32,7 @@ import {
   type BaselineEvent,
 } from './manifest-sections.js';
 import { readBaselineV2, type SectionName } from './manifest-v2.js';
-import type { Attention } from '@xcg/shared';
+import type { Attention, ConnectorFinding, ReviewedWith, SnapshotRef } from '@xcg/shared';
 
 export interface SectionObservation {
   section: SectionName;
@@ -44,6 +44,9 @@ export interface SectionObservation {
   snapshot?: { before: string | null; after: string };
   /** A heuristic's opinion that a human should look. */
   attention?: Attention;
+  /** A catalog review that found something (manifest-sections.ts). `snapshot`
+   *  names the reviewed catalog: before is null because nothing was compared. */
+  review?: { findings: ConnectorFinding[]; reviewedWith: ReviewedWith; snapshot: SnapshotRef };
   /** Lifecycle facts. Never a detection, never counted. */
   events: BaselineEvent[];
 }
@@ -114,6 +117,15 @@ export function createSectionStore(baseDir: string, opts: SectionStoreOptions): 
         ? { snapshot: { before: priorHash, after: nextHash } }
         : {}),
       ...(outcome.attention !== undefined ? { attention: outcome.attention } : {}),
+      ...(outcome.review !== undefined
+        ? {
+            review: {
+              findings: outcome.review.findings,
+              reviewedWith: outcome.review.reviewedWith,
+              snapshot: { before: null, after: outcome.review.wireHash },
+            },
+          }
+        : {}),
       events: outcome.events,
     };
   }

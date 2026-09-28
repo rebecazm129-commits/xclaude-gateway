@@ -821,6 +821,8 @@ ipcMain.handle(
           review_status: c.review_status,
           review_history: c.review_history,
           ...(c.source_format !== undefined ? { source_format: c.source_format } : {}),
+          ...(c.review !== undefined ? { review: c.review } : {}),
+          ...(c.reviewed_with !== undefined ? { reviewed_with: c.reviewed_with } : {}),
         })),
       };
       writeFileSync(chosen.filePath, `${JSON.stringify(doc, null, 2)}\n`, { mode: 0o600 });

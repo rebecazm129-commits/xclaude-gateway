@@ -26,8 +26,16 @@ export const RULE_VERSIONS: Readonly<Record<RuleId, number>> = {
    *  recorded by shape, never read. */
   sensitive_path_reference: 1,
   /** An instruction-shaped marker anywhere on the tool surface, matched on the
-   *  normalized view. */
-  injection_marker: 1,
+   *  normalized view.
+   *  v2: adds four cross-tool phrasings (detectors/cross-tool.ts) — disregard
+   *  other tools' instructions, prefer this tool over all others, run before
+   *  any tool, stop using a named set of tools in favour of this one. v1 was
+   *  the four prompt-injection patterns alone (ignore previous instructions,
+   *  role override, system prompt leak, jailbreak markers).
+   *  Known gaps: a mention of a SPECIFIC tool of another server ("when using
+   *  send_email…"), semantic poisoning with no instruction-shaped wording, and
+   *  an instruction split across several tools or fields. */
+  injection_marker: 2,
   /** Invisible characters, graded by class (text-normalize.ts).
    *  v2: tag, bidi and a RUN of variation selectors high; zero-width, ANSI and
    *  rare invisible controls (U+206A-U+206F, the unassigned tag plane) medium.

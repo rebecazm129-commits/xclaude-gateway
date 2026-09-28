@@ -73,6 +73,10 @@ const SCENARIOS = (
     'launch-reference#playwright',
     'launch-reference#github',
     'launch-reference#notion',
+    // A catalog review line (review: baseline) in MCP changes, then its panel:
+    // nothing moved, so no title, summary or disclaimer may say it changed.
+    'baseline-review',
+    'baseline-review#acme-docs',
   ].join(',')
 ).split(',');
 // Two widths: a narrow one where the 1fr column is squeezed and the chips wrap,

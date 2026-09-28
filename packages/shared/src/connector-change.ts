@@ -100,6 +100,17 @@ export interface SnapshotRef {
   after: string;
 }
 
+/** Rule versions a catalog review ran with (rule id → version). */
+export type ReviewedWith = Partial<Record<RuleId, number>>;
+
+/**
+ * Why a connector_change with no changes exists. `baseline`: the auditor
+ * reviewed a catalog AS IT STANDS — the first time it saw it, or once when a
+ * rule got a new version — and a rule matched. Nothing moved; the finding is
+ * about the existing definition, not a recent edit.
+ */
+export type ChangeReview = 'baseline';
+
 export interface ConnectorChangeEvent {
   v: 1;
   id: string;
@@ -113,6 +124,9 @@ export interface ConnectorChangeEvent {
   changes: ConnectorChangeEntry[];
   findings: ConnectorFinding[];
   attention: Attention;
+  /** Present only on a catalog review (changes is then empty). */
+  review?: ChangeReview;
+  reviewed_with?: ReviewedWith;
 }
 
 export type ReviewStatus = 'unreviewed' | 'reviewed';
@@ -170,6 +184,10 @@ export interface ChangesExportEvent {
   /** Set only on rows reconstructed from pre-model trail lines, so a consumer
    *  does not read a missing snapshot as a defect. */
   source_format?: 'tool_manifest_changed_v1';
+  /** Set only on a catalog review: the finding is about the existing
+   *  definition, not a change. */
+  review?: ChangeReview;
+  reviewed_with?: ReviewedWith;
 }
 
 export interface ChangesExport {

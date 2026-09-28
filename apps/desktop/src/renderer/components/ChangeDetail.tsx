@@ -17,7 +17,7 @@ import { Badge } from './Badge.js';
 import { ChangeDiff } from './ChangeDiff.js';
 import {
   SECTION_LABELS,
-  SEVERITY_DISCLAIMER,
+  severityDisclaimer,
   changeTitle,
   historicalNote,
   humanSummary,
@@ -163,7 +163,7 @@ export function ChangeDetail({ change, onReview, onClose }: Props): JSX.Element 
             </div>
             {/* Fixed sentence, every time. Without it a HIGH pill reads as a
                 verdict on the vendor rather than a description of the edit. */}
-            <div className={styles['emptyFindings']}>{SEVERITY_DISCLAIMER}</div>
+            <div className={styles['emptyFindings']}>{severityDisclaimer(change)}</div>
           </section>
         )}
 

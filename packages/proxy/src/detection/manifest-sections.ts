@@ -10,17 +10,20 @@
 // classifier ships has nothing to compare against on that day.
 
 
-import type { Attention, ConnectorChangeEntry } from '@xcg/shared';
+import type { Attention, ConnectorChangeEntry, ConnectorFinding, ReviewedWith, RuleId } from '@xcg/shared';
 
 import {
+  REVIEW_RULES,
   buildManifest,
   canonicalizeCollection,
   canonicalize,
   reportChanges,
+  reviewToolSurfaces,
   type ChangeReport,
   type Manifest,
   type ToolDef,
 } from './manifest.js';
+import { RULE_VERSIONS } from './rules.js';
 import { planMigration } from './manifest-migrate.js';
 import { attentionFor, descriptionsOf } from './heuristics.js';
 import {
@@ -70,8 +73,54 @@ export interface SectionOutcome {
   /** What moved and what a rule made of it. Absent when nothing moved. A
    *  report with no findings is the normal case, and is not a detection. */
   change?: ChangeReport;
+  /** A catalog review that found something: the tools section as it stands,
+   *  judged by the review rules. Separate from `change` — a review and a
+   *  change can happen in the same observation and are different facts. */
+  review?: CatalogReview;
   events: BaselineEvent[];
 }
+
+export interface CatalogReview {
+  findings: ConnectorFinding[];
+  /** The rule versions this review ran with — what reviewed_with now says. */
+  reviewedWith: ReviewedWith;
+  /** wire hash of the catalog that was reviewed. */
+  wireHash: string;
+}
+
+// ---- catalog review ----------------------------------------------------------
+//
+// A baseline used to be seeded in silence: the first catalog a connector ever
+// showed was never judged by any rule, only what changed after it. So a
+// connector that arrived already poisoned was never looked at.
+//
+// The tools section is now REVIEWED as it stands, by the rules that judge what
+// a definition says (REVIEW_RULES — never sensitive_param_added, which judges
+// what was added). It happens in two situations, and in each exactly once:
+//   - the seed: the first time a catalog is seen;
+//   - a rule's version going up (including baselines from before the review,
+//     which carry no reviewed_with): the STORED snapshot is reviewed once,
+//     with only the rules whose version rose, so a finding already reported
+//     is not reported again.
+// A clean review is silent, as the seed always was. A review with findings is
+// emitted as a connector_change with no changes and review: 'baseline'. The
+// severities are the ones the same finding gets in a change.
+
+/** The review rules at their current versions. */
+function currentReviewVersions(): ReviewedWith {
+  const out: ReviewedWith = {};
+  for (const r of REVIEW_RULES) out[r] = RULE_VERSIONS[r];
+  return out;
+}
+
+/** Review rules whose current version is above what the catalog was reviewed
+ *  with. A missing entry, or a missing reviewed_with, is version 0. */
+function staleReviewRules(reviewed: ReviewedWith | undefined): Set<RuleId> {
+  return new Set(REVIEW_RULES.filter((r) => (reviewed?.[r] ?? 0) < RULE_VERSIONS[r]));
+}
+
+const toolsOf = (snapshot: unknown): ToolDef[] =>
+  itemsOf(snapshot).filter((i) => typeof i['name'] === 'string') as unknown as ToolDef[];
 
 /** Does this result declare more pages? A non-empty nextCursor means the
  *  collection in hand is partial. */
@@ -266,13 +315,54 @@ export function observeSection(
       events.push({ event: 'migrated', coverageExpanded: plan.coverageExpanded });
     }
     events.push({ event: 'section_initialized', section });
-    baseline.sections[section] = freshSection(section, snapshot, baseline.generation + 1, now);
+    const fresh = freshSection(section, snapshot, baseline.generation + 1, now);
+    // Review the catalog seen for the first time. Not when a v1 migration
+    // just reported a change: that report already judged what moved, and
+    // leaving reviewed_with unset makes the NEXT observation review the stored
+    // catalog once — one fact per event.
+    let review: CatalogReview | undefined;
+    if (section === 'tools' && change === undefined) {
+      fresh.reviewed_with = currentReviewVersions();
+      const findings = reviewToolSurfaces(toolsOf(snapshot), new Set(REVIEW_RULES));
+      if (findings.length > 0) {
+        review = { findings, reviewedWith: fresh.reviewed_with, wireHash: fresh.wire_hash };
+      }
+    }
+    baseline.sections[section] = fresh;
     writeBaselineV2(deps.baseDir, baseline, now);
-    return { ...(change !== undefined ? { change } : {}), events };
+    return {
+      ...(change !== undefined ? { change } : {}),
+      ...(review !== undefined ? { review } : {}),
+      events,
+    };
+  }
+
+  // A rule got a new version since this catalog was reviewed (or it never was):
+  // review the STORED catalog once, with the rules that moved, and record it.
+  let review: CatalogReview | undefined;
+  let reviewed = false;
+  if (section === 'tools') {
+    const stale = staleReviewRules(existing.reviewed_with);
+    if (stale.size > 0) {
+      const findings = reviewToolSurfaces(toolsOf(existing.snapshot), stale);
+      existing.reviewed_with = { ...existing.reviewed_with, ...currentReviewVersions() };
+      reviewed = true;
+      if (findings.length > 0) {
+        review = { findings, reviewedWith: existing.reviewed_with, wireHash: existing.wire_hash };
+      }
+    }
   }
 
   const wire = hashOf(snapshot);
-  if (wire === existing.wire_hash) return { ...(change !== undefined ? { change } : {}), events };
+  if (wire === existing.wire_hash) {
+    // Nothing moved; only the review mark did, and it must persist.
+    if (reviewed) writeBaselineV2(deps.baseDir, baseline, now);
+    return {
+      ...(change !== undefined ? { change } : {}),
+      ...(review !== undefined ? { review } : {}),
+      events,
+    };
+  }
 
   // Wire moved: say what moved, then advance the baseline.
   //
@@ -308,6 +398,7 @@ export function observeSection(
   writeBaselineV2(deps.baseDir, baseline, now);
   return {
     ...(change !== undefined ? { change } : {}),
+    ...(review !== undefined ? { review } : {}),
     ...(attention.level === 'review_recommended' ? { attention } : {}),
     events,
   };

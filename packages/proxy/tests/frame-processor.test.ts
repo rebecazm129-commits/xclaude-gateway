@@ -426,6 +426,51 @@ describe('createFrameProcessor — tool_manifest_changed (tools/list)', () => {
     expect(observe).toHaveBeenCalledWith('test-mcp', 'tools/list', TOOLS);
   });
 
+  const REVIEW: NonNullable<SectionObservation['review']> = {
+    findings: [
+      {
+        rule_id: 'injection_marker',
+        rule_version: 2,
+        severity: 'high',
+        evidence: { target: 'send', path: '$.description', rule: 'ignore_other_tools' },
+      },
+    ],
+    reviewedWith: { injection_marker: 2, sensitive_path_reference: 1, hidden_characters: 2 },
+    snapshot: { before: null, after: 'sha256:a' },
+  };
+
+  it('a catalog review is its own connector_change: no changes, review: baseline', () => {
+    const { store } = stubStore({ section: 'tools', review: REVIEW, events: [] });
+    const events = runListReqResp(store, TOOLS);
+    expect(events.map((e) => e.type)).toEqual(['mcp.response', 'mcp.connector_change']);
+    const ev = events[1];
+    if (ev?.type !== 'mcp.connector_change') throw new Error('expected connector_change');
+    expect(ev.changes).toEqual([]);
+    expect(ev.findings).toEqual(REVIEW.findings);
+    expect(ev.review).toBe('baseline');
+    expect(ev.reviewed_with).toEqual(REVIEW.reviewedWith);
+    expect(ev.snapshot).toEqual(REVIEW.snapshot);
+    expect(ev.attention).toEqual({ level: 'normal' });
+  });
+
+  it('a review and a change in one observation: the review line first', () => {
+    const { store } = stubStore({ ...OBS, review: REVIEW });
+    const events = runListReqResp(store, TOOLS);
+    const lines = events.filter((e) => e.type === 'mcp.connector_change');
+    expect(lines.map((e) => (e.type === 'mcp.connector_change' ? e.review ?? 'change' : ''))).toEqual([
+      'baseline',
+      'change',
+    ]);
+  });
+
+  it('a plain change carries no review field', () => {
+    const { store } = stubStore(OBS);
+    const ev = runListReqResp(store, TOOLS)[1];
+    if (ev?.type !== 'mcp.connector_change') throw new Error('expected connector_change');
+    expect('review' in ev).toBe(false);
+    expect('reviewed_with' in ev).toBe(false);
+  });
+
   it('a change with NO findings is still emitted — that is the model', () => {
     // The old detector could only speak by raising a detection, so a plain
     // vendor edit had to be graded medium to be seen at all. Now it is a fact

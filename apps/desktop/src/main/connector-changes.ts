@@ -51,9 +51,11 @@ import {
   type ReviewStatus,
   type Attention,
   type ChangeKind,
+  type ChangeReview,
   type ConnectorChangeEntry,
   type ConnectorFinding,
   type ConnectorSection,
+  type ReviewedWith,
   type RuleId,
   type SnapshotRef,
 } from '@xcg/shared';
@@ -83,6 +85,10 @@ export interface ConnectorChangeView {
   review_status: ReviewStatus;
   review_history: ReviewStep[];
   source_format?: 'tool_manifest_changed_v1';
+  /** A catalog review: findings about the definition as it stands, no
+   *  changes. Native lines only. */
+  review?: ChangeReview;
+  reviewed_with?: ReviewedWith;
 }
 
 const LEGACY_TYPE = 'mcp.detection_enrichment';
@@ -190,6 +196,8 @@ export function fromNativeLine(value: unknown): ConnectorChangeView | null {
   if (!Array.isArray(value['changes']) || !Array.isArray(value['findings'])) return null;
   const section = value['section'];
   const attention = value['attention'];
+  const review = value['review'];
+  const reviewedWith = value['reviewed_with'];
   return {
     event_id: id,
     ts,
@@ -201,7 +209,58 @@ export function fromNativeLine(value: unknown): ConnectorChangeView | null {
     attention: (isRecord(attention) ? attention : { level: 'normal' }) as Attention,
     review_status: 'unreviewed',
     review_history: [],
+    ...(review === 'baseline' ? { review } : {}),
+    ...(isRecord(reviewedWith) ? { reviewed_with: reviewedWith as ReviewedWith } : {}),
   };
+}
+
+/** What makes two review lines the same record: everything the event
+ *  states, minus its id, time and session. */
+function duplicateKey(v: ConnectorChangeView): string {
+  return JSON.stringify([
+    v.section,
+    v.snapshot,
+    v.changes,
+    v.findings,
+    v.attention,
+    v.reviewed_with ?? null,
+    v.review ?? null,
+  ]);
+}
+
+/**
+ * Two proxies of the same connector (two clients, or a restart racing the old
+ * process) can each review the same catalog and each write the same line. The
+ * trail keeps both — it is evidence of what each process did — but the list
+ * shows one: consecutive CATALOG REVIEW lines of the same connector that state
+ * exactly the same thing collapse into the newest. A reviewed copy wins over
+ * an unreviewed one, so a mark is never hidden.
+ *
+ * Only review lines. Change lines are not collapsed, even identical ones: a
+ * change's review status follows the event, not its content (see "a new change
+ * starts unreviewed even when an identical one was reviewed").
+ */
+export function collapseDuplicates(views: readonly ConnectorChangeView[]): ConnectorChangeView[] {
+  const out: ConnectorChangeView[] = [];
+  const last = new Map<string, { key: string; index: number }>();
+  for (const v of views) {
+    if (v.review !== 'baseline') {
+      last.delete(v.mcp);
+      out.push(v);
+      continue;
+    }
+    const key = duplicateKey(v);
+    const prev = last.get(v.mcp);
+    if (prev !== undefined && prev.key === key) {
+      if (out[prev.index]!.review_status !== 'reviewed' && v.review_status === 'reviewed') {
+        out[prev.index] = v;
+      }
+      continue;
+    }
+    last.set(v.mcp, { key, index: out.length });
+    out.push(v);
+  }
+  return out;
 }
 
 /** Either format, or null when the line is neither. */
@@ -310,6 +369,7 @@ export async function readConnectorChanges(
   }
   out.sort((a, b) => b.ts.localeCompare(a.ts));
   // Fold BEFORE the cap: a marker written today may point at a change far down
-  // the list, and slicing first would silently lose it.
-  return foldReviewStatus(out, markers).slice(0, limit);
+  // the list, and slicing first would silently lose it. Collapse after the
+  // fold, so a reviewed duplicate can win.
+  return collapseDuplicates(foldReviewStatus(out, markers)).slice(0, limit);
 }

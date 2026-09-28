@@ -37,6 +37,8 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 
+import type { ReviewedWith } from '@xcg/shared';
+
 export const STORAGE_VERSION = 2;
 export const CANONICALIZATION_VERSION = 1;
 export const SECURITY_PROJECTION_VERSION = 1;
@@ -72,6 +74,13 @@ export interface SectionState {
   last_changed_generation: number;
   /** Most recent first, this section's current hash included. */
   recent_wire_hashes: string[];
+  /** tools only: the rule versions the catalog was last REVIEWED with, as it
+   *  stood (manifest-sections.ts). Absent on baselines written before the
+   *  review existed, which reads as "never reviewed". It lives inside the
+   *  section state on purpose: readBaselineV2 keeps a section's object as it
+   *  is, and every write spreads the existing state, so a build that does not
+   *  know the field still carries it — a top-level field would be dropped. */
+  reviewed_with?: ReviewedWith;
 }
 
 export interface BaselineV2 {
