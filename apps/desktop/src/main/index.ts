@@ -83,6 +83,7 @@ import { computeReloginTransitions } from './relogin-notify.js';
 import { readNotified, writeNotified, type NotifiedMap } from './relogin-state.js';
 import { isAllowedNavigation } from './navigation-guard.js';
 import { writeRecoveryMarkerAfterConnect, writeReloginNotified } from './recovery-writer.js';
+import { excludeSpoolFromTimeMachine } from './spool-exclusion.js';
 import { readBaselineHistory, type BaselineHistoryEntry } from './baseline-history.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -559,6 +560,9 @@ const auditStore = createAuditStore(WRAPPERS_DIR);
 // The hook-integrity pass rides the same trigger (app start + 15s tick),
 // AFTER each ingest cycle and with its own catch — an ingest failure never
 // hides an integrity check, and vice versa.
+// The spool is created here too (not only by the hook) and excluded from Time
+// Machine; a failure is logged inside and never blocks the ingest.
+void excludeSpoolFromTimeMachine();
 void runCchookIngestCycle()
   .catch((err) => {
     console.error('cchook-ingester: startup cycle failed:', err);

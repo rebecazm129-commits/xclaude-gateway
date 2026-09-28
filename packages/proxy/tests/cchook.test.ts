@@ -14,6 +14,13 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { runCchook, CCHOOK_MAX_BYTES, CCHOOK_STDIN_TIMEOUT_MS } from '../src/cchook.js';
 import { cchookSpoolDir } from '../src/cchook-paths.js';
 
+// The masking key the hook would read from the data folder, fixed for tests so
+// no test touches the real salt.
+const TEST_KEY = Buffer.from('0123456789abcdef0123456789abcdef', 'utf8');
+/** The payload field of a redacted spool record. */
+const spoolPayload = (path: string): string =>
+  (JSON.parse(readFileSync(path, 'utf8')) as { payload: string }).payload;
+
 const ULID_JSON_RE = /^[0-9A-HJKMNP-TV-Z]{26}\.json$/;
 
 // Synthetic stand-in with the shape of a real PostToolUse payload. The real
@@ -71,6 +78,7 @@ async function capture(
     exit: (code) => {
       exits.push(code);
     },
+    auditKey: () => TEST_KEY,
     ...(opts.maxBytes !== undefined ? { maxBytes: opts.maxBytes } : {}),
     ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
     ...(opts.writeFileSyncImpl !== undefined
@@ -94,8 +102,10 @@ describe('runCchook', () => {
       const { exits, files, spoolDir } = await capture(bytes);
       expect(exits, name).toEqual([0]);
       expect(files, name).toHaveLength(1);
-      const written = readFileSync(join(spoolDir, files[0] as string));
-      expect(written.equals(bytes), `${name}: bytes must roundtrip untouched`).toBe(true);
+      // The spool file is the redacted record; a payload with no credential
+      // comes back in its payload field exactly as it was read.
+      const written = spoolPayload(join(spoolDir, files[0] as string));
+      expect(written, `${name}: payload must roundtrip untouched`).toBe(bytes.toString('utf8'));
     }
   });
 
@@ -147,9 +157,9 @@ describe('runCchook', () => {
     const { exits, files, spoolDir } = await capture(payload, { maxBytes: cap });
     expect(exits).toEqual([0]);
     expect(files).toHaveLength(1);
-    const written = readFileSync(join(spoolDir, files[0] as string));
+    const written = spoolPayload(join(spoolDir, files[0] as string));
     expect(written.length).toBe(cap);
-    expect(written.equals(payload.subarray(0, cap))).toBe(true);
+    expect(written).toBe(payload.subarray(0, cap).toString('utf8'));
   });
 
   it("broken pipe: partial payload then 'error' → persists what was read, exit 0, silent", async () => {
@@ -164,6 +174,7 @@ describe('runCchook', () => {
       exit: (code) => {
         exits.push(code);
       },
+      auditKey: () => TEST_KEY,
     });
     const partial = '{"hook_event_name":"PostToolUse","tool_name":"Ba'; // writer died mid-payload
     stdin.write(partial);
@@ -172,8 +183,7 @@ describe('runCchook', () => {
     expect(exits).toEqual([0]);
     const files = readdirSync(spoolDir);
     expect(files).toHaveLength(1);
-    const written = readFileSync(join(spoolDir, files[0] as string));
-    expect(written.toString('utf8')).toBe(partial);
+    expect(spoolPayload(join(spoolDir, files[0] as string))).toBe(partial);
     expect(outSpy).not.toHaveBeenCalled();
     expect(errSpy).not.toHaveBeenCalled();
   });
@@ -184,8 +194,7 @@ describe('runCchook', () => {
     const { exits, files, spoolDir } = await capture(partial, { end: false, timeoutMs: 40 });
     expect(exits).toEqual([0]);
     expect(files).toHaveLength(1);
-    const written = readFileSync(join(spoolDir, files[0] as string));
-    expect(written.toString('utf8')).toBe(partial);
+    expect(spoolPayload(join(spoolDir, files[0] as string))).toBe(partial);
   });
 });
 

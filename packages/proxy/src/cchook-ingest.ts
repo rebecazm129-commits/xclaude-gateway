@@ -35,8 +35,9 @@
 
 import { CLAUDE_CODE_DETECTORS, CONTENT_DETECTORS, credentialMatches } from './detection/detectors/index.js';
 import { buildDetectorInput, emitDetections, runDetectors } from './detection/engine.js';
-import type { DetectorInput, McpRequestEnvelope, RpcId } from './detection/types.js';
+import type { DetectorInput, DetectorOutput, McpRequestEnvelope, RpcId } from './detection/types.js';
 import type { Envelope } from './audit.js';
+import { REDACTION_VERSION } from './cchook-spool.js';
 import { attachMaskSecrets } from './events.js';
 
 export { cchookSpoolDir } from './cchook-paths.js';
@@ -143,6 +144,76 @@ export function parseHookPayload(bytes: Buffer | string): ParsedHook {
     extras,
     raw: parsed,
   };
+}
+
+// --- spool file ----------------------------------------------------------------
+
+/** What one spool file holds, read back. */
+export interface SpoolContent {
+  parsed: ParsedHook;
+  /** The masks xcg-cchook applied (fp → type). Only these raise
+   *  credential_detected: the payload no longer contains the secret itself,
+   *  and a mask that was already in the text (the trail being read, say) is
+   *  not something this call leaked. */
+  hookMasks: ReadonlyMap<string, string>;
+  /** null for a file written before redaction existed (raw payload). */
+  redactionVersion: number | null;
+}
+
+const NO_MASKS: ReadonlyMap<string, string> = new Map();
+
+/**
+ * Read a spool file in either format: the redacted one xcg-cchook writes now
+ * ({ redaction_version, masked, payload } — see cchook-spool.ts), or a raw
+ * payload left by an older hook. An omitted record (redaction failed) parses
+ * as an unknown payload, so it lands as a cc.event naming only its keys.
+ */
+export function readSpool(bytes: Buffer | string): SpoolContent {
+  const text = typeof bytes === 'string' ? bytes : bytes.toString('utf8');
+  let obj: unknown;
+  try {
+    obj = JSON.parse(text);
+  } catch {
+    return { parsed: parseHookPayload(text), hookMasks: NO_MASKS, redactionVersion: null };
+  }
+  if (obj !== null && typeof obj === 'object' && !Array.isArray(obj)) {
+    const o = obj as Record<string, unknown>;
+    const version = o['redaction_version'];
+    if (typeof version === 'number' && version <= REDACTION_VERSION && typeof o['payload'] === 'string') {
+      const masks = new Map<string, string>();
+      if (Array.isArray(o['masked'])) {
+        for (const m of o['masked']) {
+          if (m !== null && typeof m === 'object') {
+            const { type, fp } = m as Record<string, unknown>;
+            if (typeof type === 'string' && typeof fp === 'string') masks.set(fp, type);
+          }
+        }
+      }
+      return { parsed: parseHookPayload(o['payload']), hookMasks: masks, redactionVersion: version };
+    }
+    if (typeof version === 'number') {
+      // An omitted record, or a newer format this build cannot read: never
+      // guess at it — keep only its key names.
+      return { parsed: parseHookPayload(text), hookMasks: NO_MASKS, redactionVersion: version };
+    }
+  }
+  return { parsed: parseHookPayload(text), hookMasks: NO_MASKS, redactionVersion: null };
+}
+
+const MASK_TOKEN = /\[credential:([a-z_]+) fp:([0-9a-f]{16})\]/g;
+
+/** credential_detected from the masks the HOOK applied, found in `text`. */
+function hookMaskedCredential(
+  text: string,
+  hookMasks: ReadonlyMap<string, string>,
+  location: string,
+): DetectorOutput | null {
+  if (hookMasks.size === 0) return null;
+  const findings: { type: string; location: string }[] = [];
+  for (const m of text.matchAll(MASK_TOKEN)) {
+    if (hookMasks.get(m[2]!) === m[1]) findings.push({ type: m[1]!, location });
+  }
+  return findings.length === 0 ? null : { category: 'credential_detected', severity: 'critical', findings };
 }
 
 // --- tool-name split ----------------------------------------------------------
@@ -444,6 +515,7 @@ export function classify(
   envelopes: readonly Envelope[],
   parsed: ParsedHook,
   nextId: () => string,
+  hookMasks: ReadonlyMap<string, string> = NO_MASKS,
 ): Envelope[] {
   if (parsed.kind !== 'hook') return [...envelopes];
   const { tool } = splitToolName(parsed.toolName ?? '');
@@ -468,7 +540,13 @@ export function classify(
         // relative paths (audit_trail_modification). Absent before F2.4.
         ...(parsed.cwd !== undefined ? { cwd: parsed.cwd } : {}),
       };
-      const detections = emitDetections(input, CLAUDE_CODE_DETECTORS); // baseline included
+      let detections = emitDetections(input, CLAUDE_CODE_DETECTORS); // baseline included
+      // A credential the hook already masked is no longer in the text for the
+      // detector to find; its mask is the evidence. It replaces the baseline.
+      const masked = hookMaskedCredential(input.paramsJson, hookMasks, 'params');
+      if (masked !== null) {
+        detections = [masked, ...detections.filter((d) => d.category !== 'tool_call_allowed')];
+      }
       // (0k): one mcp.request PER detection, same rpcId/method/params.
       const reqEvents: Envelope[] = [
         { ...env, detection: detections[0] },
@@ -504,7 +582,11 @@ export function classify(
           paramsJson: text,
           toolName: undefined,
         };
-        for (const detection of runDetectors(input, CONTENT_DETECTORS)) {
+        const maskedInbound = hookMaskedCredential(text, hookMasks, 'result');
+        for (const detection of [
+          ...(maskedInbound !== null ? [maskedInbound] : []),
+          ...runDetectors(input, CONTENT_DETECTORS),
+        ]) {
           // Inbound credential in the result/error text → mask it out of the
           // persisted mcp.response (env, pushed above, carries the raw
           // result/error). Reuse the same scan; the enrichment below only

@@ -119,12 +119,17 @@ export function loadOrCreateAuditSalt(baseDir: string): Buffer {
  * differ across processes/restarts — accepted; masking-before-persist wins over
  * cross-process fingerprint stability. Logged to stderr for triage.
  */
-export function resolveAuditKey(baseDir: string): Buffer {
+export function resolveAuditKey(
+  baseDir: string,
+  // Where the fallback is reported. The wrapper logs to stderr; the Claude
+  // Code hook passes a no-op, because a hook must never write to stderr.
+  warn: (message: string) => void = (message) => process.stderr.write(message),
+): Buffer {
   try {
     return loadOrCreateAuditSalt(baseDir);
   } catch (err) {
     if (cachedKey === null) cachedKey = randomBytes(SALT_BYTES);
-    process.stderr.write(
+    warn(
       `xcg-proxy: audit salt unavailable (${err instanceof Error ? err.message : String(err)}); ` +
         `using an ephemeral key — credential fingerprints won't be stable across processes.\n`,
     );

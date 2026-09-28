@@ -28,8 +28,8 @@ import {
   cchookSpoolDir,
   classify,
   maskCredentials,
-  parseHookPayload,
   readMaskSecrets,
+  readSpool,
   resolveAuditKey,
   synthesize,
 } from '@xcg/proxy/cchook-ingest';
@@ -215,7 +215,9 @@ async function drainSpool(
 
     try {
       const bytes = await readFile(spoolPath);
-      const parsed = parseHookPayload(bytes);
+      // The hook writes a redacted file ({ redaction_version, masked,
+      // payload }); readSpool also accepts the raw payload older hooks left.
+      const { parsed, hookMasks } = readSpool(bytes);
       const captureTimeMs = decodeUlidTime(spoolUlid) ?? Date.now();
 
       // Heartbeat route (a): a SessionStart capture IS the "Claude Code was
@@ -242,6 +244,7 @@ async function drainSpool(
         synthesize(parsed, { sessionUlid, captureTimeMs, nextId }),
         parsed,
         nextId,
+        hookMasks,
       );
 
       mkdirSync(wrappersDir, { recursive: true });

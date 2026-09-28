@@ -4,19 +4,27 @@
 // stderr, and no error may escape (catch-all). A hook that fails or blocks
 // would degrade Claude Code itself; losing one capture is always preferable.
 //
-// It does exactly one thing: read stdin (the hook's JSON payload) and persist
-// the raw bytes as ONE spool file per invocation — ${ulid()}.json under
-// cchookSpoolDir(). No parsing, no validation of the payload's shape: parsing
-// is F1.2's job, downstream, off the hook's critical path.
+// It does exactly one thing: read stdin (the hook's JSON payload), MASK every
+// known credential format in it, and persist the result as ONE spool file per
+// invocation — ${ulid()}.json under cchookSpoolDir(). The masking works on the
+// payload as TEXT, with the trail's own code and salt (cchook-spool.ts); there
+// is still no JSON parsing and no validation of the payload's shape: parsing
+// is F1.2's job, downstream, off the hook's critical path. Masking is
+// unconditional, and if it fails the original payload is never written — only
+// a record that N bytes were omitted.
 //
-// Allowed dependencies: node:fs, node:path, node:os, ulid. Nothing else.
+// Allowed dependencies: node:fs, node:path, node:os, node:crypto, ulid, and the
+// trail's masking modules (detection/masking.ts, detection/detectors/
+// credential.ts, through cchook-spool.ts). Nothing else.
 
 import { mkdirSync as fsMkdirSync, writeFileSync as fsWriteFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { ulid } from 'ulid';
 
 import { cchookSpoolDir } from './cchook-paths.js';
+import { omittedSpoolBody, redactForSpool } from './cchook-spool.js';
+import { resolveAuditKey } from './detection/masking.js';
 
 /** Hard cap on captured bytes. Past it, input is truncated but stdin keeps
  *  being drained (capture-all: the writer must never block on us). */
@@ -36,6 +44,11 @@ export interface CchookDeps {
   exit?: (code: 0) => void;
   maxBytes?: number;
   timeoutMs?: number;
+  /** The masking key. Default: the per-install salt next to the spool, with
+   *  the ephemeral fallback, never reporting anything (a hook stays silent). */
+  auditKey?: () => Buffer;
+  /** Test seam for the redaction step; production always uses redactForSpool. */
+  redact?: (payload: string, key: Buffer) => string;
 }
 
 /**
@@ -51,6 +64,12 @@ export function installFailsafe(
 ): void {
   proc.on('uncaughtException', () => exit(0));
   proc.on('unhandledRejection', () => exit(0));
+}
+
+/** The trail's key: the salt in the data folder (the spool's grandparent),
+ *  or the ephemeral key if it cannot be read — silently. */
+function defaultAuditKey(): Buffer {
+  return resolveAuditKey(dirname(dirname(cchookSpoolDir())), () => undefined);
 }
 
 export async function runCchook(deps: CchookDeps = {}): Promise<void> {
@@ -97,12 +116,22 @@ export async function runCchook(deps: CchookDeps = {}): Promise<void> {
     }
 
     const dir = deps.spoolDir ?? cchookSpoolDir();
+    // Mask before anything touches the disk. Any failure here — the key, the
+    // scan, the serialisation — writes the omitted record instead; the
+    // original bytes are never written.
+    let body: string;
+    try {
+      const key = (deps.auditKey ?? defaultAuditKey)();
+      body = (deps.redact ?? redactForSpool)(payload.toString('utf8'), key);
+    } catch {
+      body = omittedSpoolBody(payload.length);
+    }
     // Lazy, first-use creation — same pattern as the refresh lock dir.
     mkdirSync(dir, { recursive: true });
-    // One file per invocation, raw bytes as received. 'wx' so a (negligible)
-    // ULID collision can never clobber an existing capture; 0o600 like every
-    // credential-adjacent file we write.
-    writeFileSync(join(dir, `${ulid()}.json`), payload, { flag: 'wx', mode: 0o600 });
+    // One file per invocation. 'wx' so a (negligible) ULID collision can never
+    // clobber an existing capture; 0o600 like every credential-adjacent file
+    // we write.
+    writeFileSync(join(dir, `${ulid()}.json`), body, { flag: 'wx', mode: 0o600 });
   } catch {
     // Catch-all: a lost capture is acceptable; a failing hook is not.
   }
