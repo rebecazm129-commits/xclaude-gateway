@@ -39,6 +39,10 @@ export type DetailDrawerProps =
   | {
       change: ConnectorChangeView | null;
       onReview: (change: ConnectorChangeView) => void;
+      /** A review-status write for this change is in flight. */
+      reviewPending?: boolean;
+      /** A failed review-status write, said in the panel. */
+      reviewError?: string | null;
       onClose: () => void;
       row?: never;
     };
@@ -330,5 +334,13 @@ function DetectionDetailPanel({ row, onClose }: { row: DetectionRowSlim; onClose
 export function DetailDrawer(props: DetailDrawerProps): JSX.Element | null {
   if (props.row !== undefined) return <DetectionDetailPanel row={props.row} onClose={props.onClose} />;
   if (props.change === null || props.change === undefined) return null;
-  return <ChangeDetail change={props.change} onReview={props.onReview} onClose={props.onClose} />;
+  return (
+    <ChangeDetail
+      change={props.change}
+      onReview={props.onReview}
+      reviewPending={props.reviewPending ?? false}
+      reviewError={props.reviewError ?? null}
+      onClose={props.onClose}
+    />
+  );
 }

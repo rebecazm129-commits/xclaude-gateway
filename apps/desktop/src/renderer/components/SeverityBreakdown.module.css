@@ -82,24 +82,42 @@
   color: var(--kraft-critical-text);
 }
 
+/* The active card: a 2px edge in the card's own colour, drawn WITHOUT taking
+   space. The border keeps its hairline width (only its colour changes) and an
+   inset ring adds the rest, so hairline + ring = 2px and the card never grows
+   when it becomes the filter — a wider border would push the whole list below
+   it down by a pixel. Padding untouched. The keyboard focus ring stays an
+   OUTLINE in the accent colour, outside the card (see .card:focus-visible), so
+   focus and "this is the filter" never look alike. */
+.cardActive {
+  --card-active-ring: calc(2px - var(--kraft-hairline));
+}
+
 .cardActive.card_low {
-  border: 2px solid var(--kraft-low-dot);
-  padding: 11px 15px;
+  border-color: var(--kraft-low-dot);
+  box-shadow: inset 0 0 0 var(--card-active-ring) var(--kraft-low-dot);
 }
 
 .cardActive.card_medium {
-  border: 2px solid var(--kraft-medium-dot);
-  padding: 11px 15px;
+  border-color: var(--kraft-medium-dot);
+  box-shadow: inset 0 0 0 var(--card-active-ring) var(--kraft-medium-dot);
 }
 
 .cardActive.card_high {
-  border: 2px solid var(--kraft-high-dot);
-  padding: 11px 15px;
+  border-color: var(--kraft-high-dot);
+  box-shadow: inset 0 0 0 var(--card-active-ring) var(--kraft-high-dot);
 }
 
 .cardActive.card_critical {
-  border: 2px solid var(--kraft-critical-dot);
-  padding: 11px 15px;
+  border-color: var(--kraft-critical-dot);
+  box-shadow: inset 0 0 0 var(--card-active-ring) var(--kraft-critical-dot);
+}
+
+/* The two cards with no severity colour take the ink edge. */
+.cardActive.card_total,
+.cardActive.card_needsreview {
+  border-color: var(--kraft-ink-soft);
+  box-shadow: inset 0 0 0 var(--card-active-ring) var(--kraft-ink-soft);
 }
 
 .cardInactive {
@@ -127,28 +145,15 @@
   width: 100%;
 }
 
-/* MCP changes: two cards that count something other than severity. Neither
-   is tinted. A severity colour here would claim a risk level the set does not
-   have — half of what lands in Needs review carries no finding at all. */
+/* MCP changes: Needs review counts something other than severity and is not
+   tinted. A severity colour here would claim a risk level the set does not
+   have — half of what lands in it carries no finding at all. */
 
-.card_allchanges {
-  background: var(--kraft-bg);
-}
-
-.card_allchanges .number {
-  color: var(--kraft-ink);
-}
-
-.card_allchanges .label {
-  color: var(--kraft-ink-soft);
-}
-
-/* The question the tab exists to answer: prominent through weight and a
-   stronger edge, never through hue. */
+/* The question the tab exists to answer: prominent through its ground and the
+   weight of its type, never through hue — and never through the edge, which
+   is what says "this is the filter". */
 .card_needsreview {
   background: var(--kraft-filter-bg);
-  border-color: var(--kraft-ink-soft);
-  border-width: 1.5px;
 }
 
 .card_needsreview .number {

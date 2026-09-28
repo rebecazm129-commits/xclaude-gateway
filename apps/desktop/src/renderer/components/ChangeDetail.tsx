@@ -31,7 +31,19 @@ import footer from './AuditFooter.module.css';
 interface Props {
   change: ConnectorChangeView;
   onReview: (change: ConnectorChangeView) => void;
+  /** The review-status write is in flight: the button waits. */
+  reviewPending?: boolean;
+  /** A failed write, said above the footer. */
+  reviewError?: string | null;
   onClose: () => void;
+}
+
+/** The review button's words: what it will do, or what it is doing. */
+function reviewLabel(change: ConnectorChangeView, pending: boolean): string {
+  // During the write the status already shows the target (it moved at the
+  // click), so the in-flight word follows it.
+  if (pending) return change.review_status === 'reviewed' ? 'Marking…' : 'Unmarking…';
+  return change.review_status === 'reviewed' ? 'Mark as unreviewed' : 'Mark as reviewed';
 }
 
 /** One line per finding, in the shape the Detection block uses: what matched,
@@ -52,7 +64,7 @@ function findingLines(change: ConnectorChangeView): { key: string; type: string;
   return out;
 }
 
-export function ChangeDetail({ change, onReview, onClose }: Props): JSX.Element {
+export function ChangeDetail({ change, onReview, reviewPending = false, reviewError = null, onClose }: Props): JSX.Element {
   const drawerRef = useRef<HTMLDivElement>(null);
   const [technicalOpen, setTechnicalOpen] = useState(false);
   const headingId = `drawer-heading-${change.event_id}`;
@@ -238,6 +250,11 @@ export function ChangeDetail({ change, onReview, onClose }: Props): JSX.Element 
         </section>
       </div>
 
+      {reviewError !== null ? (
+        <div className={styles['reviewError']} role="alert">
+          {reviewError}
+        </div>
+      ) : null}
       <div className={styles['footer']}>
         {/* Copy is a utility, so it takes the audit footer's quiet link on the
             left. Review is what the panel is for, so it takes the outline pill
@@ -248,8 +265,13 @@ export function ChangeDetail({ change, onReview, onClose }: Props): JSX.Element 
         <button className={footer['footerLink']} onClick={handleCopyJson} type="button">
           Copy as JSON
         </button>
-        <button className={styles['copyButton']} onClick={() => onReview(change)} type="button">
-          {change.review_status === 'reviewed' ? 'Mark as unreviewed' : 'Mark as reviewed'}
+        <button
+          className={styles['copyButton']}
+          onClick={() => onReview(change)}
+          disabled={reviewPending}
+          type="button"
+        >
+          {reviewLabel(change, reviewPending)}
         </button>
       </div>
     </div>

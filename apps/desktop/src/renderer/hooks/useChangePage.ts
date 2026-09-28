@@ -65,6 +65,10 @@ export interface ChangePage {
   facets: ChangeFacets;
   loading: boolean;
   refresh: () => void;
+  /** Sets one change's review status in memory, before the trail confirms
+   *  it — the row, the panel and the cards move at the click. The next
+   *  refresh replaces it with what the trail says. */
+  patchReviewStatus: (eventId: string, to: ReviewState) => void;
 }
 
 const RANK: Record<Severity, number> = { low: 0, medium: 1, high: 2, critical: 3 };
@@ -145,6 +149,12 @@ export function useChangePage(filter: ChangeFilter, nowMs?: number): ChangePage 
 
   useEffect(refresh, [refresh]);
 
+  const patchReviewStatus = useCallback((eventId: string, to: ReviewState) => {
+    setAll((prev) =>
+      prev === null ? prev : prev.map((r) => (r.event_id === eventId ? { ...r, review_status: to } : r)),
+    );
+  }, []);
+
   return useMemo(() => {
     const everything = all ?? [];
     const historicalCount = everything.filter(isHistorical).length;
@@ -184,6 +194,7 @@ export function useChangePage(filter: ChangeFilter, nowMs?: number): ChangePage 
       facets: { mcps, sections },
       loading: all === null,
       refresh,
+      patchReviewStatus,
     };
-  }, [all, filter, nowMs, refresh]);
+  }, [all, filter, nowMs, refresh, patchReviewStatus]);
 }

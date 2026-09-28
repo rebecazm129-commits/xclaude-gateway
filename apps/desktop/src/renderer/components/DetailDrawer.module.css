@@ -260,9 +260,15 @@
     border-color var(--kraft-transition-fast) ease;
 }
 
-.copyButton:hover {
+.copyButton:hover:not(:disabled) {
   background: var(--kraft-filter-bg);
   border-color: var(--kraft-ink-soft);
+}
+
+/* While a review-status write is in flight. */
+.copyButton:disabled {
+  color: var(--kraft-ink-soft);
+  cursor: default;
 }
 
 .copyButton:focus-visible {
@@ -360,4 +366,11 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: normal;
+}
+
+/* A failed review-status write, said once above the footer of that panel. */
+.reviewError {
+  margin: 0 24px 10px;
+  font-size: 12px;
+  color: var(--kraft-critical-text);
 }

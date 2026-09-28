@@ -101,6 +101,10 @@ export function Changes(): JSX.Element {
   const [sectionFilter, setSectionFilter] = useState<readonly ConnectorChangeView['section'][] | null>(null);
   const [mcpFilter, setMcpFilter] = useState<readonly string[] | null>(null);
   const [selectedRow, setSelectedRow] = useState<ConnectorChangeView | null>(null);
+  // The change whose review status is being written, and a failed write's
+  // notice. Both belong to the panel of that change.
+  const [reviewPending, setReviewPending] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
 
   const filter: ChangeFilter = useMemo(
@@ -149,8 +153,15 @@ export function Changes(): JSX.Element {
         : pressedCard !== null && !needsReviewOnly && soleSeverity(pressedCard)
           ? pressedCard
           : null;
+    // Which card reads as the current filter. Needs review is the filter
+    // whenever the list is narrowed to it — by the card OR by the chip, which
+    // is how the tab opens — and All changes only when nothing narrows it.
+    // Dimming still follows a PRESSED card only, so opening the tab dims
+    // nothing.
+    const showing =
+      pressed ?? (needsReviewOnly ? (allSeverities ? 'needsreview' : null) : allSeverities ? 'total' : null);
     const card = (key: 'needsreview' | 'medium' | 'high') => ({
-      active: pressed === key,
+      active: showing === key,
       inactive: pressed !== null && pressed !== key,
     });
     const press = (key: 'needsreview' | 'medium' | 'high', apply: () => void) => (): void => {
@@ -171,7 +182,7 @@ export function Changes(): JSX.Element {
         key: 'total',
         label: 'All changes',
         count: page.total,
-        active: pressed === null,
+        active: showing === 'total',
         inactive: pressed !== null,
         onSelect: (): void => {
           setPressedCard(null);
@@ -246,19 +257,43 @@ export function Changes(): JSX.Element {
   // format: say where they are rather than "no changes".
   const onlyHistorical = page.total === 0 && page.historicalCount > 0 && !includeHistorical;
 
+  // A new panel starts without the previous one's notice.
+  useEffect(() => {
+    setReviewError(null);
+  }, [selectedRow?.event_id]);
+
+  // The write reads the whole trail before appending (seconds on a large
+  // install), so the click cannot wait for it. The row, the panel and the
+  // cards move at once; the button is disabled until the write settles; the
+  // re-read that follows replaces the in-memory status with the trail's. A
+  // failed write puts everything back and says so in the panel.
   const handleReview = useCallback(
     (row: ConnectorChangeView) => {
-      const to = row.review_status === 'reviewed' ? 'unreviewed' : 'reviewed';
+      if (reviewPending !== null) return;
+      const from = row.review_status;
+      const to = from === 'reviewed' ? 'unreviewed' : 'reviewed';
       const write = window.xcg.setReviewStatus?.(row.event_id, to);
-      // Re-read rather than patch in place: the folded status has to come back
-      // from the trail, not from what this component hoped happened.
       if (write === undefined) return;
-      void write.then(() => {
-        page.refresh();
-        setSelectedRow((prev) => (prev === null ? null : { ...prev, review_status: to }));
-      });
+      const setPanel = (status: typeof to): void =>
+        setSelectedRow((prev) => (prev?.event_id === row.event_id ? { ...prev, review_status: status } : prev));
+      setReviewError(null);
+      setReviewPending(row.event_id);
+      page.patchReviewStatus(row.event_id, to);
+      setPanel(to);
+      void write
+        .then(() => {
+          page.refresh();
+        })
+        .catch(() => {
+          page.patchReviewStatus(row.event_id, from);
+          setPanel(from);
+          setReviewError("Couldn't save the review status. Try again.");
+        })
+        .finally(() => {
+          setReviewPending(null);
+        });
     },
-    [page],
+    [page, reviewPending],
   );
 
   const handleExport = useCallback(async () => {
@@ -400,6 +435,8 @@ export function Changes(): JSX.Element {
       <DetailDrawer
         change={selectedRow}
         onReview={handleReview}
+        reviewPending={selectedRow !== null && reviewPending === selectedRow.event_id}
+        reviewError={reviewError}
         onClose={() => {
           setSelectedRow(null);
           triggerRef.current?.focus();

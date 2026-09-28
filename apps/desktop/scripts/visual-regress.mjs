@@ -77,6 +77,9 @@ const SCENARIOS = (
     // nothing moved, so no title, summary or disclaimer may say it changed.
     'baseline-review',
     'baseline-review#acme-docs',
+    // MCP changes with the Needs review only chip lifted: nothing narrows the
+    // list, so All changes is the card that reads as the filter.
+    'needs-review#Needs review only',
   ].join(',')
 ).split(',');
 // Two widths: a narrow one where the 1fr column is squeezed and the chips wrap,

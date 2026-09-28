@@ -98,6 +98,7 @@ export function SeverityBreakdown({ cards }: { cards: readonly BreakdownCard[] }
                 card.tooltip !== undefined ? styles['cardWrapped'] : ''
               }`}
               onClick={card.onSelect}
+              aria-pressed={card.active}
             >
               <div className={styles['number']}>{card.count}</div>
               <div className={styles['label']}>{card.label}</div>
