@@ -236,7 +236,7 @@ describe('synthesize', () => {
     expect('latencyMs' in resp).toBe(false);
   });
 
-  it('SessionStart and unknown payloads → one cc.event with raw preserved', () => {
+  it('SessionStart and unknown payloads → one cc.event, never the raw payload', () => {
     const { ctx } = makeCtx();
     const start = parseHookPayload(fixture('01-sessionstart.json'));
     const events = synthesize(start, ctx);
@@ -246,11 +246,15 @@ describe('synthesize', () => {
     expect(cc['mcp']).toBe('claude-code');
     expect(cc['source']).toBe('claude-code');
     expect(cc['hookEventName']).toBe('SessionStart');
-    expect((cc['raw'] as Record<string, unknown>)['model']).toBe('claude-fable-5');
+    expect((cc['fields'] as Record<string, unknown>)['model']).toBe('claude-fable-5');
+    expect('raw' in cc).toBe(false);
 
     const unknown = synthesize(parseHookPayload('garbage{'), ctx);
     expect(unknown).toHaveLength(1);
-    expect((unknown[0] as unknown as Record<string, unknown>)['raw']).toBe('garbage{');
+    const u = unknown[0] as unknown as Record<string, unknown>;
+    expect('raw' in u).toBe(false);
+    expect(u['payload_omitted']).toBe(true);
+    expect(u['keys']).toEqual([]);
   });
 });
 

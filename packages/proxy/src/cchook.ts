@@ -38,6 +38,21 @@ export interface CchookDeps {
   timeoutMs?: number;
 }
 
+/**
+ * Process-level failsafe. runCchook's try/catch only covers its own body: an
+ * exception thrown from a stream callback, or a rejection nothing awaits, would
+ * reach Node's default handler, which PRINTS to stderr and exits 1 — the one
+ * thing this hook must never do. Registered before the run: any such failure
+ * drops the capture and exits 0, silently.
+ */
+export function installFailsafe(
+  proc: Pick<NodeJS.Process, 'on'> = process,
+  exit: (code: 0) => void = (code) => process.exit(code),
+): void {
+  proc.on('uncaughtException', () => exit(0));
+  proc.on('unhandledRejection', () => exit(0));
+}
+
 export async function runCchook(deps: CchookDeps = {}): Promise<void> {
   const exit = deps.exit ?? ((code: 0): void => process.exit(code));
   try {

@@ -7,8 +7,15 @@
 // Synthesis contract (F1.2 v2, anchored on frame-processor verbatims):
 //   PostToolUse        → mcp.request + mcp.response paired by rpcId=tool_use_id
 //   PostToolUseFailure → mcp.request + mcp.response with `error` (0c variant)
-//   SessionStart/other/unknown → one 'cc.event' line with the raw payload
-//     (safe: the desktop reader ignores unknown types without breaking, 0e).
+//   SessionStart/SessionEnd → one 'cc.event' line with an explicit whitelist
+//     of fields (SESSION_EVENT_FIELDS) — never the raw payload;
+//   any other event, or a payload that does not parse → one 'cc.event' with
+//     payload_omitted and the NAMES of its top-level keys, no values.
+//   INVARIANT: no Claude Code hook event reaches the trail without an explicit
+//   schema of what is kept. A new hook event (Elicitation, whose result
+//   carries what the user typed) is recorded as having happened, not stored,
+//   until someone writes its schema here. The desktop reader ignores cc.event
+//   without breaking (0e).
 // Classification replicates the wrapper EXACTLY:
 //   request  → detection inline on mcp.request; multi-label = one mcp.request
 //              per detection (frame-processor emits detections.map(...), 0k).
@@ -274,13 +281,23 @@ function provenance(parsed: ParsedHookEvent): Record<string, unknown> {
   };
 }
 
-function ccEvent(
-  raw: unknown,
-  hookEventName: string | undefined,
-  ccSession: string | undefined,
-  ctx: SynthesizeContext,
-): Envelope {
-  return {
+/**
+ * The fields each non-tool event keeps, by name. SessionStart and SessionEnd
+ * are the only ones the trail has ever held (98 lines on 28/09); their other
+ * keys — transcript_path, scratchpad_dir, prompt_id — are left out: nothing
+ * reads them. Only string values are kept. The envelope carries hookEventName
+ * (the compactor's SessionEnd terminal) and ccSession on its own.
+ */
+export const SESSION_EVENT_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  SessionStart: ['source', 'model', 'cwd'],
+  SessionEnd: ['reason', 'cwd'],
+};
+
+const topLevelKeys = (value: unknown): string[] =>
+  value !== null && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value) : [];
+
+function ccEvent(parsed: ParsedHook, ctx: SynthesizeContext): Envelope {
+  const base: Envelope = {
     v: 1,
     id: ctx.nextId(),
     ts: new Date(ctx.captureTimeMs).toISOString(),
@@ -288,10 +305,33 @@ function ccEvent(
     mcp: 'claude-code',
     type: 'cc.event',
     source: 'claude-code',
-    ...(hookEventName !== undefined ? { hookEventName } : {}),
-    ...(ccSession !== undefined ? { ccSession } : {}),
-    raw,
   };
+  if (parsed.kind === 'unknown') {
+    // Not JSON, or no hook_event_name: nothing identifies what it is, so
+    // nothing of it is kept — at most the names of its keys.
+    let keys: string[] = [];
+    try {
+      keys = topLevelKeys(JSON.parse(parsed.raw));
+    } catch {
+      // unparseable: no keys to name
+    }
+    return { ...base, payload_omitted: true, keys };
+  }
+  const head = {
+    hookEventName: parsed.hookEventName,
+    ...(parsed.sessionId !== undefined ? { ccSession: parsed.sessionId } : {}),
+  };
+  const allowed = SESSION_EVENT_FIELDS[parsed.hookEventName];
+  if (allowed === undefined) {
+    return { ...base, ...head, payload_omitted: true, keys: topLevelKeys(parsed.raw) };
+  }
+  const raw = parsed.raw as Record<string, unknown>;
+  const fields: Record<string, string> = {};
+  for (const key of allowed) {
+    const value = raw[key];
+    if (typeof value === 'string') fields[key] = value;
+  }
+  return { ...base, ...head, fields };
 }
 
 // MCP results arrive as a JSON string → parse back to the real object (already
@@ -321,12 +361,12 @@ function normalizeResult(parsed: ParsedHookEvent, mcp: string): unknown {
 }
 
 export function synthesize(parsed: ParsedHook, ctx: SynthesizeContext): Envelope[] {
-  if (parsed.kind === 'unknown') return [ccEvent(parsed.raw, undefined, undefined, ctx)];
+  if (parsed.kind === 'unknown') return [ccEvent(parsed, ctx)];
 
   const isPair =
     (parsed.hookEventName === 'PostToolUse' || parsed.hookEventName === 'PostToolUseFailure') &&
     typeof parsed.toolName === 'string';
-  if (!isPair) return [ccEvent(parsed.raw, parsed.hookEventName, parsed.sessionId, ctx)];
+  if (!isPair) return [ccEvent(parsed, ctx)];
 
   const { mcp, tool } = splitToolName(parsed.toolName as string);
   const rpcId: RpcId = parsed.toolUseId ?? null;
@@ -501,11 +541,11 @@ export function classify(
       continue;
     }
 
-    // cc.event (SessionStart / unknown) — passes through untouched. Masking v1
-    // (b.2) is deliberately OUT of scope here: these never run through the
-    // detectors and preserve `raw`. SessionStart carries no user content; if a
-    // future unknown hook event carried a secret in raw, that's a separate
-    // candidate (masking it would need its own scan), not a silent gap.
+    // cc.event — nothing to classify or mask: it holds no payload. SessionStart
+    // and SessionEnd carry only their whitelisted fields, anything else only
+    // the names of its keys (ccEvent, SESSION_EVENT_FIELDS), so no hook
+    // content — a secret, what a user typed into an elicitation — can reach
+    // the trail through this line.
     out.push(env);
   }
   return out;
