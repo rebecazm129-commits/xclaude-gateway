@@ -1,5 +1,8 @@
 // Cross-tool instructions on a tool's surface — injection_marker v2.
 //
+// Evaluation (holdout v1, 54 cases written after the freeze): 19/24 in-scope
+// detected, 0/30 negatives flagged — see EVALUATION.md.
+//
 // Tool poisoning's cross-server form ("shadowing") is a definition that tells
 // the model how to treat tools it does not own: disregard what other servers
 // say, prefer this tool over all others, run it before anything else, stop

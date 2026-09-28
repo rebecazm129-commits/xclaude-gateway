@@ -34,7 +34,9 @@ export const RULE_VERSIONS: Readonly<Record<RuleId, number>> = {
    *  role override, system prompt leak, jailbreak markers).
    *  Known gaps: a mention of a SPECIFIC tool of another server ("when using
    *  send_email…"), semantic poisoning with no instruction-shaped wording, and
-   *  an instruction split across several tools or fields. */
+   *  an instruction split across several tools or fields.
+   *  Evaluation (holdout v1): 19/24 in-scope detected, 0/30 negatives flagged
+   *  — see EVALUATION.md. */
   injection_marker: 2,
   /** Invisible characters, graded by class (text-normalize.ts).
    *  v2: tag, bidi and a RUN of variation selectors high; zero-width, ANSI and
