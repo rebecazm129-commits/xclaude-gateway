@@ -184,6 +184,44 @@ export function writeCchookRemoved(
   }
 }
 
+// Event type the cchook ingester appends when xcg-cchook dropped events at the
+// spool cap (too little disk, too many files waiting). Inert for the detection
+// pipeline like the other app.* markers. count = events not recorded;
+// firstTs/lastTs bound when they were dropped, when known.
+export const SPOOL_DROPPED_TYPE = 'app.spool_dropped';
+
+export interface SpoolDroppedFields {
+  count: number;
+  firstTs?: string;
+  lastTs?: string;
+}
+
+// Same durability model and best-effort contract as writeCchookRemoved, except
+// that it reports whether the line was written: the ingester keeps the count
+// for a later cycle when it was not.
+export function writeSpoolDropped(fields: SpoolDroppedFields, dir: string = DEFAULT_WRAPPERS_DIR): boolean {
+  const envelope = {
+    v: 1,
+    id: randomUUID(),
+    ts: new Date().toISOString(),
+    session: 'desktop',
+    mcp: 'claude-code',
+    type: SPOOL_DROPPED_TYPE,
+    count: fields.count,
+    ...(fields.firstTs !== undefined ? { firstTs: fields.firstTs } : {}),
+    ...(fields.lastTs !== undefined ? { lastTs: fields.lastTs } : {}),
+  };
+  const filePath = join(dir, APP_EVENTS_FILENAME);
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    appendFileSync(filePath, `${JSON.stringify(envelope)}\n`, { mode: 0o600 });
+    return true;
+  } catch (err) {
+    console.error(`writeSpoolDropped: failed to append ${filePath}:`, err);
+    return false;
+  }
+}
+
 // --- review status ----------------------------------------------------------
 //
 // A connector change is evidence and is never edited. Marking one reviewed

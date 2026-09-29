@@ -225,6 +225,14 @@ export type CchookInstallResult =
   | { ok: false; error: string; /** set when nothing was written because the
      *  settings file is managed externally */ managed?: CchookManagedSettings };
 
+// Events not recorded because the spool reached its cap (cchook-cap.ts),
+// accumulated until the user dismisses the notice.
+export interface SpoolDroppedNotice {
+  count: number;
+  firstTs?: string;
+  lastTs?: string;
+}
+
 // "Not now" (app settings.json), tied to the set of pending changes it was
 // given for (hookUpdateKey).
 export interface HookUpdatePrefs {
@@ -288,6 +296,9 @@ export interface CchookStatus extends CchookIngestStatus {
   settingsManaged?: CchookManagedSettings | null;
   /** The "Not now" mark for the update notice. */
   hookUpdatePrefs?: HookUpdatePrefs;
+  /** Events xcg-cchook dropped at the spool cap and the user has not yet
+   *  dismissed; null when there are none. */
+  spoolDropped?: SpoolDroppedNotice | null;
   /** Spool files waiting for the next ingest cycle (dir absent → 0). */
   pendingSpool: number;
   /** Hook-integrity notice (claude-code/hook-state.json): set while an

@@ -201,12 +201,14 @@ export function buildFakeApi(s: Scenario): XcgApi {
       elicitationMinVersion: '2.1.76',
       settingsBackupDir: '~/Library/Application Support/xCLAUDE Gateway/backups/claude-settings',
       settingsManaged: s.settingsManaged ?? null,
+      spoolDropped: s.spoolDropped ?? null,
       lastCycle: null,
       unreadableTotal: 0,
       lastSessionStartTs: null,
     }),
     cchookInstall: never,
     cchookNotNow: async () => undefined,
+    cchookDismissDropped: async () => undefined,
     cchookUpdate: async () => {
       hookCheck = { state: 'up_to_date' };
       return {

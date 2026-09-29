@@ -31,11 +31,13 @@ import {
   readMaskSecrets,
   readSpool,
   resolveAuditKey,
+  spoolDroppedPath,
   synthesize,
 } from '@xcg/proxy/cchook-ingest';
 
 import { BASE_DIR, WRAPPERS_DIR, decodeUlidTime } from './retention.js';
 import { runCompactionCycle } from './compactor.js';
+import { processSpoolDropped } from './cchook-dropped.js';
 import type { CchookIngestStatus } from '../shared/types.js';
 
 const SPOOL_ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}\.json$/;
@@ -289,7 +291,17 @@ async function ingestCycle(
 ): Promise<IngestCycleResult> {
   const wrappersDir = paths.wrappersDir ?? WRAPPERS_DIR;
   try {
-    return await drainSpool(paths, result);
+    const drained = await drainSpool(paths, result);
+    // Events the hook dropped at the spool cap: recorded in the trail and
+    // shown in the Claude Code tab. Every cycle, spool empty or not — a
+    // low-disk drop leaves no spool file behind. Contained like compaction.
+    try {
+      const spoolDir = paths.spoolDir ?? cchookSpoolDir();
+      processSpoolDropped(spoolDroppedPath(spoolDir), paths.stateDir ?? dirname(spoolDir), wrappersDir);
+    } catch (err) {
+      console.error('spool-dropped pass failed:', err);
+    }
+    return drained;
   } finally {
     // F2.2: compact terminated session files each ingest tick
     // (independent of spool activity — wrapper-only trails need

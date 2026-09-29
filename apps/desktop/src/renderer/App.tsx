@@ -20,8 +20,9 @@ import {
   diffVanishedConnectors,
   pruneAgedRemoves,
 } from './components/VanishedConnectorsWarning.js';
+import { CchookUpdateCard } from './components/CchookUpdateCard.js';
+import { ToastStack, droppedToastText, type ToastItem } from './components/Toasts.js';
 import { CchookManagedNotice, managedNoticeToShow } from './components/CchookManagedNotice.js';
-import { CchookUpdateNotice } from './components/CchookUpdateNotice.js';
 import { CchookVanishedWarning } from './components/CchookVanishedWarning.js';
 import { Tabs, type TabOption } from './components/Tabs.js';
 import { usePolledHealth } from './hooks/usePolledHealth.js';
@@ -200,8 +201,8 @@ export function App(): JSX.Element {
       .catch((err) => console.error('cchookInstall failed:', err));
   }, [refreshCchookStatus]);
 
-  // Hook update (CchookUpdateNotice): only on the button. On success the
-  // notice turns into a short confirmation.
+  // Hook update (CchookUpdateCard): only on the button. On success a
+  // "Hooks updated" toast that closes on its own.
   const [hooksUpdated, setHooksUpdated] = useState(false);
   const [hooksUpdateError, setHooksUpdateError] = useState<string | null>(null);
   // An Install/Update that wrote nothing because settings.json is managed
@@ -237,6 +238,13 @@ export function App(): JSX.Element {
     },
     [refreshCchookStatus],
   );
+
+  const handleDismissDropped = useCallback(() => {
+    void window.xcg
+      .cchookDismissDropped()
+      .then(() => refreshCchookStatus())
+      .catch((err) => console.error('cchookDismissDropped failed:', err));
+  }, [refreshCchookStatus]);
 
   const handleDismissCchookNotice = useCallback(() => {
     void window.xcg
@@ -370,14 +378,12 @@ export function App(): JSX.Element {
       ) : activeTab === 'claude-code' ? (
         // The update offer lives in the Claude Code tab only; Sources shows a
         // small "Hook update available" state in the inspector instead.
-        <CchookUpdateNotice
+        <CchookUpdateCard
           check={cchookStatus?.hookCheck}
           prefs={cchookStatus?.hookUpdatePrefs}
-          updated={hooksUpdated}
           error={hooksUpdateError}
           onUpdate={handleUpdateHooks}
           onNotNow={handleNotNow}
-          onDismissUpdated={handleDismissUpdated}
         />
       ) : null}
       {activeTab === 'setup' ? (
@@ -412,6 +418,27 @@ export function App(): JSX.Element {
           onClose={() => setSettingsOpen(false)}
         />
       )}
+      {/* Toasts above the footer: spool drops (until Dismiss), and
+          "Hooks updated" (closes on its own). */}
+      <ToastStack
+        toasts={[
+          ...((cchookStatus?.spoolDropped?.count ?? 0) > 0
+            ? [
+                {
+                  id: 'spool-dropped',
+                  kind: 'warning',
+                  text: droppedToastText(cchookStatus?.spoolDropped?.count ?? 0),
+                  persistent: true,
+                  actionLabel: 'Dismiss',
+                  onAction: handleDismissDropped,
+                } satisfies ToastItem,
+              ]
+            : []),
+          ...(hooksUpdated
+            ? [{ id: 'hooks-updated', kind: 'success', text: 'Hooks updated', onClose: handleDismissUpdated } satisfies ToastItem]
+            : []),
+        ]}
+      />
     </div>
   );
 }

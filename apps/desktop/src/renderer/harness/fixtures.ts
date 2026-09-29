@@ -13,6 +13,7 @@ import type {
   CchookHooksCheck,
   CchookManagedSettings,
   ConnectorAuthAlert,
+  SpoolDroppedNotice,
   DetectionRowSlim,
   EnrichableEvent,
   RetentionBannerInfo,
@@ -46,6 +47,8 @@ export interface Scenario {
   hookCheck?: CchookHooksCheck;
   /** Drives cchookStatus().settingsManaged — settings.json not ours to write. */
   settingsManaged?: CchookManagedSettings;
+  /** Drives cchookStatus().spoolDropped — events not recorded at the spool cap. */
+  spoolDropped?: SpoolDroppedNotice;
 }
 
 const CONFIG_PATH = '/fixtures/claude_desktop_config.json';
@@ -1009,10 +1012,10 @@ export const SCENARIOS: readonly Scenario[] = [
     label: 'Claude Code · hooks installed before elicitation (Update hooks)',
     note:
       'An install from before this build: the four original events are there, Elicitation and ' +
-      'ElicitationResult are missing. The notice "New Claude Code coverage available" with its ' +
-      'text (only xCLAUDE-managed entries change; a backup is created first) and an "Update ' +
-      'hooks" button, here and in Sources, not in Detections or MCP changes. Click it: "Hooks ' +
-      'updated. New Claude Code sessions will use the updated hooks."',
+      'ElicitationResult are missing. A compact card lined up with the severity cards: "New ' +
+      'Claude Code coverage available", its line, "Update hooks" and "Not now" (Claude Code tab ' +
+      'only). Click Update hooks: the card goes and a "Hooks updated" toast appears above the ' +
+      'footer, closing on its own after 4 s.',
     entries: TWO_CONNECTORS,
     events: rowsToEvents(ELICITATION),
     rows: ELICITATION,
@@ -1027,8 +1030,8 @@ export const SCENARIOS: readonly Scenario[] = [
     tab: 'setup',
     label: 'Sources · Claude Code inspector with hooks installed before elicitation',
     note:
-      'The same install in Sources: the Update hooks notice above the list. Open the Claude Code ' +
-      'row: its inspector lists "Settings backups" with the backups folder.',
+      'The same install in Sources: no card here. Open the Claude Code row: its inspector shows ' +
+      '"Hook update available · Update" and "Settings backups" with the backups folder.',
     entries: TWO_CONNECTORS,
     events: rowsToEvents(ELICITATION),
     rows: ELICITATION,
@@ -1037,6 +1040,41 @@ export const SCENARIOS: readonly Scenario[] = [
     retention: null,
     hookVanishedTs: null,
     hookCheck: HOOKS_WITHOUT_ELICITATION,
+  },
+  {
+    id: 'hooks-outdated-dropped',
+    tab: 'claude-code',
+    label: 'Claude Code · update card + spool-dropped toast',
+    note:
+      'The compact update card lined up with the severity cards, and the persistent ' +
+      '"37 Claude Code events weren\'t recorded…" toast in the bottom-right corner with Dismiss.',
+    entries: TWO_CONNECTORS,
+    events: rowsToEvents(ELICITATION),
+    rows: ELICITATION,
+    authAlerts: [],
+    baseline: BASELINE_BOTH,
+    retention: null,
+    hookVanishedTs: null,
+    hookCheck: HOOKS_WITHOUT_ELICITATION,
+    spoolDropped: { count: 37 },
+  },
+  {
+    id: 'spool-dropped',
+    tab: 'claude-code',
+    label: 'Claude Code · events not recorded at the spool cap (37)',
+    note:
+      'The app was closed long enough (or the disk ran low) for the spool to hit its cap: a ' +
+      'toast above the footer reads "37 Claude Code events weren\'t recorded because the ' +
+      'staging area reached its limit." with Dismiss, and stays until dismissed. Hooks are up ' +
+      'to date, so no update card.',
+    entries: TWO_CONNECTORS,
+    events: rowsToEvents(ELICITATION),
+    rows: ELICITATION,
+    authAlerts: [],
+    baseline: BASELINE_BOTH,
+    retention: null,
+    hookVanishedTs: null,
+    spoolDropped: { count: 37, firstTs: '2026-09-28T22:10:00.000Z', lastTs: '2026-09-29T07:45:00.000Z' },
   },
   {
     id: 'settings-symlink',

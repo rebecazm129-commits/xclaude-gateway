@@ -123,6 +123,8 @@ export interface XcgApi {
   cchookUpdate(): Promise<CchookInstallResult>;
   /** "Not now": hide the update notice until the set of pending changes differs. */
   cchookNotNow(key: string): Promise<void>;
+  /** Dismiss the "events were not recorded" notice (spool cap). */
+  cchookDismissDropped(): Promise<void>;
   /** Surgically remove our hook entries from ~/.claude/settings.json. */
   cchookUninstall(): Promise<CchookInstallResult>;
   /** Dismiss the hook-removed notice (clears the persisted pendingNotice). */

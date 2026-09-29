@@ -17,15 +17,17 @@
 // unconditional, and if either fails the original payload is never written —
 // only a record that N bytes were omitted.
 //
-// Allowed dependencies: node:fs, node:path, node:os, node:crypto, ulid, and the
+// Allowed dependencies: node:fs, node:path, node:os, node:crypto, ulid, the
 // trail's masking modules (detection/masking.ts, detection/detectors/
-// credential.ts, through cchook-spool.ts). Nothing else.
+// credential.ts, through cchook-spool.ts) and the spool cap (cchook-cap.ts).
+// Nothing else.
 
 import { mkdirSync as fsMkdirSync, writeFileSync as fsWriteFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { ulid } from 'ulid';
 
+import { recordSpoolDrop, spoolDroppedPath, spoolOverCap, type SpoolCapDeps, type SpoolLimits } from './cchook-cap.js';
 import { cchookSpoolDir } from './cchook-paths.js';
 import { omittedSpoolBody, redactForSpool, stripUserValues } from './cchook-spool.js';
 import { resolveAuditKey } from './detection/masking.js';
@@ -55,6 +57,9 @@ export interface CchookDeps {
   redact?: (payload: string, key: Buffer) => string;
   /** Command-line arguments after the script. Default process.argv.slice(2). */
   argv?: readonly string[];
+  /** Test seams for the spool cap (cchook-cap.ts). */
+  spoolLimits?: SpoolLimits;
+  spoolCap?: SpoolCapDeps;
 }
 
 /** The event the hook entry named with `--event <name>`, if any. */
@@ -128,6 +133,15 @@ export async function runCchook(deps: CchookDeps = {}): Promise<void> {
     }
 
     const dir = deps.spoolDir ?? cchookSpoolDir();
+    // The cap: too little free disk, or too many files waiting (the app has
+    // been closed a long time) → nothing is written, the drop is counted,
+    // and the hook still exits 0 without output.
+    if (spoolOverCap(dir, deps.spoolLimits, deps.spoolCap) !== null) {
+      mkdirSync(dirname(dir), { recursive: true });
+      recordSpoolDrop(spoolDroppedPath(dir));
+      exit(0);
+      return;
+    }
     // Strip an elicitation result's user values, then mask, before anything
     // touches the disk. Any failure here — the parse, the key, the scan, the
     // serialisation — writes the omitted record instead; the original bytes

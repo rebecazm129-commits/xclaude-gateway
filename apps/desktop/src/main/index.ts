@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ensureSymlink, type SelfTestReport } from '@xcg/shared';
@@ -76,6 +76,7 @@ import { installCchook, managedSettingsStatus, uninstallCchook, updateCchook } f
 import { detectClaudeCode, isHookRegistered, readCchookHooksCheck, readClaudeCodeVersion } from './claude-code-detect.js';
 import { defaultSettingsBackupDir, tildify } from './claude-settings-write.js';
 import { hookUpdateNotNow, readHookUpdatePrefs } from './hook-update-prefs.js';
+import { dismissUnseenDropped, readUnseenDropped } from './cchook-dropped.js';
 import { spawnWrapper, readDetectionsFromAudit, resolveNpxPath } from './selftest-runner.js';
 import { runSelfTest } from './selftest-handler.js';
 import { runConfigConnect } from './connect-handler.js';
@@ -181,6 +182,7 @@ ipcMain.handle('cchook:status', async (): Promise<CchookStatus> => {
     settingsBackupDir: tildify(defaultSettingsBackupDir()),
     settingsManaged: managedSettingsStatus(undefined, events),
     hookUpdatePrefs: readHookUpdatePrefs(),
+    spoolDropped: readUnseenDropped(dirname(cchookSpoolDir())),
     pendingSpool,
     pendingNotice: readPendingNotice(),
     ...getCchookStatus(),
@@ -213,6 +215,11 @@ ipcMain.handle('cchook:update', async (): Promise<CchookInstallResult> => {
   const result = updateCchook({ events: cchookEventsFor(await readClaudeCodeVersion()) });
   if (result.ok) recordCchookExpected(true);
   return result;
+});
+
+// Dismiss of the "events were not recorded" notice (spool cap).
+ipcMain.handle('cchook:dismiss-dropped', (): void => {
+  dismissUnseenDropped(dirname(cchookSpoolDir()));
 });
 
 // "Not now" on the update notice — tied to the set of pending changes the

@@ -47,6 +47,8 @@ import { REDACTION_VERSION } from './cchook-spool.js';
 import { attachMaskSecrets } from './events.js';
 
 export { cchookSpoolDir } from './cchook-paths.js';
+// The spool cap's drop counter (cchook-cap.ts), taken by the desktop ingester.
+export { spoolDroppedPath } from './cchook-cap.js';
 // Re-exported for the desktop ingester's serialize step (precedent:
 // cchookSpoolDir, F1.2) — it masks envelopes outside EventSink with the SAME
 // helpers and the SAME per-install salt the wrappers use, so a credential

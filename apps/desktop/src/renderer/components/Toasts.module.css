@@ -1,0 +1,54 @@
+/* Existing tokens only: surface, strong hairline border, md radius, UI font,
+   and NewEventsPill's floating shadow. `bottom` is set inline
+   (TOAST_BOTTOM_PX) so the stack clears the audit footer. */
+
+.stack {
+  position: fixed;
+  right: 20px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 380px;
+  background: var(--kraft-surface);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  border-radius: var(--kraft-radius-md);
+  padding: 10px 14px;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--kraft-ink) 18%, transparent);
+  font-family: var(--kraft-font-ui);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--kraft-ink);
+}
+
+.icon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.iconWarning {
+  color: var(--kraft-warning-dot);
+}
+
+.iconSuccess {
+  color: var(--kraft-low-dot);
+}
+
+.text {
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.action {
+  flex: 0 0 auto;
+  align-self: center;
+}

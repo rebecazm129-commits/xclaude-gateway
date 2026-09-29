@@ -1,0 +1,38 @@
+/* The card takes the severity cards' look (strong hairline, md
+   radius, --kraft-bg like the TOTAL card) and sits on the same surface band
+   with the same inset, so it lines up with them. */
+
+.band {
+  background: var(--kraft-surface);
+  padding: 14px 20px 0;
+}
+
+.card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  background: var(--kraft-bg);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  border-radius: var(--kraft-radius-md);
+  padding: 12px 16px;
+  font-family: var(--kraft-font-ui);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--kraft-ink);
+}
+
+.text {
+  flex: 1 1 320px;
+  margin: 0;
+}
+
+.line {
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
