@@ -54,3 +54,38 @@ describe('ClaudeCodeRow — TOOL', () => {
     expect(screen.queryByText(/^via /)).toBeNull();
   });
 });
+
+describe('ClaudeCodeRow — elicitation', () => {
+  const elicitRow = (over: Partial<DetectionRowSlim> = {}) =>
+    row({
+      mcp: 'spike-elicit',
+      method: 'elicitation/create',
+      category: 'protocol_tripwire',
+      severity: 'medium',
+      argsSummary: 'form · Please confirm',
+      ...over,
+    });
+
+  it('TOOL reads "Server requested input", not the method', () => {
+    render(<ClaudeCodeRow row={elicitRow()} selected={false} onClick={() => {}} />);
+    expect(screen.getByText('Server requested input')).toBeTruthy();
+    expect(screen.queryByText('elicitation/create')).toBeNull();
+  });
+
+  it('DETAILS: the action first, then mode and message', () => {
+    for (const [action, text] of [
+      ['accept', 'User accepted · form · Please confirm'],
+      ['decline', 'User declined · form · Please confirm'],
+      ['cancel', 'User cancelled · form · Please confirm'],
+    ] as const) {
+      render(<ClaudeCodeRow row={elicitRow({ elicitationAction: action })} selected={false} onClick={() => {}} />);
+      expect(screen.getByText(text)).toBeTruthy();
+      cleanup();
+    }
+  });
+
+  it('DETAILS without an action has no prefix', () => {
+    render(<ClaudeCodeRow row={elicitRow()} selected={false} onClick={() => {}} />);
+    expect(screen.getByText('form · Please confirm')).toBeTruthy();
+  });
+});

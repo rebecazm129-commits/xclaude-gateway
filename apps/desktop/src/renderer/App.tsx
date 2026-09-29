@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { ConnectResult, RemoveRemoteResult, StatusResult } from '@xcg/shared/config';
 
-import { CLAUDE_CODE_SOURCE } from '../shared/types.js';
+import { CLAUDE_CODE_SOURCE, type CchookManagedSettings } from '../shared/types.js';
 
 import { ClaudeCode } from './components/ClaudeCode.js';
 import { Changes } from './components/Changes.js';
@@ -20,6 +20,8 @@ import {
   diffVanishedConnectors,
   pruneAgedRemoves,
 } from './components/VanishedConnectorsWarning.js';
+import { CchookManagedNotice, managedNoticeToShow } from './components/CchookManagedNotice.js';
+import { CchookUpdateNotice } from './components/CchookUpdateNotice.js';
 import { CchookVanishedWarning } from './components/CchookVanishedWarning.js';
 import { Tabs, type TabOption } from './components/Tabs.js';
 import { usePolledHealth } from './hooks/usePolledHealth.js';
@@ -191,11 +193,50 @@ export function App(): JSX.Element {
       .cchookInstall()
       .then((result) => {
         if (result.ok) return refreshCchookStatus();
+        if (result.managed !== undefined) setCchookManaged(result.managed);
         console.error('cchookInstall failed:', result.error);
         return undefined;
       })
       .catch((err) => console.error('cchookInstall failed:', err));
   }, [refreshCchookStatus]);
+
+  // Hook update (CchookUpdateNotice): only on the button. On success the
+  // notice turns into a short confirmation.
+  const [hooksUpdated, setHooksUpdated] = useState(false);
+  const [hooksUpdateError, setHooksUpdateError] = useState<string | null>(null);
+  // An Install/Update that wrote nothing because settings.json is managed
+  // externally: its notice (with the snippet) replaces the error text.
+  const [cchookManaged, setCchookManaged] = useState<CchookManagedSettings | null>(null);
+  const handleUpdateHooks = useCallback(() => {
+    setHooksUpdateError(null);
+    void window.xcg
+      .cchookUpdate()
+      .then((result) => {
+        if (result.ok) {
+          setHooksUpdated(true);
+          return refreshCchookStatus();
+        }
+        if (result.managed !== undefined) setCchookManaged(result.managed);
+        else setHooksUpdateError(result.error);
+        return undefined;
+      })
+      .catch((err) => {
+        console.error('cchookUpdate failed:', err);
+        setHooksUpdateError(err instanceof Error ? err.message : String(err));
+      });
+  }, [refreshCchookStatus]);
+
+  // Stable: the confirmation's timer would restart on every 2s poll render.
+  const handleDismissUpdated = useCallback(() => setHooksUpdated(false), []);
+  const handleNotNow = useCallback(
+    (key: string) => {
+      void window.xcg
+        .cchookNotNow(key)
+        .then(() => refreshCchookStatus())
+        .catch((err) => console.error('cchookNotNow failed:', err));
+    },
+    [refreshCchookStatus],
+  );
 
   const handleDismissCchookNotice = useCallback(() => {
     void window.xcg
@@ -320,6 +361,25 @@ export function App(): JSX.Element {
         onReinstall={handleReinstallHook}
         onDismiss={handleDismissCchookNotice}
       />
+      {/* Where the hook lives: Sources (install) and the Claude Code tab. */}
+      {(activeTab === 'setup' || activeTab === 'claude-code') &&
+      managedNoticeToShow(cchookStatus, cchookManaged) !== null ? (
+        // Managed externally: nothing to update from here — the snippet to
+        // paste instead.
+        <CchookManagedNotice managed={managedNoticeToShow(cchookStatus, cchookManaged)} />
+      ) : activeTab === 'claude-code' ? (
+        // The update offer lives in the Claude Code tab only; Sources shows a
+        // small "Hook update available" state in the inspector instead.
+        <CchookUpdateNotice
+          check={cchookStatus?.hookCheck}
+          prefs={cchookStatus?.hookUpdatePrefs}
+          updated={hooksUpdated}
+          error={hooksUpdateError}
+          onUpdate={handleUpdateHooks}
+          onNotNow={handleNotNow}
+          onDismissUpdated={handleDismissUpdated}
+        />
+      ) : null}
       {activeTab === 'setup' ? (
         <Setup
           status={configStatus}

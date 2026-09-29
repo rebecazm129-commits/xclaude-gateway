@@ -2,8 +2,9 @@ import { useEffect, useRef, useState, type ReactElement, type ReactNode } from '
 
 import type { ConnectResult, IsConnectedResult } from '@xcg/shared/config';
 
-import type { CchookStatus } from '../../shared/types.js';
+import type { CchookManagedSettings, CchookStatus } from '../../shared/types.js';
 
+import { CchookManagedNotice } from './CchookManagedNotice.js';
 import { connectMessage } from './config-messages.js';
 import { ConnectorSetupWizard, SETUP_CATALOGS } from './ConnectorSetupWizard.js';
 import { LOGO_SVGS } from './connectorLogos.js';
@@ -176,6 +177,8 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
   // Claude Code status for the 'app' card. null until the [open] fetch lands
   // (the button renders disabled-neutral meanwhile, never a false claim).
   const [cchook, setCchook] = useState<CchookStatus | null>(null);
+  // Install that wrote nothing: settings.json is managed externally.
+  const [managed, setManaged] = useState<CchookManagedSettings | null>(null);
   const [setupEntry, setSetupEntry] = useState<CatalogEntry | null>(null);
   const [query, setQuery] = useState('');
 
@@ -279,6 +282,7 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
     setBusyName(entry.name);
     setLastResult(null);
     setError(null);
+    setManaged(null);
     try {
       const result = await window.xcg.cchookInstall();
       if (!mountedRef.current) return;
@@ -287,6 +291,10 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
         if (!mountedRef.current) return;
         setCchook(status);
         onRefresh?.();
+      } else if (result.managed !== undefined) {
+        // settings.json managed externally: nothing written — the notice
+        // with the snippet to paste, instead of an error line.
+        setManaged(result.managed);
       } else {
         setError(result.error);
       }
@@ -476,7 +484,9 @@ export function AddConnectorModal({ open, onClose, onRefresh }: AddConnectorModa
         </p>
       </div>
 
-      {error !== null ? (
+      {managed !== null ? (
+        <CchookManagedNotice managed={managed} />
+      ) : error !== null ? (
         <div className={styles['banners']}>
           <div className={styles['banner_error']}>Connection failed: {error}</div>
         </div>

@@ -9,9 +9,13 @@
 // invocation — ${ulid()}.json under cchookSpoolDir(). The masking works on the
 // payload as TEXT, with the trail's own code and salt (cchook-spool.ts); there
 // is still no JSON parsing and no validation of the payload's shape: parsing
-// is F1.2's job, downstream, off the hook's critical path. Masking is
-// unconditional, and if it fails the original payload is never written — only
-// a record that N bytes were omitted.
+// is F1.2's job, downstream, off the hook's critical path — with ONE
+// exception: an ElicitationResult (named by the entry's `--event` argument,
+// or recognized by its text on an older entry) is parsed so the user's typed
+// values (`content`) can be deleted before masking (stripUserValues,
+// cchook-spool.ts). Stripping and masking are
+// unconditional, and if either fails the original payload is never written —
+// only a record that N bytes were omitted.
 //
 // Allowed dependencies: node:fs, node:path, node:os, node:crypto, ulid, and the
 // trail's masking modules (detection/masking.ts, detection/detectors/
@@ -23,7 +27,7 @@ import { dirname, join } from 'node:path';
 import { ulid } from 'ulid';
 
 import { cchookSpoolDir } from './cchook-paths.js';
-import { omittedSpoolBody, redactForSpool } from './cchook-spool.js';
+import { omittedSpoolBody, redactForSpool, stripUserValues } from './cchook-spool.js';
 import { resolveAuditKey } from './detection/masking.js';
 
 /** Hard cap on captured bytes. Past it, input is truncated but stdin keeps
@@ -49,6 +53,14 @@ export interface CchookDeps {
   auditKey?: () => Buffer;
   /** Test seam for the redaction step; production always uses redactForSpool. */
   redact?: (payload: string, key: Buffer) => string;
+  /** Command-line arguments after the script. Default process.argv.slice(2). */
+  argv?: readonly string[];
+}
+
+/** The event the hook entry named with `--event <name>`, if any. */
+export function eventFromArgv(argv: readonly string[]): string | undefined {
+  const i = argv.indexOf('--event');
+  return i !== -1 && i + 1 < argv.length ? argv[i + 1] : undefined;
 }
 
 /**
@@ -116,13 +128,15 @@ export async function runCchook(deps: CchookDeps = {}): Promise<void> {
     }
 
     const dir = deps.spoolDir ?? cchookSpoolDir();
-    // Mask before anything touches the disk. Any failure here — the key, the
-    // scan, the serialisation — writes the omitted record instead; the
-    // original bytes are never written.
+    // Strip an elicitation result's user values, then mask, before anything
+    // touches the disk. Any failure here — the parse, the key, the scan, the
+    // serialisation — writes the omitted record instead; the original bytes
+    // are never written.
     let body: string;
     try {
       const key = (deps.auditKey ?? defaultAuditKey)();
-      body = (deps.redact ?? redactForSpool)(payload.toString('utf8'), key);
+      const event = eventFromArgv(deps.argv ?? process.argv.slice(2));
+      body = (deps.redact ?? redactForSpool)(stripUserValues(payload.toString('utf8'), event), key);
     } catch {
       body = omittedSpoolBody(payload.length);
     }

@@ -233,3 +233,64 @@ describe('formatRelative', () => {
     expect(formatRelative('garbage', now)).toBe('—');
   });
 });
+
+describe('ClaudeCodeInspector — hook update and elicitation label', () => {
+  const OUTDATED = {
+    state: 'outdated',
+    issues: [
+      { event: 'Elicitation', problem: 'missing' },
+      { event: 'ElicitationResult', problem: 'missing' },
+    ],
+  } as CchookStatus['hookCheck'];
+
+  it('"Hook update available" with Update, while an update is pending — even after "Not now"', async () => {
+    const update = vi.fn(async () => ({ ok: true, outcome: 'wrote', settingsPath: '/x' }));
+    stubXcg([], { cchookUpdate: update });
+    render(
+      <ClaudeCodeInspector
+        status={{
+          ...STATUS,
+          hookCheck: OUTDATED,
+          hookUpdatePrefs: { notNowKey: 'Elicitation:missing,ElicitationResult:missing' },
+        }}
+        onOpenInDetections={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('cchook-update-state').textContent).toContain('Hook update available');
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+  });
+
+  it('no pending update → no state row', () => {
+    stubXcg();
+    render(<ClaudeCodeInspector status={{ ...STATUS, hookCheck: { state: 'up_to_date' } }} onOpenInDetections={() => {}} />);
+    expect(screen.queryByTestId('cchook-update-state')).toBeNull();
+  });
+
+  it('the backups folder is shown as given (~ abbreviated by main)', () => {
+    stubXcg();
+    render(
+      <ClaudeCodeInspector
+        status={{ ...STATUS, settingsBackupDir: '~/Library/Application Support/xCLAUDE Gateway/backups/claude-settings' }}
+        onOpenInDetections={() => {}}
+      />,
+    );
+    expect(screen.getByText('~/Library/Application Support/xCLAUDE Gateway/backups/claude-settings')).toBeDefined();
+  });
+
+  it('Recent flagged calls: a Claude Code elicitation reads "Server requested input"', async () => {
+    stubXcg([
+      ccEvent({
+        mcp: 'acme-cloud',
+        method: 'elicitation/create',
+        direction: 'server_to_client',
+        rpcId: null,
+        toolName: undefined,
+        detection: { category: 'protocol_tripwire', severity: 'high', findings: [] },
+      }),
+    ]);
+    render(<ClaudeCodeInspector status={STATUS} onOpenInDetections={() => {}} />);
+    expect(await screen.findByText('Server requested input')).toBeDefined();
+    expect(screen.queryByText('elicitation/create')).toBeNull();
+  });
+});

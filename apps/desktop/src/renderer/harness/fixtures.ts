@@ -10,6 +10,8 @@ import type { Category, Severity } from '@xcg/shared';
 import type { IpcConfigEntry, StatusResult } from '@xcg/shared/config';
 
 import type {
+  CchookHooksCheck,
+  CchookManagedSettings,
   ConnectorAuthAlert,
   DetectionRowSlim,
   EnrichableEvent,
@@ -39,6 +41,11 @@ export interface Scenario {
   hookVanishedTs: string | null;
   /** Connector surface changes, both formats. */
   changes?: ConnectorChangeView[];
+  /** Drives cchookStatus().hookCheck — the "Update hooks" notice when
+   *  outdated. Absent = up to date. */
+  hookCheck?: CchookHooksCheck;
+  /** Drives cchookStatus().settingsManaged — settings.json not ours to write. */
+  settingsManaged?: CchookManagedSettings;
 }
 
 const CONFIG_PATH = '/fixtures/claude_desktop_config.json';
@@ -201,7 +208,9 @@ function rowsToEvents(rows: readonly DetectionRowSlim[]): EnrichableEvent[] {
     session: 'harness',
     mcp: r.mcp,
     type: 'mcp.request' as const,
-    method: 'tools/call',
+    // A Claude Code elicitation keeps its own method (the inspector labels it
+    // "Server requested input"); every other fixture row stays a tools/call.
+    method: r.method === 'elicitation/create' ? r.method : 'tools/call',
     rpcId: i + 1,
     direction: 'client_to_server' as const,
     detection: {
@@ -321,6 +330,69 @@ function auditTrailRows(): DetectionRowSlim[] {
 }
 
 const AUDIT_TRAIL = auditTrailRows();
+
+/**
+ * Claude Code elicitations: an MCP server asking the user for input mid-task.
+ * One ordinary form (medium, accepted) and one asking for a password (HIGH,
+ * declined), among ordinary calls. Only the HIGH one says "Sign in to Acme
+ * Cloud", so a capture can open it by that text.
+ */
+function elicitationRows(): DetectionRowSlim[] {
+  const base = Date.parse('2026-09-28T10:30:00.000Z');
+  const at = (i: number): string => new Date(base - i * 4 * 60_000).toISOString();
+  const cc = { source: 'claude-code' as const, type: 'mcp.request' as const };
+  const elicit = { ...cc, method: 'elicitation/create', category: 'protocol_tripwire' as const };
+  return [
+    { id: 'eli-000', ts: at(0), ...cc, mcp: 'claude-code', method: 'tools/call', category: 'tool_call_allowed', severity: 'low', toolName: 'Read', outcome: 'ok' },
+    {
+      id: 'eli-001', ts: at(1), ...elicit, mcp: 'acme-cloud', severity: 'high',
+      argsSummary: 'form · Sign in to Acme Cloud to continue the deployment', elicitationAction: 'decline',
+    },
+    { id: 'eli-002', ts: at(2), ...cc, mcp: 'claude-code', method: 'tools/call', category: 'tool_call_allowed', severity: 'low', toolName: 'Bash', outcome: 'ok' },
+    {
+      id: 'eli-003', ts: at(3), ...elicit, mcp: 'acme-forms', severity: 'medium',
+      argsSummary: 'form · Confirm the export settings', elicitationAction: 'accept',
+    },
+    { id: 'eli-004', ts: at(4), ...cc, mcp: 'claude-code', method: 'tools/call', category: 'tool_call_allowed', severity: 'low', toolName: 'Grep', outcome: 'ok' },
+  ];
+}
+
+const ELICITATION = elicitationRows();
+
+/** An install from before elicitation: the four original events only. */
+const HOOKS_WITHOUT_ELICITATION: CchookHooksCheck = {
+  state: 'outdated',
+  issues: [
+    { event: 'Elicitation', problem: 'missing' },
+    { event: 'ElicitationResult', problem: 'missing' },
+  ],
+};
+
+/** What "Copy hook configuration" would copy for that install. */
+const SYMLINK_SNIPPET = JSON.stringify(
+  {
+    hooks: Object.fromEntries(
+      ['Elicitation', 'ElicitationResult'].map((event) => [
+        event,
+        [
+          {
+            matcher: '*',
+            hooks: [
+              {
+                type: 'command',
+                command: 'bash',
+                args: ['-c', `exec "$HOME/Library/Application Support/xCLAUDE Gateway/bin/xcg-cchook" --event ${event}`],
+                async: true,
+              },
+            ],
+          },
+        ],
+      ]),
+    ),
+  },
+  null,
+  2,
+);
 
 
 // --- connector changes -------------------------------------------------------
@@ -910,6 +982,84 @@ export const SCENARIOS: readonly Scenario[] = [
     baseline: BASELINE_BOTH,
     retention: null,
     hookVanishedTs: null,
+  },
+  {
+    id: 'elicitation',
+    tab: 'claude-code',
+    label: 'Claude Code · elicitation (medium accepted + HIGH declined)',
+    note:
+      'Two server requests (TOOL "Server requested input") among ordinary calls: acme-forms asks ' +
+      'to confirm export settings (MEDIUM, DETAILS starts "User accepted ·") and acme-cloud ' +
+      'asks for a password (HIGH, "User declined ·"). Open the HIGH one: "Server request" ' +
+      'with server, "MCP method: elicitation/create" and mode; "Message" as plain text (the URL ' +
+      'in it is not a link); "Requested fields" (password · required); the secret-form note, "User ' +
+      'action: Declined" and "xCLAUDE does not store the values entered by the user." Never ' +
+      '"completed".',
+    entries: TWO_CONNECTORS,
+    events: rowsToEvents(ELICITATION),
+    rows: ELICITATION,
+    authAlerts: [],
+    baseline: BASELINE_BOTH,
+    retention: null,
+    hookVanishedTs: null,
+  },
+  {
+    id: 'hooks-outdated',
+    tab: 'claude-code',
+    label: 'Claude Code · hooks installed before elicitation (Update hooks)',
+    note:
+      'An install from before this build: the four original events are there, Elicitation and ' +
+      'ElicitationResult are missing. The notice "New Claude Code coverage available" with its ' +
+      'text (only xCLAUDE-managed entries change; a backup is created first) and an "Update ' +
+      'hooks" button, here and in Sources, not in Detections or MCP changes. Click it: "Hooks ' +
+      'updated. New Claude Code sessions will use the updated hooks."',
+    entries: TWO_CONNECTORS,
+    events: rowsToEvents(ELICITATION),
+    rows: ELICITATION,
+    authAlerts: [],
+    baseline: BASELINE_BOTH,
+    retention: null,
+    hookVanishedTs: null,
+    hookCheck: HOOKS_WITHOUT_ELICITATION,
+  },
+  {
+    id: 'hooks-outdated-sources',
+    tab: 'setup',
+    label: 'Sources · Claude Code inspector with hooks installed before elicitation',
+    note:
+      'The same install in Sources: the Update hooks notice above the list. Open the Claude Code ' +
+      'row: its inspector lists "Settings backups" with the backups folder.',
+    entries: TWO_CONNECTORS,
+    events: rowsToEvents(ELICITATION),
+    rows: ELICITATION,
+    authAlerts: [],
+    baseline: BASELINE_BOTH,
+    retention: null,
+    hookVanishedTs: null,
+    hookCheck: HOOKS_WITHOUT_ELICITATION,
+  },
+  {
+    id: 'settings-symlink',
+    tab: 'claude-code',
+    label: 'Claude Code · settings.json is a symlink (managed externally)',
+    note:
+      'Hooks installed before elicitation, but ~/.claude/settings.json is a symlink into a ' +
+      'dotfiles repo. Instead of Update hooks: "Claude Code settings are managed externally", ' +
+      'the resolved path in a small line, and "Copy hook configuration" (only the two missing ' +
+      'xCLAUDE entries). Nothing is written through the symlink.',
+    entries: TWO_CONNECTORS,
+    events: rowsToEvents(ELICITATION),
+    rows: ELICITATION,
+    authAlerts: [],
+    baseline: BASELINE_BOTH,
+    retention: null,
+    hookVanishedTs: null,
+    hookCheck: HOOKS_WITHOUT_ELICITATION,
+    settingsManaged: {
+      reason: 'symlink',
+      target: '~/dotfiles/claude/settings.json',
+      snippet: SYMLINK_SNIPPET,
+    },
   },
 ];
 

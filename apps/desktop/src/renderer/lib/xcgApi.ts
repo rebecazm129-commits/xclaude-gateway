@@ -118,6 +118,11 @@ export interface XcgApi {
   cchookStatus(): Promise<CchookStatus>;
   /** Register the capture hook in ~/.claude/settings.json (idempotent). */
   cchookInstall(): Promise<CchookInstallResult>;
+  /** Bring an existing hook install up to date (new events, async, --event).
+   *  Only our own entries change; Claude Code must be restarted to load it. */
+  cchookUpdate(): Promise<CchookInstallResult>;
+  /** "Not now": hide the update notice until the set of pending changes differs. */
+  cchookNotNow(key: string): Promise<void>;
   /** Surgically remove our hook entries from ~/.claude/settings.json. */
   cchookUninstall(): Promise<CchookInstallResult>;
   /** Dismiss the hook-removed notice (clears the persisted pendingNotice). */

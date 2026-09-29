@@ -84,6 +84,18 @@ const SCENARIOS = (
     // of the delete row (the only Bash row).
     'audit-trail',
     'audit-trail#Bash',
+    // Claude Code elicitation: the table (medium accepted, HIGH declined),
+    // then the panel of the HIGH one.
+    'elicitation',
+    'elicitation#Sign in to Acme Cloud',
+    // An install from before elicitation: the Update hooks notice, then the
+    // restart reminder after the click.
+    'hooks-outdated',
+    'hooks-outdated#Update hooks',
+    // Sources with the same install: the Claude Code inspector (backups row).
+    'hooks-outdated-sources#claude-code',
+    // settings.json is a symlink: the managed-externally notice instead.
+    'settings-symlink',
   ].join(',')
 ).split(',');
 // Two widths: a narrow one where the 1fr column is squeezed and the chips wrap,

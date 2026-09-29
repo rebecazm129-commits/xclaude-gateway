@@ -303,3 +303,14 @@ describe('Detections CATEGORY_OPTIONS', () => {
     );
   });
 });
+
+describe('DetectionRow — Claude Code elicitation', () => {
+  it('TOOL reads "Server requested input", not the method; a wire elicitation keeps the method', () => {
+    const r = row({ type: 'mcp.request', category: 'protocol_tripwire', severity: 'medium', method: 'elicitation/create' });
+    render(<DetectionRow row={{ ...r, source: 'claude-code' }} selected={false} onClick={() => {}} />);
+    expect(screen.getByText('Server requested input')).toBeTruthy();
+    cleanup();
+    render(<DetectionRow row={r} selected={false} onClick={() => {}} />);
+    expect(screen.getByText('elicitation/create')).toBeTruthy();
+  });
+});

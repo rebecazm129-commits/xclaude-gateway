@@ -3,7 +3,15 @@ import type { KeyboardEvent } from 'react';
 import { calledServerLabel, displayToolName, rawToolName } from '../../shared/tool-names.js';
 import type { DetectionRowSlim } from '../../shared/types.js';
 import { Badge } from './Badge.js';
-import { CATEGORY_LABELS, displaySeverity, enrichmentToolLabel, formatTimestamp } from './detections-format.js';
+import {
+  CATEGORY_LABELS,
+  displaySeverity,
+  ELICITATION_TOOL_LABEL,
+  elicitationRowPrefix,
+  enrichmentToolLabel,
+  formatTimestamp,
+  isElicitationRow,
+} from './detections-format.js';
 import { Tooltip } from './Tooltip.js';
 
 import styles from './ClaudeCodeRow.module.css';
@@ -78,7 +86,7 @@ export function ClaudeCodeRow({ row, selected, onClick }: ClaudeCodeRowProps): J
               />
             </Tooltip>
           )}
-          {shown ?? row.method}
+          {isElicitationRow(row) ? ELICITATION_TOOL_LABEL : (shown ?? row.method)}
         </span>
       ) : row.toolName !== undefined ? (
         // Tool real heredado de la request (4c7f859) — gana a la etiqueta
@@ -94,6 +102,10 @@ export function ClaudeCodeRow({ row, selected, onClick }: ClaudeCodeRowProps): J
           )}
           {via !== null && <span className={styles['via']}>via {via}</span>}
           {/* The mcp fallback would repeat the server "via" already names. */}
+          {/* What the user did with a server's elicitation, first, so a long
+              message cannot push it out of view — context the reader
+              attached from ElicitationResult. */}
+          {row.elicitationAction !== undefined ? `${elicitationRowPrefix(row.elicitationAction)} · ` : null}
           {row.argsSummary ?? row.project ?? (via === null ? row.mcp : null)}
         </span>
       ) : (

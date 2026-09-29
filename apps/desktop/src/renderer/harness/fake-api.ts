@@ -9,6 +9,7 @@
 // Everything below is an in-memory value. No fetch, no import of a main-process
 // module, no Node builtin (the renderer build guard rejects those anyway).
 
+import type { CchookHooksCheck } from '../../shared/types.js';
 import type { XcgApi, BaselineHistoryEntry } from '../lib/xcgApi.js';
 import { fakePage } from './fake-page.js';
 import { statusFor, type Scenario } from './fixtures.js';
@@ -21,6 +22,9 @@ const never = async (): Promise<never> => {
 };
 
 export function buildFakeApi(s: Scenario): XcgApi {
+  // "Update hooks" works for real in the harness: the next status is up to
+  // date, so the notice can be captured before and after the click.
+  let hookCheck: CchookHooksCheck = s.hookCheck ?? { state: 'up_to_date' };
   const baselineFor = async (mcp: string): Promise<BaselineHistoryEntry[]> =>
     s.baseline[mcp] ?? [];
 
@@ -40,6 +44,45 @@ export function buildFakeApi(s: Scenario): XcgApi {
     detectionDetail: async (id) => {
       const row = s.rows.find((r) => r.id === id);
       if (row === undefined) return null;
+      // A Claude Code elicitation: the whitelist view the reader derives from
+      // the trail, and the action from its ElicitationResult.
+      if (row.method === 'elicitation/create') {
+        const secret = row.severity === 'high';
+        return {
+          id: row.id,
+          ts: row.ts,
+          session: '01M39D8KVX36DX7G2V353BDGPF',
+          mcp: row.mcp,
+          type: 'mcp.request',
+          rpcId: null,
+          direction: 'server_to_client',
+          category: row.category,
+          severity: row.severity,
+          source: row.source,
+          findings: [{ type: 'server_request', location: 'elicitation', ...(secret ? { rule: 'secret_field' } : {}) }],
+          method: row.method,
+          elicitation: secret
+            ? {
+                server: row.mcp,
+                mode: 'form',
+                message: 'Sign in to Acme Cloud to continue the deployment. Having trouble? Visit https://acme-cloud.example/help',
+                fields: [
+                  { name: 'username', type: 'string', title: 'Username', required: true },
+                  { name: 'password', type: 'string', title: 'Password', required: true },
+                ],
+              }
+            : {
+                server: row.mcp,
+                mode: 'form',
+                message: 'Confirm the export settings',
+                fields: [
+                  { name: 'format', type: 'string', title: 'Format', required: true },
+                  { name: 'include_archived', type: 'boolean', title: 'Include archived', required: false },
+                ],
+              },
+          ...(row.elicitationAction !== undefined ? { elicitationAction: row.elicitationAction } : {}),
+        };
+      }
       // A protocol tripwire's panel has to show what the proxy would really
       // write: its own findings, and for the response-side one an enrichment
       // with no arguments. The generic detail below would dress it as a
@@ -152,11 +195,27 @@ export function buildFakeApi(s: Scenario): XcgApi {
       hookRegistered: s.hookVanishedTs === null,
       pendingSpool: 0,
       pendingNotice: s.hookVanishedTs === null ? null : { ts: s.hookVanishedTs },
+      hookCheck,
+      claudeCodeVersion: '2.1.283',
+      elicitationSupported: true,
+      elicitationMinVersion: '2.1.76',
+      settingsBackupDir: '~/Library/Application Support/xCLAUDE Gateway/backups/claude-settings',
+      settingsManaged: s.settingsManaged ?? null,
       lastCycle: null,
       unreadableTotal: 0,
       lastSessionStartTs: null,
     }),
     cchookInstall: never,
+    cchookNotNow: async () => undefined,
+    cchookUpdate: async () => {
+      hookCheck = { state: 'up_to_date' };
+      return {
+        ok: true,
+        outcome: 'wrote',
+        settingsPath: '/Users/you/.claude/settings.json',
+        backupPath: '~/Library/Application Support/xCLAUDE Gateway/backups/claude-settings/settings-20260929T101500000Z.json',
+      };
+    },
     cchookUninstall: never,
     cchookDismissVanished: async () => undefined,
     validateHealth: async () => ({

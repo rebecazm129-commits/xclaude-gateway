@@ -207,6 +207,7 @@ export function toSlim(e: EnrichableEvent): DetectionRowSlim {
     row.method = e.method;
     if (e.argsSummary !== undefined) row.argsSummary = e.argsSummary;
     if (e.outcome !== undefined) row.outcome = e.outcome;
+    if (e.elicitationAction !== undefined) row.elicitationAction = e.elicitationAction;
   }
   return row;
 }
@@ -230,6 +231,8 @@ export function toDetail(e: EnrichableEvent): DetectionDetail {
     if (e.toolName !== undefined) detail.toolName = e.toolName;
     if (e.argumentsJson !== undefined) detail.argumentsJson = e.argumentsJson;
     if (e.overheadUs !== undefined) detail.overheadUs = e.overheadUs;
+    if (e.elicitation !== undefined) detail.elicitation = e.elicitation;
+    if (e.elicitationAction !== undefined) detail.elicitationAction = e.elicitationAction;
   }
   return detail;
 }

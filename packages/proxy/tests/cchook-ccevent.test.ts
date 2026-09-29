@@ -41,7 +41,7 @@ describe('cc.event — unknown events keep only key names', () => {
     expect(line).not.toContain('password');
   });
 
-  it('an ElicitationResult (what the user typed) is recorded as having happened, not stored', () => {
+  it('an ElicitationResult keeps its whitelist (server, action), never what the user typed', () => {
     const ev = one(
       JSON.stringify({
         hook_event_name: 'ElicitationResult',
@@ -51,9 +51,9 @@ describe('cc.event — unknown events keep only key names', () => {
         content: { username: 'alice', token: SECRET },
       }),
     );
-    expect(ev['payload_omitted']).toBe(true);
-    expect(ev['keys']).toEqual(['hook_event_name', 'session_id', 'mcp_server_name', 'action', 'content']);
-    expect(JSON.stringify(ev)).not.toMatch(/alice|sk-ant-|my-mcp-server|accept/);
+    expect(ev['fields']).toEqual({ mcp_server_name: 'my-mcp-server', action: 'accept' });
+    expect('payload_omitted' in ev).toBe(false);
+    expect(JSON.stringify(ev)).not.toMatch(/alice|sk-ant-/);
   });
 
   it('a payload that does not parse keeps nothing, not even the text', () => {

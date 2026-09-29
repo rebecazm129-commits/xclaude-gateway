@@ -23,6 +23,11 @@ afterEach(() => {
   for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
+// The copies go next to the temp settings, never to the real backups folder.
+const tmpBackups = (settingsPath: string): { backupDir: string } => ({
+  backupDir: join(dirname(dirname(settingsPath)), 'xcg-backups'),
+});
+
 const read = (p: string): Record<string, unknown> =>
   JSON.parse(readFileSync(p, 'utf8')) as Record<string, unknown>;
 
@@ -35,14 +40,16 @@ function preWrite(path: string, content: string): void {
 }
 
 describe('installCchook', () => {
-  it('file absent → seeds (mkdir + {}), merges, writes, .bak captures the seed', () => {
+  it('file absent → created (mkdir + our hooks), 0600, no .bak and no copy (nothing to copy)', () => {
     const path = tempSettingsPath();
-    const res = installCchook(path);
+    const res = installCchook(path, undefined, tmpBackups(path));
     expect(res).toEqual({ ok: true, outcome: 'wrote', settingsPath: path });
     const hooks = read(path)['hooks'] as Record<string, unknown[]>;
     expect(JSON.stringify(hooks['PostToolUse'])).toContain(CCHOOK_MARKER);
-    // writeAtomic's first-write-wins .bak holds the pre-Install (seeded) state.
-    expect(readFileSync(`${path}.bak`, 'utf8')).toBe('{}\n');
+    // The guarded write keeps no .bak next to settings.json, and an absent
+    // file has no bytes to copy into the backups folder.
+    expect(existsSync(`${path}.bak`)).toBe(false);
+    expect(existsSync(tmpBackups(path).backupDir)).toBe(false);
     const mode = statSync(path).mode & 0o777;
     expect(mode).toBe(0o600);
   });
@@ -53,7 +60,7 @@ describe('installCchook', () => {
     preWrite(path, manual);
     const before = readFileSync(path, 'utf8');
 
-    const res = installCchook(path);
+    const res = installCchook(path, undefined, tmpBackups(path));
     expect(res).toEqual({ ok: true, outcome: 'noop', settingsPath: path });
     expect(readFileSync(path, 'utf8')).toBe(before); // byte-identical
     expect(existsSync(`${path}.bak`)).toBe(false); // no write → no backup
@@ -62,7 +69,7 @@ describe('installCchook', () => {
   it('corrupt JSON → readable error, disk intact, nothing written', () => {
     const path = tempSettingsPath();
     preWrite(path, '{"hooks": BROKEN');
-    const res = installCchook(path);
+    const res = installCchook(path, undefined, tmpBackups(path));
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error).toContain('not valid JSON');
     expect(readFileSync(path, 'utf8')).toBe('{"hooks": BROKEN');
@@ -76,7 +83,7 @@ describe('installCchook', () => {
       hooks: { PostToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo hi' }] }] },
     };
     preWrite(path, JSON.stringify(foreign));
-    expect(installCchook(path)).toMatchObject({ ok: true, outcome: 'wrote' });
+    expect(installCchook(path, undefined, tmpBackups(path))).toMatchObject({ ok: true, outcome: 'wrote' });
     const after = read(path);
     expect(after['model']).toBe('claude-fable-5');
     const post = (after['hooks'] as Record<string, unknown[]>)['PostToolUse']!;
@@ -88,7 +95,7 @@ describe('installCchook', () => {
 describe('uninstallCchook', () => {
   it('file absent → ok noop', () => {
     const path = tempSettingsPath();
-    expect(uninstallCchook(path)).toEqual({ ok: true, outcome: 'noop', settingsPath: path });
+    expect(uninstallCchook(path, tmpBackups(path))).toEqual({ ok: true, outcome: 'noop', settingsPath: path });
     expect(existsSync(path)).toBe(false); // nothing created either
   });
 
@@ -96,21 +103,21 @@ describe('uninstallCchook', () => {
     const path = tempSettingsPath();
     const foreign = { hooks: { PostToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo hi' }] }] } };
     preWrite(path, JSON.stringify(foreign));
-    installCchook(path);
+    installCchook(path, undefined, tmpBackups(path));
 
-    const res = uninstallCchook(path);
+    const res = uninstallCchook(path, tmpBackups(path));
     expect(res).toMatchObject({ ok: true, outcome: 'wrote' });
     const after = read(path);
     expect(JSON.stringify(after)).not.toContain(CCHOOK_MARKER);
     expect((after['hooks'] as Record<string, unknown[]>)['PostToolUse']).toHaveLength(1);
 
-    expect(uninstallCchook(path)).toMatchObject({ ok: true, outcome: 'noop' });
+    expect(uninstallCchook(path, tmpBackups(path))).toMatchObject({ ok: true, outcome: 'noop' });
   });
 
   it('corrupt JSON → error, disk intact', () => {
     const path = tempSettingsPath();
     preWrite(path, `not json ${CCHOOK_MARKER}`);
-    const res = uninstallCchook(path);
+    const res = uninstallCchook(path, tmpBackups(path));
     expect(res.ok).toBe(false);
     expect(readFileSync(path, 'utf8')).toBe(`not json ${CCHOOK_MARKER}`);
   });

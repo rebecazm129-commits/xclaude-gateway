@@ -9,8 +9,12 @@ import type {
   ToolCount,
   ConnectorAuthAlert,
   DetectionListResult,
+  ElicitationAction,
+  ElicitationFieldView,
+  ElicitationUrlView,
+  ElicitationView,
 } from '../shared/types.js';
-import { DAY_MS } from '../shared/types.js';
+import { DAY_MS, ELICITATION_METHOD } from '../shared/types.js';
 import { SELFTEST_WRAPPER_NAME } from './selftest-runner.js';
 import { CONNECTOR_RECOVERED_TYPE } from './recovery-writer.js';
 
@@ -110,10 +114,84 @@ export interface AuthSignal {
 // outcome attached directly; the AuditStore also uses the map to BACKFILL
 // requests cached from earlier chunks of the same file (a long-running tool's
 // response can land in a later incremental read).
+// elicitationActions: ElicitationResult lines of THIS parse that found no
+// Elicitation earlier in the same parse — keyed like elicitationKey — so the
+// AuditStore can backfill the one cached from an earlier chunk (same pattern
+// as outcomes).
 export interface ParsedFile {
   events: EnrichableEvent[];
   authSignals: AuthSignal[];
   outcomes?: Map<string, 'ok' | 'error'>;
+  elicitationActions?: Map<string, ElicitationAction>;
+}
+
+/** A Claude Code elicitation row: a server's request recorded by the hook
+ *  ingester. rpcId is always null on these, so every rpcId-keyed join
+ *  (outcome, enrichment, inheritance) must leave them out. */
+export function isCcElicitation(ev: { method?: string; source?: string }): boolean {
+  return ev.method === ELICITATION_METHOD && ev.source === 'claude-code';
+}
+
+// Association key for an ElicitationResult: the trail session (one file per
+// Claude Code session), the Claude Code session id and the server.
+export function elicitationKey(session: string, ccSession: string | undefined, server: string): string {
+  return JSON.stringify([session, ccSession ?? null, server]);
+}
+
+const optStr = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
+
+// The drawer's view of what the trail kept — read field by field, so a line
+// carrying anything else (it should not) shows nothing more.
+function elicitationView(params: unknown): ElicitationView {
+  const p = params !== null && typeof params === 'object' ? (params as Record<string, unknown>) : {};
+  const fields: ElicitationFieldView[] = [];
+  if (Array.isArray(p['fields'])) {
+    for (const f of p['fields']) {
+      if (f === null || typeof f !== 'object') continue;
+      const o = f as Record<string, unknown>;
+      const name = optStr(o['name']);
+      if (name === undefined) continue;
+      const type = optStr(o['type']);
+      const title = optStr(o['title']);
+      const format = optStr(o['format']);
+      fields.push({
+        name,
+        ...(type !== undefined ? { type } : {}),
+        ...(title !== undefined ? { title } : {}),
+        ...(format !== undefined ? { format } : {}),
+        required: o['required'] === true,
+      });
+    }
+  }
+  const view: ElicitationView = { fields };
+  const server = optStr(p['mcp_server_name']);
+  if (server !== undefined) view.server = server;
+  const mode = optStr(p['mode']);
+  if (mode !== undefined) view.mode = mode;
+  const message = optStr(p['message']);
+  if (message !== undefined) view.message = message;
+  if (p['message_truncated'] === true) view.messageTruncated = true;
+  if (p['fields_truncated'] === true) view.fieldsTruncated = true;
+  const u = p['url'];
+  if (u !== null && typeof u === 'object') {
+    const o = u as Record<string, unknown>;
+    const url: ElicitationUrlView = {};
+    for (const k of ['scheme', 'host', 'port', 'path', 'query'] as const) {
+      const v = optStr(o[k]);
+      if (v !== undefined) url[k] = v;
+    }
+    if (o['had_userinfo'] === true) url.hadUserinfo = true;
+    if (o['had_fragment'] === true) url.hadFragment = true;
+    if (o['non_https'] === true) url.nonHttps = true;
+    if (o['punycode_host'] === true) url.punycodeHost = true;
+    if (o['unparseable'] === true) url.unparseable = true;
+    view.url = url;
+  }
+  return view;
+}
+
+function isElicitationAction(v: unknown): v is ElicitationAction {
+  return v === 'accept' || v === 'decline' || v === 'cancel';
 }
 
 // Correlation key for outcome attachment/backfill. JSON.stringify escapes
@@ -202,6 +280,10 @@ export function parseAuditContent(content: string): ParsedFile {
   const events: EnrichableEvent[] = [];
   const authSignals: AuthSignal[] = [];
   const outcomes = new Map<string, 'ok' | 'error'>();
+  // Last Claude Code elicitation seen in this pass, per elicitationKey, and
+  // the results that found none (backfilled by the AuditStore).
+  const lastElicitation = new Map<string, DetectionEvent>();
+  const elicitationActions = new Map<string, ElicitationAction>();
   for (const line of content.split('\n')) {
     if (line.trim() === '') continue;
     let parsed: unknown;
@@ -276,7 +358,42 @@ export function parseAuditContent(content: string): ParsedFile {
         }
       }
     }
+    // ElicitationResult (cc.event): no row of its own — its action is context
+    // for the Elicitation it answers, the last one of the same server and
+    // session. The trail holds them in order (the ingester appends spool
+    // files in capture order), so "last seen" is "last before".
+    {
+      const obj = parsed as Record<string, unknown>;
+      if (
+        obj['type'] === 'cc.event' &&
+        obj['hookEventName'] === 'ElicitationResult' &&
+        typeof obj['session'] === 'string'
+      ) {
+        const fields = obj['fields'];
+        const f = fields !== null && typeof fields === 'object' ? (fields as Record<string, unknown>) : {};
+        const server = f['mcp_server_name'];
+        const action = f['action'];
+        if (typeof server === 'string' && isElicitationAction(action)) {
+          const k = elicitationKey(obj['session'] as string, optStr(obj['ccSession']), server);
+          const target = lastElicitation.get(k);
+          if (target !== undefined) target.elicitationAction = action;
+          else elicitationActions.set(k, action);
+        }
+        continue;
+      }
+    }
     if (isDetectionEvent(parsed)) {
+      // Elicitation de Claude Code: la vista del drawer y un resumen de una
+      // línea para la columna DETAILS (modo · mensaje), derivados aquí como
+      // toolName/argsSummary.
+      if (isCcElicitation(parsed)) {
+        const view = elicitationView((parsed as unknown as { params?: unknown }).params);
+        parsed.elicitation = view;
+        const head = view.mode !== undefined ? `${view.mode} · ` : '';
+        const body = view.message ?? (view.url?.host !== undefined ? view.url.host : '');
+        if (head !== '' || body !== '') parsed.argsSummary = clipSummary(`${head}${body}`);
+        lastElicitation.set(elicitationKey(parsed.session, parsed.ccSession, parsed.mcp), parsed);
+      }
       // Derivar toolName desde params.name solo cuando method === 'tools/call'
       // y name es string. Mantiene el renderer libre de maquinaria JSON-RPC.
       if (parsed.method === 'tools/call') {
@@ -315,7 +432,7 @@ export function parseAuditContent(content: string): ParsedFile {
       }
       // ccToolUseId (frente 3): derivado AQUÍ, en parse — históricos cubiertos
       // al reconstruir del disco, mismo patrón que toolName/argsSummary.
-      if (parsed.source === 'claude-code' && typeof parsed.rpcId === 'string') {
+      if (parsed.source === 'claude-code' && typeof parsed.rpcId === 'string' && !isCcElicitation(parsed)) {
         // Contrato del ingester (cchook-ingest: rpcId = toolUseId ?? null);
         // en el stream CC cualquier rpcId string ES el toolUseId.
         parsed.ccToolUseId = parsed.rpcId;
@@ -344,12 +461,13 @@ export function parseAuditContent(content: string): ParsedFile {
   // Attach outcomes to the requests of THIS pass (responses always follow
   // their request in the trail, so the map is complete by now for any pair
   // living in the same chunk).
+  // An elicitation has no response line (rpcId null): never an outcome.
   for (const ev of events) {
-    if (ev.type !== 'mcp.request') continue;
+    if (ev.type !== 'mcp.request' || isCcElicitation(ev)) continue;
     const outcome = outcomes.get(outcomeKey(ev.session, ev.rpcId));
     if (outcome !== undefined) ev.outcome = outcome;
   }
-  return { events, authSignals, outcomes };
+  return { events, authSignals, outcomes, elicitationActions };
 }
 
 // deriveAuthAlerts — pure: derives connector auth alerts from the
@@ -448,6 +566,7 @@ export function assembleAudit(
   // (session, rpcId) → ccToolUseId, poblado SOLO con requests que lo tengan.
   const requestToolUseByRpc = new Map<string, string>();
   for (const req of requests) {
+    if (isCcElicitation(req)) continue;
     if (req.ccToolUseId !== undefined) {
       requestToolUseByRpc.set(
         JSON.stringify([req.session, req.rpcId]),
@@ -466,6 +585,7 @@ export function assembleAudit(
     { toolName?: string; cwd?: string }
   >();
   for (const req of requests) {
+    if (isCcElicitation(req)) continue;
     if (req.toolName !== undefined || req.cwd !== undefined) {
       requestPresentationByRpc.set(JSON.stringify([req.session, req.rpcId]), {
         ...(req.toolName !== undefined ? { toolName: req.toolName } : {}),
@@ -475,7 +595,10 @@ export function assembleAudit(
   }
   const matchedEnrichmentIds = new Set<string>();
   // Output rows are COPIES: the caller's cached events are never mutated.
+  // A Claude Code elicitation (rpcId null) must not absorb a null-rpcId
+  // enrichment from the same session.
   const outRequests: DetectionEvent[] = requests.map((req) => {
+    if (isCcElicitation(req)) return { ...req };
     const match = enrichmentByKey.get(key(req.session, req.rpcId, req.direction));
     if (match) {
       matchedEnrichmentIds.add(match.id);

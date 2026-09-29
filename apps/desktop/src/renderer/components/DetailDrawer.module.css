@@ -202,6 +202,19 @@
   white-space: pre;
 }
 
+/* The "User action" line after the sentences above it: the same 8px
+   .emptyFindings puts above a sentence, so a note and the line below it do
+   not touch. */
+.actionList {
+  margin-top: 8px;
+}
+
+/* An elicitation's message: prose, so it wraps (unlike .code's JSON). */
+.messageText {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .findings {
   display: flex;
   flex-direction: column;

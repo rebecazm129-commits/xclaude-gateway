@@ -30,6 +30,16 @@
   margin: 0;
 }
 
+/* Small informative line (the managed-settings notice's resolved path): mono,
+   breaks anywhere — a path has no spaces to break at. */
+.path {
+  font-family: var(--kraft-font-mono);
+  font-size: 12px;
+  color: var(--kraft-warning-text);
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+
 .actions {
   display: flex;
   gap: 12px;

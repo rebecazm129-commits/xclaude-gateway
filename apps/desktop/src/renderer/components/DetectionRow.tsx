@@ -5,11 +5,13 @@ import { sourceName } from '../../shared/types.js';
 import type { DetectionRowSlim } from '../../shared/types.js';
 import { Badge } from './Badge.js';
 import {
+  ELICITATION_TOOL_LABEL,
   PAIRED_SOURCE_LABELS,
   categoryLabel,
   displaySeverity,
   enrichmentToolLabel,
   formatTimestamp,
+  isElicitationRow,
 } from './detections-format.js';
 
 import styles from './DetectionRow.module.css';
@@ -69,7 +71,7 @@ export function DetectionRow({ row, selected, onClick }: DetectionRowProps): JSX
       </span>
       {row.type === 'mcp.request' ? (
         <span className={styles['method']} title={toolTitle}>
-          {displayToolName(row) ?? row.method}
+          {isElicitationRow(row) ? ELICITATION_TOOL_LABEL : (displayToolName(row) ?? row.method)}
         </span>
       ) : row.toolName !== undefined ? (
         // Orden DELIBERADO (contrato: real tool > real method > synthetic):

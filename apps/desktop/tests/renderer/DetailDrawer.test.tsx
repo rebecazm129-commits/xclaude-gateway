@@ -124,3 +124,120 @@ describe('groupFindings', () => {
     ]);
   });
 });
+
+describe('DetailDrawer — Claude Code elicitation', () => {
+  const ELICIT_ROW: DetectionRowSlim = {
+    id: 'el1',
+    ts: '2026-09-28T10:00:00.000Z',
+    mcp: 'spike-elicit',
+    type: 'mcp.request',
+    category: 'protocol_tripwire',
+    severity: 'high',
+    source: 'claude-code',
+    method: 'elicitation/create',
+  };
+  const elicitDetail = (over: Partial<DetectionDetail> = {}): DetectionDetail => ({
+    id: 'el1',
+    ts: '2026-09-28T10:00:00.000Z',
+    session: '01HXTESTSESSION',
+    mcp: 'spike-elicit',
+    type: 'mcp.request',
+    rpcId: null,
+    direction: 'server_to_client',
+    category: 'protocol_tripwire',
+    severity: 'high',
+    source: 'claude-code',
+    findings: [{ type: 'server_request', location: 'elicitation', rule: 'secret_field' }],
+    method: 'elicitation/create',
+    elicitation: {
+      server: 'spike-elicit',
+      mode: 'form',
+      message: 'Sign in at https://evil.example/login',
+      fields: [{ name: 'password', type: 'string', title: 'Password', required: true }],
+    },
+    ...over,
+  });
+
+  it('shows server, MCP method, mode, the message as plain text (no link), the fields and the user action', async () => {
+    stubDetail(elicitDetail({ elicitationAction: 'accept' }));
+    const { container } = render(<DetailDrawer row={ELICIT_ROW} onClose={vi.fn()} />);
+    expect(await screen.findByText('Server request')).toBeTruthy();
+    expect(screen.getByText('spike-elicit')).toBeTruthy();
+    expect(screen.getByText('MCP method:')).toBeTruthy();
+    expect(screen.getByText('elicitation/create')).toBeTruthy();
+    expect(screen.getByText('form')).toBeTruthy();
+    expect(screen.getByTestId('elicitation-message').textContent).toBe('Sign in at https://evil.example/login');
+    expect(container.querySelector('a')).toBeNull();
+    expect(screen.getByText('password:')).toBeTruthy();
+    expect(screen.getByText('Password · string · required')).toBeTruthy();
+    expect(screen.getByText('User action:')).toBeTruthy();
+    expect(screen.getByTestId('elicitation-action').textContent).toBe('Accepted');
+    expect(screen.getByText('xCLAUDE does not store the values entered by the user.')).toBeTruthy();
+    expect(screen.queryByText('Tool call')).toBeNull();
+  });
+
+  it('HIGH by a secret field: the note that MCP does not allow credentials in form mode', async () => {
+    stubDetail(elicitDetail());
+    render(<DetailDrawer row={ELICIT_ROW} onClose={vi.fn()} />);
+    expect((await screen.findByTestId('elicitation-secret-note')).textContent).toBe(
+      'This form appears to request a secret. MCP does not allow sensitive credentials in form elicitation; they should be requested via URL mode.',
+    );
+  });
+
+  it('the message and the fields sit under their own headings', async () => {
+    stubDetail(elicitDetail());
+    render(<DetailDrawer row={ELICIT_ROW} onClose={vi.fn()} />);
+    const message = await screen.findByText('Message');
+    expect(message.parentElement?.contains(screen.getByTestId('elicitation-message'))).toBe(true);
+    const fields = screen.getByText('Requested fields');
+    expect(fields.parentElement?.contains(screen.getByText('password:'))).toBe(true);
+  });
+
+  it('url mode without a message or fields: no empty Message / Requested fields headings', async () => {
+    stubDetail(elicitDetail({ elicitation: { server: 'spike-elicit', mode: 'url', fields: [], url: { scheme: 'https', host: 'example.com', path: '/' } } }));
+    render(<DetailDrawer row={ELICIT_ROW} onClose={vi.fn()} />);
+    expect(await screen.findByText('Server request')).toBeTruthy();
+    expect(screen.queryByText('Message')).toBeNull();
+    expect(screen.queryByText('Requested fields')).toBeNull();
+  });
+
+  it('no secret field: no secret note', async () => {
+    stubDetail(elicitDetail({ severity: 'medium', findings: [{ type: 'server_request', location: 'elicitation' }] }));
+    render(<DetailDrawer row={{ ...ELICIT_ROW, severity: 'medium' }} onClose={vi.fn()} />);
+    expect(await screen.findByText('Server request')).toBeTruthy();
+    expect(screen.queryByTestId('elicitation-secret-note')).toBeNull();
+  });
+
+  it('Declined / Cancelled / no result — never "completed"; the not-stored line always', async () => {
+    for (const [action, text] of [
+      ['decline', 'Declined'],
+      ['cancel', 'Cancelled'],
+      [undefined, 'No user response was observed by xCLAUDE.'],
+    ] as const) {
+      stubDetail(elicitDetail(action !== undefined ? { elicitationAction: action } : {}));
+      render(<DetailDrawer row={ELICIT_ROW} onClose={vi.fn()} />);
+      expect((await screen.findByTestId('elicitation-action')).textContent).toBe(text);
+      expect(screen.getByText('xCLAUDE does not store the values entered by the user.')).toBeTruthy();
+      expect(screen.queryByText(/completed/i)).toBeNull();
+      cleanup();
+    }
+  });
+
+  it('url mode: the URL without userinfo or fragment, and its flags', async () => {
+    stubDetail(
+      elicitDetail({
+        elicitation: {
+          server: 'spike-elicit',
+          mode: 'url',
+          fields: [],
+          url: { scheme: 'http', host: 'xn--pple-43d.com', path: '/login', hadUserinfo: true, nonHttps: true, punycodeHost: true },
+        },
+      }),
+    );
+    render(<DetailDrawer row={ELICIT_ROW} onClose={vi.fn()} />);
+    expect(await screen.findByText('http://xn--pple-43d.com/login')).toBeTruthy();
+    expect(screen.getByText('Not HTTPS')).toBeTruthy();
+    expect(screen.getByText('The URL carried a username or password (not kept)')).toBeTruthy();
+    expect(screen.getByText('The host uses internationalized characters (punycode)')).toBeTruthy();
+  });
+});

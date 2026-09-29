@@ -29,6 +29,8 @@ import type {
 import {
   assembleAudit,
   deriveAuthAlerts,
+  elicitationKey,
+  isCcElicitation,
   outcomeKey,
   parseAuditContent,
   type AuthSignal,
@@ -139,6 +141,9 @@ function slimEvent(e: EnrichableEvent): EnrichableEvent {
     if (e.argsSummary !== undefined) slim.argsSummary = e.argsSummary;
     // outcome (delta final): tiny; the Status filter and the error dot read it.
     if (e.outcome !== undefined) slim.outcome = e.outcome;
+    // elicitationAction: tiny; the row shows it. The elicitation view itself
+    // (message, fields) is heavy and re-read on demand like argumentsJson.
+    if (e.elicitationAction !== undefined) slim.elicitationAction = e.elicitationAction;
     return slim;
   }
   const slim: DetectionEnrichmentEvent = {
@@ -282,9 +287,24 @@ export function createAuditStore(
         // grew, so the early-exit signature already forces a re-assemble.
         if (parsed.outcomes !== undefined && parsed.outcomes.size > 0) {
           for (const ev of entry.events) {
-            if (ev.type !== 'mcp.request' || ev.outcome !== undefined) continue;
+            if (ev.type !== 'mcp.request' || ev.outcome !== undefined || isCcElicitation(ev)) continue;
             const outcome = parsed.outcomes.get(outcomeKey(ev.session, ev.rpcId));
             if (outcome !== undefined) ev.outcome = outcome;
+          }
+        }
+        // Elicitation backfill: an ElicitationResult whose Elicitation came in
+        // an earlier chunk answers the LAST cached one of the same server and
+        // session (entry.events is in line order).
+        if (parsed.elicitationActions !== undefined && parsed.elicitationActions.size > 0) {
+          const pending = new Map(parsed.elicitationActions);
+          for (let i = entry.events.length - 1; i >= 0 && pending.size > 0; i--) {
+            const ev = entry.events[i]!;
+            if (ev.type !== 'mcp.request' || !isCcElicitation(ev)) continue;
+            const k = elicitationKey(ev.session, ev.ccSession, ev.mcp);
+            const action = pending.get(k);
+            if (action === undefined) continue;
+            ev.elicitationAction = action;
+            pending.delete(k);
           }
         }
         // Store the LEAN form only — heavy fields are re-read on demand.

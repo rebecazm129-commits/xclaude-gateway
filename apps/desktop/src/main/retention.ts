@@ -5,7 +5,7 @@
 // whole ${session}.jsonl removed with unlink (never in-place rewrite or
 // truncate). app-events.jsonl is exempt: it holds the recovery + purge markers.
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir, readFile, stat, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -141,7 +141,22 @@ export function writeRetentionConfig(
         : 'io';
     return { ok: false, error: { kind, detail } };
   }
-  return writeAtomic(path, { v: 1, retention: config });
+  // Other keys of the app's settings.json (the Claude Code hook-update
+  // marks) are kept: this writer owns `retention`, not the whole file.
+  return writeAtomic(path, { ...readSettingsObject(path), v: 1, retention: config });
+}
+
+/** The app's settings.json as an object; absent, unreadable or not an
+ *  object → {}. Shared by every writer of a key in it. */
+export function readSettingsObject(path: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 // ---- directory size (for the "log has grown" banner) ----

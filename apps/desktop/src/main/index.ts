@@ -9,7 +9,9 @@ import { fileURLToPath } from 'node:url';
 import { ensureSymlink, type SelfTestReport } from '@xcg/shared';
 import {
   CLAUDE_DESKTOP_CONFIG_PATH,
+  ELICITATION_MIN_CLAUDE_CODE,
   STABLE_XCG_PROXY_PATH,
+  cchookEventsFor,
   isSafeRemoteName,
 } from '@xcg/shared/config';
 
@@ -70,8 +72,10 @@ import {
   readPendingNotice,
   recordCchookExpected,
 } from './cchook-integrity.js';
-import { installCchook, uninstallCchook } from './cchook-install.js';
-import { detectClaudeCode, isHookRegistered } from './claude-code-detect.js';
+import { installCchook, managedSettingsStatus, uninstallCchook, updateCchook } from './cchook-install.js';
+import { detectClaudeCode, isHookRegistered, readCchookHooksCheck, readClaudeCodeVersion } from './claude-code-detect.js';
+import { defaultSettingsBackupDir, tildify } from './claude-settings-write.js';
+import { hookUpdateNotNow, readHookUpdatePrefs } from './hook-update-prefs.js';
 import { spawnWrapper, readDetectionsFromAudit, resolveNpxPath } from './selftest-runner.js';
 import { runSelfTest } from './selftest-handler.js';
 import { runConfigConnect } from './connect-handler.js';
@@ -158,6 +162,9 @@ function retentionBanner(): RetentionBannerInfo | null {
 // the Sources tab, so isHookRegistered stays uncached (freshness beats the
 // negligible read cost) while detectClaudeCode caches per process.
 ipcMain.handle('cchook:status', async (): Promise<CchookStatus> => {
+  // `claude --version`, cached per binary + mtime (one stat per poll).
+  const claudeCodeVersion = await readClaudeCodeVersion();
+  const events = cchookEventsFor(claudeCodeVersion);
   let pendingSpool = 0;
   try {
     pendingSpool = (await readdir(cchookSpoolDir())).filter((n) => n.endsWith('.json')).length;
@@ -167,6 +174,13 @@ ipcMain.handle('cchook:status', async (): Promise<CchookStatus> => {
   return {
     installed: detectClaudeCode().installed,
     hookRegistered: isHookRegistered(),
+    hookCheck: readCchookHooksCheck(undefined, events),
+    claudeCodeVersion,
+    elicitationSupported: events.includes('Elicitation'),
+    elicitationMinVersion: ELICITATION_MIN_CLAUDE_CODE,
+    settingsBackupDir: tildify(defaultSettingsBackupDir()),
+    settingsManaged: managedSettingsStatus(undefined, events),
+    hookUpdatePrefs: readHookUpdatePrefs(),
     pendingSpool,
     pendingNotice: readPendingNotice(),
     ...getCchookStatus(),
@@ -177,8 +191,9 @@ ipcMain.handle('cchook:status', async (): Promise<CchookStatus> => {
 // Synchronous fs work behind the handler, same shape discipline as config:*.
 // After an install, kick an ingest cycle so a just-started session's captures
 // appear without waiting for the 15s tick.
-ipcMain.handle('cchook:install', (): CchookInstallResult => {
-  const result = installCchook();
+ipcMain.handle('cchook:install', async (): Promise<CchookInstallResult> => {
+  // The elicitation events only for Claude Code ≥ 2.1.76 (unknown → left out).
+  const result = installCchook(undefined, cchookEventsFor(await readClaudeCodeVersion()));
   // Hook-integrity intent: registered in-app (wrote) or already registered
   // (noop) — either way the hook is expected from here on, and a pending
   // out-of-band notice is resolved (the banner's Reinstall lands here).
@@ -189,6 +204,21 @@ ipcMain.handle('cchook:install', (): CchookInstallResult => {
     });
   }
   return result;
+});
+
+// Update of an existing install (new hook events, async, --event) — only from
+// the "Update hooks" button, never on its own. The renderer says new Claude
+// Code sessions will use the updated hooks.
+ipcMain.handle('cchook:update', async (): Promise<CchookInstallResult> => {
+  const result = updateCchook({ events: cchookEventsFor(await readClaudeCodeVersion()) });
+  if (result.ok) recordCchookExpected(true);
+  return result;
+});
+
+// "Not now" on the update notice — tied to the set of pending changes the
+// renderer saw (hookUpdateKey).
+ipcMain.handle('cchook:not-now', (_e, key: unknown): void => {
+  if (typeof key === 'string' && key !== '') hookUpdateNotNow(key);
 });
 
 ipcMain.handle('cchook:uninstall', (): CchookInstallResult => {

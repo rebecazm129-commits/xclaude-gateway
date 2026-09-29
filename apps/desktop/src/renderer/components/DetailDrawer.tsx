@@ -11,6 +11,11 @@ import {
   auditTrailSentences,
   categoryLabel,
   displaySeverity,
+  ELICITATION_NO_ACTION,
+  ELICITATION_SECRET_NOTE,
+  ELICITATION_VALUES_NOT_STORED,
+  elicitationActionLabel,
+  elicitationUrlFlags,
 } from './detections-format.js';
 
 import styles from './DetailDrawer.module.css';
@@ -170,6 +175,8 @@ function DetectionDetailPanel({ row, onClose }: { row: DetectionRowSlim; onClose
   const method = isRequest ? detail?.method : undefined;
   const argumentsJson = isRequest ? detail?.argumentsJson : undefined;
   const overheadUs = isRequest ? detail?.overheadUs : undefined;
+  const elicitation = isRequest ? detail?.elicitation : undefined;
+  const elicitationAction = isRequest ? detail?.elicitationAction : undefined;
 
   return (
     <div
@@ -206,39 +213,141 @@ function DetectionDetailPanel({ row, onClose }: { row: DetectionRowSlim; onClose
           </div>
         )}
 
+        {detail !== null && elicitation !== undefined && (
+          // A Claude Code elicitation: a server asking the user for input.
+          // Everything here is plain text — the message is the server's own
+          // words and is never turned into links.
+          <>
+            <section className={styles['block']} data-testid="elicitation-block">
+              <div className={styles['blockLabel']}>Server request</div>
+              <div className={styles['kvList']}>
+                <div className={styles['kvRow']}>
+                  <span className={styles['kvKey']}>server:</span>
+                  <span className={styles['kvValue']}>{elicitation.server ?? detail.mcp}</span>
+                </div>
+                <div className={styles['kvRow']}>
+                  <span className={styles['kvKey']}>MCP method:</span>
+                  <span className={styles['kvValue']}>{detail.method}</span>
+                </div>
+                {elicitation.mode !== undefined && (
+                  <div className={styles['kvRow']}>
+                    <span className={styles['kvKey']}>mode:</span>
+                    <span className={styles['kvValue']}>{elicitation.mode}</span>
+                  </div>
+                )}
+                {elicitation.url !== undefined && (
+                  <div className={styles['kvRow']}>
+                    <span className={styles['kvKey']}>url:</span>
+                    <span className={styles['kvValue']}>
+                      {elicitation.url.scheme !== undefined ? `${elicitation.url.scheme}://` : ''}
+                      {elicitation.url.host ?? ''}
+                      {elicitation.url.port !== undefined ? `:${elicitation.url.port}` : ''}
+                      {elicitation.url.path ?? ''}
+                      {elicitation.url.query !== undefined ? `?${elicitation.url.query}` : ''}
+                    </span>
+                  </div>
+                )}
+              </div>
+              {elicitation.url !== undefined &&
+                elicitationUrlFlags(elicitation.url).map((flag) => (
+                  <div key={flag} className={styles['emptyFindings']}>
+                    {flag}
+                  </div>
+                ))}
+            </section>
+            {elicitation.message !== undefined && (
+              <section className={styles['block']}>
+                <div className={styles['blockLabel']}>Message</div>
+                <pre className={`${styles['code']} ${styles['messageText']}`} data-testid="elicitation-message">
+                  {elicitation.message}
+                  {elicitation.messageTruncated === true ? '…' : ''}
+                </pre>
+              </section>
+            )}
+            {elicitation.fields.length > 0 && (
+              <section className={styles['block']}>
+                <div className={styles['blockLabel']}>Requested fields</div>
+                <div className={styles['kvList']}>
+                  {elicitation.fields.map((field) => (
+                    <div key={field.name} className={styles['kvRow']}>
+                      <span className={styles['kvKey']}>{field.name}:</span>
+                      <span className={styles['kvValue']}>
+                        {[
+                          field.title,
+                          [field.type, field.format].filter((x) => x !== undefined).join(', ') || undefined,
+                          field.required ? 'required' : 'optional',
+                        ]
+                          .filter((x) => x !== undefined)
+                          .join(' · ')}
+                      </span>
+                    </div>
+                  ))}
+                  {elicitation.fieldsTruncated === true && (
+                    <div className={styles['emptyFindings']}>More fields were requested than are shown</div>
+                  )}
+                </div>
+              </section>
+            )}
+            <section className={styles['block']}>
+              {detail.findings.some((f) => f.rule === 'secret_field') && (
+                <div className={styles['emptyFindings']} data-testid="elicitation-secret-note">
+                  {ELICITATION_SECRET_NOTE}
+                </div>
+              )}
+              {elicitationAction !== undefined ? (
+                <div className={`${styles['kvList']} ${styles['actionList']}`}>
+                  <div className={styles['kvRow']}>
+                    <span className={styles['kvKey']}>User action:</span>
+                    <span className={styles['kvValue']} data-testid="elicitation-action">
+                      {elicitationActionLabel(elicitationAction)}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className={styles['emptyFindings']} data-testid="elicitation-action">
+                  {ELICITATION_NO_ACTION}
+                </div>
+              )}
+              <div className={styles['emptyFindings']}>{ELICITATION_VALUES_NOT_STORED}</div>
+            </section>
+          </>
+        )}
+
         {detail !== null && (
           <>
-            <section className={styles['block']}>
-              <div className={styles['blockLabel']}>Tool call</div>
-              <div className={styles['kvList']}>
-                {toolName !== undefined && (
+            {elicitation === undefined && (
+              <section className={styles['block']}>
+                <div className={styles['blockLabel']}>Tool call</div>
+                <div className={styles['kvList']}>
+                  {toolName !== undefined && (
+                    <div className={styles['kvRow']}>
+                      <span className={styles['kvKey']}>tool:</span>
+                      <span className={styles['kvValue']}>{toolName}</span>
+                    </div>
+                  )}
+                  {server !== null && (
+                    <div className={styles['kvRow']}>
+                      <span className={styles['kvKey']}>server:</span>
+                      <span className={styles['kvValue']}>{server}</span>
+                    </div>
+                  )}
+                  {method !== undefined && (
+                    <div className={styles['kvRow']}>
+                      <span className={styles['kvKey']}>method:</span>
+                      <span className={styles['kvValue']}>{method}</span>
+                    </div>
+                  )}
                   <div className={styles['kvRow']}>
-                    <span className={styles['kvKey']}>tool:</span>
-                    <span className={styles['kvValue']}>{toolName}</span>
+                    <span className={styles['kvKey']}>mcp:</span>
+                    <span className={styles['kvValue']}>{detail.mcp}</span>
                   </div>
-                )}
-                {server !== null && (
                   <div className={styles['kvRow']}>
-                    <span className={styles['kvKey']}>server:</span>
-                    <span className={styles['kvValue']}>{server}</span>
+                    <span className={styles['kvKey']}>direction:</span>
+                    <span className={styles['kvValue']}>{detail.direction}</span>
                   </div>
-                )}
-                {method !== undefined && (
-                  <div className={styles['kvRow']}>
-                    <span className={styles['kvKey']}>method:</span>
-                    <span className={styles['kvValue']}>{method}</span>
-                  </div>
-                )}
-                <div className={styles['kvRow']}>
-                  <span className={styles['kvKey']}>mcp:</span>
-                  <span className={styles['kvValue']}>{detail.mcp}</span>
                 </div>
-                <div className={styles['kvRow']}>
-                  <span className={styles['kvKey']}>direction:</span>
-                  <span className={styles['kvValue']}>{detail.direction}</span>
-                </div>
-              </div>
-            </section>
+              </section>
+            )}
 
             {argumentsJson !== undefined && (
               <section className={styles['block']}>

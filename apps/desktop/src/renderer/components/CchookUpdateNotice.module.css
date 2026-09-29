@@ -1,0 +1,26 @@
+/* Layout only. The strip is Detections' retention banner (.retentionBanner:
+   neutral filter background, ink text, hairline border), the button the
+   app's existing primary (.addButton), "Not now" the audit footer's grey
+   link (.footerLink), the note the inspector's muted line (.flaggedEmpty) —
+   nothing here sets a colour, a font or a border. */
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.text {
+  flex: 1 1 320px;
+}
+
+.line {
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}

@@ -12,6 +12,9 @@ import type {
   RpcId,
   Severity,
 } from '@xcg/shared';
+import type { CchookHooksCheck } from '@xcg/shared/config';
+
+export type { CchookHooksCheck } from '@xcg/shared/config';
 
 export type {
   Severity,
@@ -99,6 +102,15 @@ export interface DetectionEvent {
   // parse; la caché incremental backfillea cuando la response llega en un
   // chunk posterior). 'error' si la response trae error o isInterrupt.
   outcome?: 'ok' | 'error';
+  // Elicitation de Claude Code (method 'elicitation/create', source
+  // claude-code): lo que el trail guardó de la petición del servidor — lista
+  // blanca, ver cchook-elicitation.ts. Heavy (mensaje + campos): solo drawer,
+  // no sobrevive en la caché slim; se re-deriva del disco en getDetail.
+  elicitation?: ElicitationView;
+  // Acción del usuario ante esa elicitation, asociada por el reader desde el
+  // cc.event ElicitationResult (última Elicitation del mismo servidor y
+  // sesión). Pequeño: sobrevive en la caché slim (backfill como outcome).
+  elicitationAction?: ElicitationAction;
   // Microsegundos de overhead introducido por el proxy al procesar el
   // frame. Dato de presentacion para el bloque "Technical details" del
   // drawer (D.3.b.3.a). Opcional: JSONLs antiguos pueden no traerlo.
@@ -143,6 +155,46 @@ export interface DetectionEnrichmentEvent {
 // aquí y no en @xcg/shared.
 export type EnrichableEvent = DetectionEvent | DetectionEnrichmentEvent;
 
+// ---- Claude Code elicitation (Elicitation / ElicitationResult hooks) ----
+
+/** The method a Claude Code Elicitation is recorded under. */
+export const ELICITATION_METHOD = 'elicitation/create';
+
+/** What the user did with the server's request. Never "completed": in url
+ *  mode an accept only means the user agreed to open the page. */
+export type ElicitationAction = 'accept' | 'decline' | 'cancel';
+
+export interface ElicitationFieldView {
+  name: string;
+  type?: string;
+  title?: string;
+  format?: string;
+  required: boolean;
+}
+
+export interface ElicitationUrlView {
+  scheme?: string;
+  host?: string;
+  port?: string;
+  path?: string;
+  query?: string;
+  hadUserinfo?: boolean;
+  hadFragment?: boolean;
+  nonHttps?: boolean;
+  punycodeHost?: boolean;
+  unparseable?: boolean;
+}
+
+export interface ElicitationView {
+  server?: string;
+  mode?: string;
+  message?: string;
+  messageTruncated?: boolean;
+  fields: ElicitationFieldView[];
+  fieldsTruncated?: boolean;
+  url?: ElicitationUrlView;
+}
+
 // One day in ms. Single source for the 24h audit windows (tray counts + auth
 // alerts); previously an inline literal in tray.ts.
 export const DAY_MS = 24 * 60 * 60 * 1000;
@@ -169,8 +221,44 @@ export interface CchookIngestStatus {
 // {ok|error} discipline with a readable message (the modal/inspector surface
 // it verbatim in their error banners).
 export type CchookInstallResult =
-  | { ok: true; outcome: 'wrote' | 'noop'; settingsPath: string }
-  | { ok: false; error: string };
+  | { ok: true; outcome: 'wrote' | 'noop'; settingsPath: string; /** the copy taken first */ backupPath?: string }
+  | { ok: false; error: string; /** set when nothing was written because the
+     *  settings file is managed externally */ managed?: CchookManagedSettings };
+
+// "Not now" (app settings.json), tied to the set of pending changes it was
+// given for (hookUpdateKey).
+export interface HookUpdatePrefs {
+  notNowKey?: string;
+}
+
+/** The set of changes the Update would make, as a stable string: sorted
+ *  `event:problem` pairs of the fixable issues. '' when there are none. */
+export function hookUpdateKey(check: CchookHooksCheck | undefined): string {
+  if (check?.state !== 'outdated') return '';
+  return check.issues
+    .filter((i) => i.problem !== 'custom_path')
+    .map((i) => `${i.event}:${i.problem}`)
+    .sort()
+    .join(',');
+}
+
+/** Whether "Not now" was chosen for THIS set of changes. */
+export function hookUpdateDismissed(prefs: HookUpdatePrefs | undefined, key: string): boolean {
+  return key !== '' && prefs?.notNowKey === key;
+}
+
+// ~/.claude/settings.json not ours to write (a symlink, not a regular file, or
+// owned by another user): what the UI shows instead of writing, and the
+// snippet the user can paste into whatever manages the file.
+export interface CchookManagedSettings {
+  reason: 'symlink' | 'not_regular' | 'foreign_owner';
+  /** symlink only: where it resolves — shown, never written through. */
+  target?: string;
+  /** JSON text `{ "hooks": { <event>: [<our entry>] } }` — only our entries:
+   *  for Install, those this Claude Code supports; for Update, those missing
+   *  or outdated. */
+  snippet: string;
+}
 
 // cchook:status payload — ingester snapshot + environment probes composed in
 // the main process (claude-code-detect + spool readdir).
@@ -179,6 +267,27 @@ export interface CchookStatus extends CchookIngestStatus {
   installed: boolean;
   /** ~/.claude/settings.json parses and carries the xcg-cchook marker. */
   hookRegistered: boolean;
+  /** Capability check, event by event (readCchookHooksCheck): outdated when an
+   *  install lacks events or arguments this build writes. Optional so
+   *  snapshots built before it (tests, harness) stay valid. */
+  hookCheck?: CchookHooksCheck;
+  /** `claude --version` of the binary found, null when it could not be
+   *  determined (then the elicitation events are not installed). */
+  claudeCodeVersion?: string | null;
+  /** Claude Code ≥ elicitationMinVersion: the elicitation hook events can be
+   *  installed. */
+  elicitationSupported?: boolean;
+  /** ELICITATION_MIN_CLAUDE_CODE, carried here so the renderer never imports
+   *  runtime values from @xcg/shared/config. */
+  elicitationMinVersion?: string;
+  /** Where the update keeps its copies of settings.json (Sources shows it). */
+  settingsBackupDir?: string;
+  /** Set while settings.json is managed externally (checked every poll); the
+   *  snippet is the update one when our hook is installed, else the install
+   *  one. null when the file is ours to write (or absent). */
+  settingsManaged?: CchookManagedSettings | null;
+  /** The "Not now" mark for the update notice. */
+  hookUpdatePrefs?: HookUpdatePrefs;
   /** Spool files waiting for the next ingest cycle (dir absent → 0). */
   pendingSpool: number;
   /** Hook-integrity notice (claude-code/hook-state.json): set while an
@@ -386,6 +495,9 @@ export interface DetectionRowSlim {
   // (session, rpcId) en el parse. undefined = sin response casada (huérfana
   // transitoria o histórica).
   outcome?: 'ok' | 'error';
+  // Acción del usuario ante una elicitation de Claude Code (ver
+  // DetectionEvent). undefined = sin ElicitationResult asociado.
+  elicitationAction?: ElicitationAction;
 }
 
 // detection:page payload. Counts are server-computed so the renderer never needs
@@ -433,4 +545,6 @@ export interface DetectionDetail {
   toolName?: string;
   argumentsJson?: string;
   overheadUs?: number;
+  elicitation?: ElicitationView;
+  elicitationAction?: ElicitationAction;
 }

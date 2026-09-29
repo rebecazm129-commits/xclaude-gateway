@@ -26,6 +26,30 @@
 // payload it receives no longer contains the secret, so credential_detected
 // can only be raised from the masks the hook itself applied.
 //
+// ELICITATIONRESULT. Its payload carries, on accept, `content`: what the user
+// typed into an MCP server's form (and the defaults they left untouched).
+// Masking only catches known credential FORMATS; a password the user typed has
+// none. So for this one event the hook parses the payload, deletes `content`
+// entirely and re-serializes BEFORE the normal masking (stripUserValues). If
+// the parse or any step fails, the file is the omitted record — never the
+// original. Elicitation itself carries no user values (the server's message
+// and schema) and gets only the normal masking.
+//
+// Telling the event apart, fail-closed first: the hook entry registered for
+// ElicitationResult passes `--event ElicitationResult`, and with it the hook
+// ALWAYS strips — whatever the text looks like. Over ELICITATION_PARSE_LIMIT
+// it is not parsed at all: it is omitted (the real ones are under 1 KB — 549
+// to 914 bytes in the 2.1.283 spike).
+//
+// Fallback for an install whose entry predates the argument: without parsing
+// every payload (tool payloads reach tens of MB and the hook must stay cheap),
+// it parses only when the text contains the key/value pair
+// "hook_event_name" : "ElicitationResult", with any whitespace or line breaks
+// around the colon. Inside a JSON string those quotes are escaped (\"), so
+// text quoted in a tool payload cannot match; only a real key can. A match
+// over the limit is omitted; a small match that turns out to be a nested key
+// of another event is left unchanged.
+//
 // Dependencies: the trail's masking modules (node:crypto, node:fs, node:path)
 // and nothing else — this runs inside the hook.
 
@@ -54,6 +78,33 @@ export function redactForSpool(payload: string, key: Buffer): string {
     masks.push({ type: m.type, fp });
   }
   return JSON.stringify({ redaction_version: REDACTION_VERSION, masked: masks, payload: masked });
+}
+
+/** Above this size a payload that looks like an ElicitationResult is omitted
+ *  instead of parsed. */
+export const ELICITATION_PARSE_LIMIT = 1024 * 1024;
+
+const ELICITATION_RESULT_SHAPE = /"hook_event_name"\s*:\s*"ElicitationResult"/;
+
+/** For an ElicitationResult, the payload without `content` (what the user
+ *  typed); any other payload unchanged. `event` is the name the hook entry
+ *  passed (--event): 'ElicitationResult' strips unconditionally; without it
+ *  the text decides. Throws when it cannot strip — the caller then writes the
+ *  omitted record. */
+export function stripUserValues(payload: string, event?: string): string {
+  const forced = event === 'ElicitationResult';
+  if (!forced && !ELICITATION_RESULT_SHAPE.test(payload)) return payload;
+  if (payload.length > ELICITATION_PARSE_LIMIT) {
+    throw new Error('elicitation result too large to strip');
+  }
+  const obj: unknown = JSON.parse(payload);
+  if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+    throw new Error('elicitation result is not an object');
+  }
+  const o = obj as Record<string, unknown>;
+  if (!forced && o['hook_event_name'] !== 'ElicitationResult') return payload;
+  delete o['content'];
+  return JSON.stringify(o);
 }
 
 /** What is written when redaction failed: that something was captured, and

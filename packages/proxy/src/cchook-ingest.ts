@@ -9,13 +9,18 @@
 //   PostToolUseFailure → mcp.request + mcp.response with `error` (0c variant)
 //   SessionStart/SessionEnd → one 'cc.event' line with an explicit whitelist
 //     of fields (SESSION_EVENT_FIELDS) — never the raw payload;
+//   Elicitation        → one mcp.request, server_to_client, method
+//     'elicitation/create', whose params are the whitelist summary of
+//     cchook-elicitation.ts (never defaults, enums, descriptions…);
+//   ElicitationResult  → one 'cc.event' with server, mode, elicitation_id and
+//     action only (readElicitationResult) — never what the user typed (the
+//     hook already deleted it; nothing here would copy it anyway);
 //   any other event, or a payload that does not parse → one 'cc.event' with
 //     payload_omitted and the NAMES of its top-level keys, no values.
 //   INVARIANT: no Claude Code hook event reaches the trail without an explicit
-//   schema of what is kept. A new hook event (Elicitation, whose result
-//   carries what the user typed) is recorded as having happened, not stored,
-//   until someone writes its schema here. The desktop reader ignores cc.event
-//   without breaking (0e).
+//   schema of what is kept. A new hook event is recorded as having happened,
+//   not stored, until someone writes its schema here. The desktop reader
+//   ignores cc.event without breaking (0e).
 // Classification replicates the wrapper EXACTLY:
 //   request  → detection inline on mcp.request; multi-label = one mcp.request
 //              per detection (frame-processor emits detections.map(...), 0k).
@@ -37,6 +42,7 @@ import { CLAUDE_CODE_DETECTORS, CONTENT_DETECTORS, credentialMatches } from './d
 import { buildDetectorInput, emitDetections, runDetectors } from './detection/engine.js';
 import type { DetectorInput, DetectorOutput, McpRequestEnvelope, RpcId } from './detection/types.js';
 import type { Envelope } from './audit.js';
+import { readElicitation, readElicitationResult } from './cchook-elicitation.js';
 import { REDACTION_VERSION } from './cchook-spool.js';
 import { attachMaskSecrets } from './events.js';
 
@@ -392,6 +398,9 @@ function ccEvent(parsed: ParsedHook, ctx: SynthesizeContext): Envelope {
     hookEventName: parsed.hookEventName,
     ...(parsed.sessionId !== undefined ? { ccSession: parsed.sessionId } : {}),
   };
+  if (parsed.hookEventName === 'ElicitationResult') {
+    return { ...base, ...head, fields: readElicitationResult(parsed.raw) };
+  }
   const allowed = SESSION_EVENT_FIELDS[parsed.hookEventName];
   if (allowed === undefined) {
     return { ...base, ...head, payload_omitted: true, keys: topLevelKeys(parsed.raw) };
@@ -431,8 +440,36 @@ function normalizeResult(parsed: ParsedHookEvent, mcp: string): unknown {
   };
 }
 
+/** The method an Elicitation is recorded under — MCP's own name for it. */
+export const ELICITATION_METHOD = 'elicitation/create';
+
+// An Elicitation is a request FROM the server TO the client, and is recorded
+// as one: mcp = the server, direction server_to_client. rpcId stays null — the
+// hook carries no JSON-RPC id, and elicitation_id (url mode) is kept inside
+// params, not passed off as one.
+function elicitationRequest(parsed: ParsedHookEvent, ctx: SynthesizeContext): Envelope {
+  const { summary } = readElicitation(parsed.raw);
+  return {
+    v: 1,
+    id: ctx.nextId(),
+    ts: new Date(ctx.captureTimeMs).toISOString(),
+    session: ctx.sessionUlid,
+    mcp: summary.mcp_server_name ?? 'claude-code',
+    type: 'mcp.request',
+    direction: 'server_to_client',
+    rpcId: null,
+    method: ELICITATION_METHOD,
+    params: summary,
+    bytes: Buffer.byteLength(JSON.stringify(summary), 'utf8'),
+    overheadUs: 0,
+    hookEventName: 'Elicitation',
+    ...provenance(parsed),
+  };
+}
+
 export function synthesize(parsed: ParsedHook, ctx: SynthesizeContext): Envelope[] {
   if (parsed.kind === 'unknown') return [ccEvent(parsed, ctx)];
+  if (parsed.hookEventName === 'Elicitation') return [elicitationRequest(parsed, ctx)];
 
   const isPair =
     (parsed.hookEventName === 'PostToolUse' || parsed.hookEventName === 'PostToolUseFailure') &&
@@ -507,6 +544,25 @@ export function synthesize(parsed: ParsedHook, ctx: SynthesizeContext): Envelope
 
 // --- classification ---------------------------------------------------------------
 
+/**
+ * The detection an Elicitation carries: protocol_tripwire / server_request —
+ * a server asked the user for input mid-task — at medium, or HIGH when it is
+ * a form and one of its fields (by name, title or description, read in memory
+ * and dropped) looks like it asks for a secret. Computed here rather than by
+ * the tool chain: none of the tool detectors applies to a server's request,
+ * and this one must not depend on the tripwire's per-process dedup.
+ */
+export function elicitationDetection(raw: unknown): DetectorOutput {
+  const { asksForSecret } = readElicitation(raw);
+  return {
+    category: 'protocol_tripwire',
+    severity: asksForSecret ? 'high' : 'medium',
+    findings: [
+      { type: 'server_request', location: 'elicitation', ...(asksForSecret ? { rule: 'secret_field' } : {}) },
+    ],
+  };
+}
+
 // Takes the ParsedHook alongside the envelopes (declared deviation from the
 // F1.2 v1 signature classify(envelopes)): the response scan text MUST be
 // computed once from the parsed hook — re-deriving it from the normalized
@@ -522,6 +578,15 @@ export function classify(
   const out: Envelope[] = [];
 
   for (const env of envelopes) {
+    if (env.type === 'mcp.request' && env['method'] === ELICITATION_METHOD) {
+      const request: Envelope = { ...env, detection: elicitationDetection(parsed.raw) };
+      // A credential shape in the message or URL (a spool file from before the
+      // hook masked) is masked out of the line by the ingester.
+      attachMaskSecrets(request, readElicitation(parsed.raw).maskSecrets);
+      out.push(request);
+      continue;
+    }
+
     if (env.type === 'mcp.request') {
       const mcpEnvelope: McpRequestEnvelope = {
         payload: env['params'],
@@ -624,10 +689,12 @@ export function classify(
     }
 
     // cc.event — nothing to classify or mask: it holds no payload. SessionStart
-    // and SessionEnd carry only their whitelisted fields, anything else only
-    // the names of its keys (ccEvent, SESSION_EVENT_FIELDS), so no hook
-    // content — a secret, what a user typed into an elicitation — can reach
-    // the trail through this line.
+    // and SessionEnd carry only their whitelisted fields, ElicitationResult
+    // only server, mode, id and action, anything else only the names of its
+    // keys (ccEvent), so no hook content — a secret, what a user typed into an
+    // elicitation — can reach the trail through this line. An
+    // ElicitationResult raises nothing: the reader attaches its action to the
+    // Elicitation it answers.
     out.push(env);
   }
   return out;

@@ -16,11 +16,31 @@ export type { WriteAtomicError, WriteAtomicResult } from './io.js';
 export {
   CCHOOK_MARKER,
   CCHOOK_EVENTS,
+  CCHOOK_EVENT_ARG_EVENTS,
+  CCHOOK_LAUNCH_SCRIPT,
+  ELICITATION_EVENTS,
+  ELICITATION_MIN_CLAUDE_CODE,
   buildCchookHookEntry,
+  cchookEventsFor,
+  cchookInstallSnippet,
+  cchookUpdateSnippet,
+  checkCchookHooks,
+  compareVersions,
+  fixableCchookIssues,
   mergeCchookHooks,
   removeCchookHooks,
+  updateCchookHooks,
 } from './claude-code-hooks.js';
-export type { CchookHookEntry, CchookHooksResult } from './claude-code-hooks.js';
+export type {
+  CchookEvent,
+  CchookEventsOption,
+  CchookHookEntry,
+  CchookHooksSnippet,
+  CchookHookIssue,
+  CchookHookProblem,
+  CchookHooksCheck,
+  CchookHooksResult,
+} from './claude-code-hooks.js';
 export type {
   AddRemoteOk,
   AddRemoteResult,

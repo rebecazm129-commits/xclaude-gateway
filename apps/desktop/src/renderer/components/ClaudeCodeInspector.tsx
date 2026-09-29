@@ -6,10 +6,10 @@
 import { useState, type ReactElement } from 'react';
 
 import type { CchookStatus, DetectionEvent, EnrichableEvent } from '../../shared/types.js';
-import { normalizeSource } from '../../shared/types.js';
+import { hookUpdateKey, normalizeSource } from '../../shared/types.js';
 import { usePolledDetections } from '../hooks/usePolledDetections.js';
 import { Badge } from './Badge.js';
-import { CATEGORY_LABELS, formatTimestamp } from './detections-format.js';
+import { CATEGORY_LABELS, ELICITATION_TOOL_LABEL, formatTimestamp, isElicitationRow } from './detections-format.js';
 
 import styles from './ClaudeCodeInspector.module.css';
 import { countsAsFlagged } from '../../shared/flagged.js';
@@ -71,6 +71,25 @@ export function ClaudeCodeInspector({ status, onOpenInDetections }: ClaudeCodeIn
   const [uninstalling, setUninstalling] = useState(false);
   const [uninstallError, setUninstallError] = useState<string | null>(null);
 
+  // Pending hook update: always stated here while there is one — "Not now"
+  // only quiets the Claude Code tab's notice, not this row.
+  const pendingUpdate = hookRegistered && hookUpdateKey(status?.hookCheck) !== '';
+  const [updating, setUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
+  async function handleUpdate(): Promise<void> {
+    setUpdating(true);
+    setUpdateError(null);
+    try {
+      const result = await window.xcg.cchookUpdate();
+      if (!result.ok) setUpdateError(result.error);
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : 'unknown error');
+    } finally {
+      setUpdating(false);
+    }
+  }
+
   async function handleConfirmUninstall(): Promise<void> {
     setUninstalling(true);
     setUninstallError(null);
@@ -104,6 +123,35 @@ export function ClaudeCodeInspector({ status, onOpenInDetections }: ClaudeCodeIn
             {hookRegistered ? 'registered · ~/.claude/settings.json' : '—'}
           </dd>
         </div>
+        {pendingUpdate && (
+          <div className={styles['row']} data-testid="cchook-update-state">
+            <dt className={styles['label']}>Hook update</dt>
+            <dd className={styles['value']}>
+              Hook update available{' '}
+              <button
+                type="button"
+                className={styles['openInDetections']}
+                onClick={() => void handleUpdate()}
+                disabled={updating}
+              >
+                {updating ? 'Updating…' : 'Update'}
+              </button>
+              {updateError !== null && <div>{updateError}</div>}
+            </dd>
+          </div>
+        )}
+        {hookRegistered && status?.elicitationSupported === false && status.elicitationMinVersion !== undefined && (
+          <div className={styles['row']}>
+            <dt className={styles['label']}>MCP elicitation</dt>
+            <dd className={styles['value']}>requires Claude Code {status.elicitationMinVersion} or later</dd>
+          </div>
+        )}
+        {hookRegistered && status?.settingsBackupDir !== undefined && (
+          <div className={styles['row']}>
+            <dt className={styles['label']}>Settings backups</dt>
+            <dd className={styles['value']}>{status.settingsBackupDir}</dd>
+          </div>
+        )}
         <div className={styles['row']}>
           <dt className={styles['label']}>Last session heartbeat</dt>
           <dd className={styles['value']}>
@@ -138,7 +186,9 @@ export function ClaudeCodeInspector({ status, onOpenInDetections }: ClaudeCodeIn
             {recentFlagged.map((e) => (
               <li key={e.id} className={styles['flaggedRow']}>
                 <Badge severity={e.detection.severity} />
-                <span className={styles['flaggedTool']}>{e.toolName ?? e.method}</span>
+                <span className={styles['flaggedTool']}>
+                  {isElicitationRow(e) ? ELICITATION_TOOL_LABEL : (e.toolName ?? e.method)}
+                </span>
                 <span className={styles['flaggedCategory']}>{CATEGORY_LABELS[e.detection.category]}</span>
                 <span className={styles['flaggedTime']}>{formatTimestamp(e.ts)}</span>
               </li>

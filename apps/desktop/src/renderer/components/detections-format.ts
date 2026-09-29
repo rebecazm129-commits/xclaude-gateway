@@ -1,4 +1,5 @@
-import type { Category, Severity, SourceKind } from '../../shared/types.js';
+import type { Category, ElicitationAction, ElicitationUrlView, Severity, SourceKind } from '../../shared/types.js';
+import { ELICITATION_METHOD } from '../../shared/types.js';
 
 // Shared by the Source filter pill (Detections) and the DetailDrawer line.
 export const SOURCE_LABELS: Record<SourceKind, string> = {
@@ -53,6 +54,58 @@ export function auditTrailSentences(
   if (category !== 'audit_trail_modification') return [];
   const ops = (['write', 'delete'] as const).filter((op) => findings.some((f) => f.type === op));
   return ops.map((op) => `Tool call targeted xCLAUDE audit data with a ${op} operation`);
+}
+
+/** A Claude Code elicitation row: an MCP server asking the user for input. */
+export function isElicitationRow(row: { method?: string; source?: string }): boolean {
+  return row.method === ELICITATION_METHOD && row.source === 'claude-code';
+}
+
+/** What the TOOL column shows for an elicitation row, instead of the method. */
+export const ELICITATION_TOOL_LABEL = 'Server requested input';
+
+// What the user did with an MCP server's elicitation. Never "completed":
+// accepting only means the user answered (or, in url mode, agreed to open the
+// page) — what happened next is not something the hook sees.
+
+/** The DETAILS prefix: the action, then the mode and message it answers. */
+export function elicitationRowPrefix(action: ElicitationAction): string {
+  switch (action) {
+    case 'accept':
+      return 'User accepted';
+    case 'decline':
+      return 'User declined';
+    case 'cancel':
+      return 'User cancelled';
+  }
+}
+
+/** The panel's "User action" value. */
+export function elicitationActionLabel(action: ElicitationAction): string {
+  switch (action) {
+    case 'accept':
+      return 'Accepted';
+    case 'decline':
+      return 'Declined';
+    case 'cancel':
+      return 'Cancelled';
+  }
+}
+
+export const ELICITATION_NO_ACTION = 'No user response was observed by xCLAUDE.';
+export const ELICITATION_VALUES_NOT_STORED = 'xCLAUDE does not store the values entered by the user.';
+export const ELICITATION_SECRET_NOTE =
+  'This form appears to request a secret. MCP does not allow sensitive credentials in form elicitation; they should be requested via URL mode.';
+
+/** The warning flags of an elicitation URL, one short sentence each. */
+export function elicitationUrlFlags(url: ElicitationUrlView): string[] {
+  const out: string[] = [];
+  if (url.unparseable === true) out.push('The URL could not be parsed');
+  if (url.nonHttps === true) out.push('Not HTTPS');
+  if (url.hadUserinfo === true) out.push('The URL carried a username or password (not kept)');
+  if (url.punycodeHost === true) out.push('The host uses internationalized characters (punycode)');
+  if (url.hadFragment === true) out.push('The URL had a fragment (not kept)');
+  return out;
 }
 
 // Baseline rows whose method is NOT tools/call used to render as "Tool call".

@@ -66,6 +66,8 @@ contextBridge.exposeInMainWorld('xcg', {
     ipcRenderer.invoke('config:tool-count', { name }),
   cchookStatus: (): Promise<CchookStatus> => ipcRenderer.invoke('cchook:status'),
   cchookInstall: (): Promise<CchookInstallResult> => ipcRenderer.invoke('cchook:install'),
+  cchookUpdate: (): Promise<CchookInstallResult> => ipcRenderer.invoke('cchook:update'),
+  cchookNotNow: (key: string): Promise<void> => ipcRenderer.invoke('cchook:not-now', key),
   cchookUninstall: (): Promise<CchookInstallResult> => ipcRenderer.invoke('cchook:uninstall'),
   cchookDismissVanished: (): Promise<void> => ipcRenderer.invoke('cchook:dismiss-vanished'),
   validateHealth: (): Promise<HealthResult> => ipcRenderer.invoke('system:health'),
