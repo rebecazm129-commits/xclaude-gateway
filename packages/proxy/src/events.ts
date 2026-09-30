@@ -92,7 +92,10 @@ export type EventBody =
         | 'oauth_failed';
       message: string;
       reason?: ParseErrorReason;
-      frameSnippet?: string;
+      // Solo kind=parse_error: nunca un byte de la línea, solo su tamaño.
+      unparsed?: true;
+      payload_omitted?: true;
+      byte_length?: number;
       // Solo kind=oauth_failed: último proxy.token del provider y hace cuántos ms,
       // para distinguir el modo de fallo sin reconstruirlo a mano desde el JSONL:
       // 'invalidated' ≈ invalid_grant en el refresh (grant muerto/rotado);

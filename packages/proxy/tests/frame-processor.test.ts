@@ -569,3 +569,54 @@ describe('createFrameProcessor — protocol tripwire, input_required', () => {
     expect(events.map((e) => e.type)).toEqual(['mcp.response']);
   });
 });
+
+describe('createFrameProcessor — elicitation/create answer whitelist', () => {
+  // Server asks (server→client request), client answers (client→server response).
+  function answer(result: unknown): EventBody[] {
+    const processFrame = createFrameProcessor(makeDeps());
+    processFrame(
+      { kind: 'request', id: 'el-1', method: 'elicitation/create', params: { message: 'Sign in', requestedSchema: {} } },
+      'server_to_client', 40, '<req>', TS_NS, TS_MS,
+    );
+    return processFrame({ kind: 'response', id: 'el-1', result }, 'client_to_server', 40, '<resp>', TS_NS, TS_MS);
+  }
+
+  it('accept with content: keeps action and mode, never the values the user typed', () => {
+    const events = answer({
+      action: 'accept',
+      mode: 'form',
+      content: { username: 'ada.lovelace', password: 'S3cr3t-Hunter2', note: 'private note' },
+    });
+    expect(events.map((e) => e.type)).toEqual(['mcp.response']);
+    const ev = events[0];
+    if (ev?.type !== 'mcp.response') throw new Error('expected mcp.response');
+    expect(ev.result).toEqual({ action: 'accept', mode: 'form', content_omitted: true });
+    const serialized = JSON.stringify(events);
+    for (const value of ['ada.lovelace', 'S3cr3t-Hunter2', 'private note', 'username', 'password', '"content"']) {
+      expect(serialized).not.toContain(value);
+    }
+  });
+
+  it('decline without content: keeps only the action', () => {
+    const events = answer({ action: 'decline' });
+    const ev = events[0];
+    if (ev?.type !== 'mcp.response') throw new Error('expected mcp.response');
+    expect(ev.result).toEqual({ action: 'decline', content_omitted: true });
+  });
+
+  it('unexpected shape: keeps only content_omitted and unparsed, never the original', () => {
+    for (const result of [
+      { action: 'maybe', content: { token: 'leak-me-1' } },
+      { content: { token: 'leak-me-2' } },
+      ['leak-me-3'],
+      'leak-me-4',
+      null,
+    ]) {
+      const events = answer(result);
+      const ev = events[0];
+      if (ev?.type !== 'mcp.response') throw new Error('expected mcp.response');
+      expect(ev.result).toEqual({ content_omitted: true, unparsed: true });
+      expect(JSON.stringify(events)).not.toContain('leak-me');
+    }
+  });
+});

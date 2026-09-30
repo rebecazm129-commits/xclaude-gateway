@@ -6,6 +6,8 @@
 import type { DetectionEngine } from './detection/engine.js';
 import type { Direction, EventBody } from './events.js';
 import { attachMaskSecrets } from './events.js';
+import { readElicitation } from './cchook-elicitation.js';
+import type { CredentialMatch } from './detection/detectors/credential.js';
 import { invertDirection, type InflightTracker } from './latency.js';
 import type { ClassifiedFrame } from './parser.js';
 import { buildDetectorInput } from './detection/engine.js';
@@ -71,6 +73,72 @@ function extractResultText(result: unknown): string {
   return out.join('\n');
 }
 
+// What the trail keeps of a client's answer to a server's elicitation/create —
+// a strict whitelist, like the Claude Code hook's (cchook-elicitation.ts).
+// On accept, result.content holds what the user typed: never persisted, not
+// even truncated. KEPT: result.action (accept/decline/cancel) and result.mode
+// when it is 'form' or 'url'; content_omitted: true always. A result without
+// that shape keeps only { content_omitted: true, unparsed: true } — never the
+// original.
+const ELICITATION_METHOD = 'elicitation/create';
+const ELICITATION_ACTIONS: ReadonlySet<unknown> = new Set(['accept', 'decline', 'cancel']);
+const ELICITATION_MODES: ReadonlySet<unknown> = new Set(['form', 'url']);
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+function elicitationResultWhitelist(result: unknown): Record<string, unknown> {
+  if (!isPlainObject(result)) return { content_omitted: true, unparsed: true };
+  if (!ELICITATION_ACTIONS.has(result['action'])) return { content_omitted: true, unparsed: true };
+  return {
+    action: result['action'],
+    ...(ELICITATION_MODES.has(result['mode']) ? { mode: result['mode'] } : {}),
+    content_omitted: true,
+  };
+}
+
+// A client's error answer to an elicitation/create: only error.code (a
+// number). The message and data are the client's words, and may quote what
+// the user typed.
+function elicitationErrorWhitelist(error: unknown): Record<string, unknown> {
+  if (isPlainObject(error) && typeof error['code'] === 'number') return { code: error['code'] };
+  return { unparsed: true };
+}
+
+// What the trail keeps of a server's elicitation/create request: exactly what
+// the Claude Code hook keeps (readElicitation, cchook-elicitation.ts), so one
+// reader serves both — mode (form/url only), the message truncated to 500,
+// per requested field its name, type, title, format and required, and in url
+// mode the URL's parts and flags (userinfo and fragment never, credential-named
+// query values masked). NEVER default, enum, enumNames, oneOf, const, pattern
+// or description, nor elicitationId or _meta. The MCP params are renamed to the
+// hook's (requestedSchema → requested_schema) and read by the same code.
+// Detection is not affected: it runs on the raw params in memory, before this.
+function elicitationRequestWhitelist(params: unknown): {
+  params: Record<string, unknown>;
+  maskSecrets: CredentialMatch[];
+} {
+  if (!isPlainObject(params)) return { params: { unparsed: true }, maskSecrets: [] };
+  const { summary, maskSecrets } = readElicitation({
+    ...(ELICITATION_MODES.has(params['mode']) ? { mode: params['mode'] } : {}),
+    message: params['message'],
+    requested_schema: params['requestedSchema'],
+    url: params['url'],
+  });
+  return { params: { ...summary }, maskSecrets };
+}
+
+// inputResponses (spec 2026-07-28): a client request answering a server's
+// input_required carries the user's answers there. The trail keeps only how
+// many there were. The frame itself is never mutated — what is forwarded is
+// untouched; only the recorded event changes.
+function omitInputResponses(params: unknown): unknown {
+  if (!isPlainObject(params) || !('inputResponses' in params)) return params;
+  const v = params['inputResponses'];
+  const count = typeof v === 'object' && v !== null ? Object.keys(v).length : 1;
+  return { ...params, inputResponses: { omitted: true, count } };
+}
+
 // Content detectors that run inline over the extracted tools/call result text.
 // Multi-label, like the request side: each matching detector yields its own
 // mcp.detection_enrichment. Order mirrors the request chain ACTIVE_DETECTORS
@@ -106,12 +174,15 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
           deps.asyncDetector.enqueue(buildDetectorInput(envelope), frame.id);
         }
         const overheadUs = elapsedUs(tsObservedNs);
+        // What is RECORDED of the params; detection above saw the raw ones.
+        const elicitation = frame.method === ELICITATION_METHOD ? elicitationRequestWhitelist(frame.params) : undefined;
+        const recordedParams = elicitation !== undefined ? elicitation.params : omitInputResponses(frame.params);
         const events: EventBody[] = detections.map((detection) => ({
           type: 'mcp.request',
           direction,
           rpcId: frame.id,
           method: frame.method,
-          params: frame.params,
+          params: recordedParams,
           bytes,
           overheadUs,
           detection,
@@ -123,6 +194,11 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
           const secrets = credentialMatches(buildDetectorInput(envelope).paramsJson);
           for (const ev of events) attachMaskSecrets(ev, secrets);
         }
+        // Credential shapes in an elicitation's message or URL, as the hook
+        // masks them — whether or not the credential detector fired.
+        if (elicitation !== undefined) {
+          for (const ev of events) attachMaskSecrets(ev, elicitation.maskSecrets);
+        }
         return events;
       }
       case 'response': {
@@ -133,6 +209,20 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
         const reqKey = `${invertDirection(direction)}:${frame.id}`;
         const reqMethod = requestMethods.get(reqKey);
         requestMethods.delete(reqKey);
+        // Elicitation answer: the whitelist replaces the result before it
+        // reaches the event, so the user's values never reach the sink.
+        const result =
+          'result' in frame
+            ? reqMethod === ELICITATION_METHOD
+              ? elicitationResultWhitelist(frame.result)
+              : frame.result
+            : undefined;
+        const error =
+          'error' in frame
+            ? reqMethod === ELICITATION_METHOD
+              ? elicitationErrorWhitelist(frame.error)
+              : frame.error
+            : undefined;
         const events: EventBody[] = [
           {
             type: 'mcp.response',
@@ -140,8 +230,8 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
             rpcId: frame.id,
             bytes,
             overheadUs: elapsedUs(tsObservedNs),
-            ...('result' in frame ? { result: frame.result } : {}),
-            ...('error' in frame ? { error: frame.error } : {}),
+            ...('result' in frame ? { result } : {}),
+            ...('error' in frame ? { error } : {}),
             ...(latencyMs !== undefined ? { latencyMs } : {}),
           },
         ];
@@ -291,7 +381,11 @@ export function createFrameProcessor(deps: FrameProcessorDeps): FrameProcessor {
             kind: 'parse_error',
             message: `MCP frame parse error: ${frame.reason}`,
             reason: frame.reason,
-            frameSnippet: line.length > 256 ? line.slice(0, 256) : line,
+            // Never any byte of the line: a malformed frame can be anything,
+            // including a user's answer. Only its size.
+            unparsed: true,
+            payload_omitted: true,
+            byte_length: Buffer.byteLength(line, 'utf8'),
           },
         ];
     }
