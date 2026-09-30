@@ -38,6 +38,7 @@ import { attachMaskSecrets } from './events.js';
 import { keychainGet, keychainSet } from './keychain.js';
 import {
   accessTokenUsable,
+  issuersMatch,
   tokensAccount,
   type KeychainOAuthProvider,
   type StoredTokens,
@@ -122,10 +123,27 @@ export function createRefreshFetch(deps: RefreshFetchDeps): FetchLike {
       // The refresh token this round trip will actually spend: ours, unless a
       // sibling process already rotated and left a newer one behind.
       let grantRt = requestRt;
+      // The authorization server this refresh is for: the one auth() discovered
+      // in this run (provider.currentIssuer), never the Keychain or a response.
+      const expected = deps.provider.currentIssuer();
+      // The issuer of the set whose refresh token is spent, carried onto the
+      // rotated set we persist. Undefined for a set written before binding.
+      let spentIssuer: string | undefined;
 
-      if (requestRt !== null) {
-        const stored = await readStoredTokens(deps.mcp);
-        if (stored?.refresh_token !== undefined && stored.refresh_token !== requestRt) {
+      const stored = requestRt !== null ? await readStoredTokens(deps.mcp) : undefined;
+      // A sibling's set is usable only when it belongs to THIS authorization
+      // server (SEP-2352), or predates binding (no stamp: the SDK uses those
+      // as-is too). One bound elsewhere is never coalesced onto nor spent here:
+      // its refresh token must not reach this server's token endpoint.
+      const storedUsable =
+        stored !== undefined &&
+        (typeof stored.issuer !== 'string' || (expected !== null && issuersMatch(stored.issuer, expected)));
+      if (stored !== undefined && storedUsable && stored.refresh_token === requestRt) {
+        spentIssuer = stored.issuer; // our own set, as stored
+      }
+
+      if (requestRt !== null && stored !== undefined && storedUsable) {
+        if (stored.refresh_token !== undefined && stored.refresh_token !== requestRt) {
           if (accessTokenUsable(stored, Date.now())) {
             deps.provider.noteEvent({ event: 'refresh_coalesced' });
             return new Response(JSON.stringify(stored), {
@@ -138,6 +156,7 @@ export function createRefreshFetch(deps: RefreshFetchDeps): FetchLike {
           // superseded and the server would reject it as reuse.
           deps.provider.noteEvent({ event: 'refresh_coalesced_stale' });
           grantRt = stored.refresh_token;
+          spentIssuer = stored.issuer;
         }
       }
 
@@ -151,11 +170,24 @@ export function createRefreshFetch(deps: RefreshFetchDeps): FetchLike {
         // RT-less between now and the SDK's own saveTokens. obtained_at dates
         // the access token we just received; the SDK strips it on parse, so
         // saveTokens re-applies it (oauth-provider.stampObtainedAt).
+        //
+        // issuer: the rotated set belongs to the server of the set it replaces
+        // — the spent set's stamp, else the server this run discovered. An
+        // `issuer` in the token RESPONSE is dropped, never stored: the server
+        // answering does not get to say which server it is (the SDK does the
+        // same, and restamps on its own saveTokens right after).
         try {
-          const tokens = (await response.clone().json()) as Record<string, unknown>;
+          const tokens = { ...((await response.clone().json()) as Record<string, unknown>) };
+          delete tokens['issuer'];
+          const issuer = spentIssuer ?? expected ?? undefined;
           await keychainSet(
             tokensAccount(deps.mcp),
-            JSON.stringify({ refresh_token: grantRt, ...tokens, obtained_at: Date.now() }),
+            JSON.stringify({
+              refresh_token: grantRt,
+              ...tokens,
+              ...(issuer !== undefined ? { issuer } : {}),
+              obtained_at: Date.now(),
+            }),
           );
         } catch {
           // Non-JSON 200: the SDK's schema parse will reject it downstream;

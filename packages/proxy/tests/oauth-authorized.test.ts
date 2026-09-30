@@ -324,6 +324,17 @@ describe('proxy.oauth_authorized — comparison with the last good login', () =>
     });
   });
 
+  it('resource with and without a trailing slash is stored the same, so it is not a change', async () => {
+    // SDK 1.30.1+ sends a pathless resource without the slash (#1968); the
+    // event keeps the canonical form, so an upgrade does not read as a change.
+    await login({ resource: 'https://mcp.stripe.com/' });
+    await login({ resource: 'https://mcp.stripe.com' });
+    const events = authorized(onDisk().lines);
+    expect(events[0]!['resource']).toBe('https://mcp.stripe.com/');
+    expect(events[1]!['resource']).toBe('https://mcp.stripe.com/');
+    expect(events[1]).toMatchObject({ changes: [], findings: [] });
+  });
+
   it('normalization: scheme/host case, trailing slash and scope order are not changes', async () => {
     await login({ authorizationServer: 'https://auth.acme.example/tenant/', grantedScope: 'write read' });
     await login({ authorizationServer: 'HTTPS://Auth.ACME.example/tenant', grantedScope: 'read  write read' });

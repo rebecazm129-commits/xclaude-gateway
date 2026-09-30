@@ -44,8 +44,30 @@ export type TokenEvent =
 /** Tokens as persisted by xcg-proxy: the SDK's OAuthTokens plus our own
  *  `obtained_at` stamp. The SDK's OAuthTokensSchema is `$strip`
  *  (shared/auth.d.ts:145), so it drops the field on parse — only OUR writers
- *  (saveTokens here, and refresh-fetch's persist) ever set it. */
-export type StoredTokens = OAuthTokens & { obtained_at?: number };
+ *  (saveTokens here, and refresh-fetch's persist) ever set it.
+ *
+ *  `issuer` (SDK ≥ 1.31, SEP-2352): the authorization server the set belongs
+ *  to, stamped by the SDK's auth() on every saveTokens / saveClientInformation.
+ *  Both are stored as given and returned as stored, which is all the SDK needs
+ *  to treat a set bound to another server as absent (re-register, re-authorize,
+ *  never refresh). */
+export type StoredTokens = OAuthTokens & { obtained_at?: number; issuer?: string };
+
+/**
+ * Two authorization server identifiers name the same server: compared as
+ * parsed URLs (scheme, host, default port), tolerating one trailing `/` — the
+ * SDK's own rule (issuersMatch in client/auth.js), so refresh-fetch never
+ * disagrees with auth() about which set belongs where.
+ */
+export function issuersMatch(a: string, b: string): boolean {
+  let [x, y] = [a, b];
+  try {
+    [x, y] = [new URL(a).href, new URL(b).href];
+  } catch {
+    // Not two URLs: compared as written.
+  }
+  return x === y || (x.endsWith('/') && x.slice(0, -1) === y) || (y.endsWith('/') && y.slice(0, -1) === x);
+}
 
 /** Refresh this long BEFORE nominal expiry, so a token cannot die in flight
  *  between our check and the server's. */
@@ -102,6 +124,12 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
   // JSONL "invalid_grant en el refresh" (invalidated) de "401 con token recién
   // refrescado" (refreshed). main.ts lo adjunta al proxy.error oauth_failed.
   private lastEmitted: { event: TokenEvent['event']; atMs: number } | null = null;
+  // The authorization server auth() discovered in THIS process, in its current
+  // run: String(authorizationServerUrl), the exact value the SDK binds stored
+  // credentials to. In memory only, set by the SDK through saveDiscoveryState
+  // before any refresh. It is the ONLY source of the expected issuer for
+  // refresh-fetch: never the Keychain, never a token response.
+  private discoveredIssuer: string | null = null;
 
   constructor(
     private readonly mcp: string,
@@ -123,6 +151,19 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
   // through emitEvent so lastTokenEvent() covers these for oauth_failed triage.
   noteEvent(e: TokenEvent): void {
     this.emitEvent(e);
+  }
+
+  // Only the save half: without discoveryState() the SDK keeps rediscovering on
+  // every auth(), exactly as before. Called by auth() in every run, before it
+  // reads the stored client and tokens and before any refresh.
+  saveDiscoveryState(state: OAuthDiscoveryState): void {
+    this.discoveredIssuer = String(state.authorizationServerUrl);
+  }
+
+  /** The authorization server of this process's current auth() run, or null
+   *  when none has run yet. */
+  currentIssuer(): string | null {
+    return this.discoveredIssuer;
   }
 
   private acct(kind: 'tokens' | 'client' | 'verifier'): string {
@@ -294,9 +335,9 @@ export class LoginOAuthProvider extends KeychainOAuthProvider {
     null;
   private exchanged: { grantedScopes: string[] | null } | null = null;
 
-  // Only the save half: without discoveryState() the SDK keeps rediscovering
-  // on every auth(), exactly as before this capture existed.
+  // Keeps the base's issuer record, then captures for oauth_authorized.
   saveDiscoveryState(state: OAuthDiscoveryState): void {
+    super.saveDiscoveryState(state);
     const chosen = String(state.authorizationServerUrl);
     this.authorizationServer = {
       authorizationServer: chosen,
