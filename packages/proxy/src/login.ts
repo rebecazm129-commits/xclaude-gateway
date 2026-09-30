@@ -9,6 +9,7 @@ import { LoginOAuthProvider } from './oauth-provider.js';
 import { createRefreshFetch } from './refresh-fetch.js';
 import { refreshLockPath } from './refresh-lock.js';
 import { hasStoredCredentials } from './credentials.js';
+import { recordOAuthAuthorizedToDisk, type AuthorizationCapture } from './oauth-authorized.js';
 
 const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -38,6 +39,8 @@ export interface RunLoginDeps {
   discoverFn?: (url: string) => Promise<unknown>;
   createTransport?: (url: string, provider: LoginOAuthProvider, fetchFn?: FetchLike) => LoginTransport;
   startCallback?: (provider: LoginOAuthProvider) => Promise<CallbackHandle>;
+  /** Writes proxy.oauth_authorized + the reference (default: the real data folder). */
+  recordAuthorization?: (name: string, capture: AuthorizationCapture) => void;
 }
 
 export type CallbackResult =
@@ -182,6 +185,7 @@ export async function runLogin({ url, name, scope }: LoginArgs, deps: RunLoginDe
   const discoverFn = deps.discoverFn ?? defaultDiscover;
   const createTransport = deps.createTransport ?? defaultCreateTransport;
   const startCallback = deps.startCallback ?? defaultStartCallback;
+  const recordAuthorization = deps.recordAuthorization ?? recordOAuthAuthorizedToDisk;
 
   const provider = new LoginOAuthProvider(name);
   // The login flow refreshes too (the "stored/refreshed credentials" path drives
@@ -190,6 +194,20 @@ export async function runLogin({ url, name, scope }: LoginArgs, deps: RunLoginDe
   const refreshFetch = createRefreshFetch({ mcp: name, lockPath: refreshLockPath(name), provider });
   const callback = await startCallback(provider);
   const transport = createTransport(url, provider, refreshFetch);
+  // After a successful finishAuth only. The capture is null unless a code was
+  // exchanged in this process. Best-effort: the tokens are already stored, so
+  // an audit write failure is reported, never turned into a failed login.
+  const recordIfAuthorized = (): void => {
+    const capture = provider.authorizationCapture();
+    if (capture === null) return;
+    try {
+      recordAuthorization(name, capture);
+    } catch (err) {
+      process.stderr.write(
+        `xcg-proxy login: could not record the authorization for "${name}": ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+    }
+  };
   try {
     await transport.start();
 
@@ -222,6 +240,7 @@ export async function runLogin({ url, name, scope }: LoginArgs, deps: RunLoginDe
       if (result === 'REDIRECT') {
         const code = await callback.waitForCode();
         await transport.finishAuth(code);
+        recordIfAuthorized();
         process.stderr.write(
           `xcg-proxy login: authorized "${name}" with scope "${scope}"; token stored in Keychain\n`,
         );
@@ -252,6 +271,7 @@ export async function runLogin({ url, name, scope }: LoginArgs, deps: RunLoginDe
       // 401 path: the SDK already opened the browser during send(); wait for the code.
       const code = await callback.waitForCode();
       await transport.finishAuth(code);
+      recordIfAuthorized();
       process.stderr.write(`xcg-proxy login: authorized "${name}"; token stored in Keychain\n`);
       return;
     }
@@ -278,6 +298,7 @@ export async function runLogin({ url, name, scope }: LoginArgs, deps: RunLoginDe
     if (result === 'REDIRECT') {
       const code = await callback.waitForCode();
       await transport.finishAuth(code);
+      recordIfAuthorized();
       process.stderr.write(`xcg-proxy login: authorized "${name}" (deferred auth); token stored in Keychain\n`);
     } else {
       process.stderr.write(`xcg-proxy login: authorized "${name}" via stored/refreshed credentials\n`);

@@ -32,6 +32,7 @@ import type {
   EnrichmentSink,
 } from './detection/types.js';
 import type { ParseErrorReason, RpcId } from './parser.js';
+import type { OAuthChange, OAuthFinding } from './oauth-authorized.js';
 import type { NerDropReason } from './detection/ner/async-detector.js';
 
 const MAX_LEAF_BYTES = 64 * 1024;
@@ -200,6 +201,31 @@ export type EventBody =
       status?: number;
       oauthError?: string;
       oauthErrorDescription?: string;
+    }
+  | {
+      // A completed OAuth login (an authorization code was exchanged), written
+      // by the `xcg-proxy login` process. Whitelist and rules: oauth-authorized.ts.
+      // Never a token, code, state, verifier, client_id, callback or metadata.
+      type: 'proxy.oauth_authorized';
+      authorization_server: string;
+      authorization_server_source: 'protected_resource_metadata' | 'server_url_fallback';
+      resource: string | null;
+      requested_scopes: string[];
+      effective_granted_scopes: string[];
+      scope_source: 'token_response' | 'assumed_requested';
+      first_login: boolean;
+      changes: OAuthChange[];
+      findings: OAuthFinding[];
+    }
+  | {
+      // Lifecycle of the per-connector OAuth reference (oauth/v1/). Not a
+      // detection: 'initialized' (no file — a first login, or a deleted file:
+      // the trail is not read to tell them apart), 'reseeded' (unreadable
+      // file), 'kept_newer' (a newer build's file, left untouched and not
+      // compared), 'write_failed' (the next login compares against the old one).
+      type: 'proxy.oauth_reference';
+      event: 'initialized' | 'reseeded' | 'kept_newer' | 'write_failed';
+      reason: 'missing' | 'corrupt' | 'future_version' | 'io_error';
     }
   | {
       // Baseline lifecycle of the manifest auditor itself. These are NOT

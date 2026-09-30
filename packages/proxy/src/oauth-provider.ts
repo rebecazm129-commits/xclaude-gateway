@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 
 import { keychainGet, keychainSet, keychainDelete } from './keychain.js';
-import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
+import type { OAuthClientProvider, OAuthDiscoveryState } from '@modelcontextprotocol/sdk/client/auth.js';
+import type { AuthorizationCapture } from './oauth-authorized.js';
 import type {
   OAuthClientInformationFull,
   OAuthClientMetadata,
@@ -280,8 +281,48 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
 // Provider para el login interactivo: abre el navegador en vez de rechazar. El
 // listener loopback (login.ts) captura el callback. Hereda redirectUrl/clientMetadata
 // (el placeholder 51703 ES la URI de loopback real) y todo el almacenamiento Keychain.
+//
+// It also captures what proxy.oauth_authorized records (oauth-authorized.ts), in
+// memory and reduced on the spot: two query parameters of the authorization
+// URL (the URL itself is dropped), the authorization server the SDK chose, and
+// whether the token response carried a scope. authorizationCapture() is
+// non-null only once a code was exchanged: a redirect happened AND tokens were
+// saved after it. A refresh with no redirect never qualifies.
 export class LoginOAuthProvider extends KeychainOAuthProvider {
+  private redirected: { requestedScopes: string[]; resource: string | null } | null = null;
+  private authorizationServer: Pick<AuthorizationCapture, 'authorizationServer' | 'authorizationServerSource'> | null =
+    null;
+  private exchanged: { grantedScopes: string[] | null } | null = null;
+
+  // Only the save half: without discoveryState() the SDK keeps rediscovering
+  // on every auth(), exactly as before this capture existed.
+  saveDiscoveryState(state: OAuthDiscoveryState): void {
+    const chosen = String(state.authorizationServerUrl);
+    this.authorizationServer = {
+      authorizationServer: chosen,
+      authorizationServerSource:
+        state.resourceMetadata?.authorization_servers?.[0] === chosen ? 'protected_resource_metadata' : 'server_url_fallback',
+    };
+  }
+
+  async saveTokens(tokens: OAuthTokens): Promise<void> {
+    await super.saveTokens(tokens);
+    if (this.redirected !== null) {
+      this.exchanged = { grantedScopes: typeof tokens.scope === 'string' ? tokens.scope.split(/\s+/).filter(Boolean) : null };
+    }
+  }
+
+  authorizationCapture(): AuthorizationCapture | null {
+    if (this.redirected === null || this.exchanged === null || this.authorizationServer === null) return null;
+    return { ...this.authorizationServer, ...this.redirected, grantedScopes: this.exchanged.grantedScopes };
+  }
+
   redirectToAuthorization(authorizationUrl: URL): void {
+    const scope = authorizationUrl.searchParams.get('scope');
+    this.redirected = {
+      requestedScopes: scope === null ? [] : scope.split(/\s+/).filter(Boolean),
+      resource: authorizationUrl.searchParams.get('resource'),
+    };
     process.stderr.write(
       `\nxcg-proxy login: open this URL in your browser to authorize:\n\n  ${authorizationUrl.toString()}\n\n`,
     );
