@@ -43,18 +43,87 @@ export interface RunLoginDeps {
   recordAuthorization?: (name: string, capture: AuthorizationCapture) => void;
 }
 
+// `iss` (RFC 9207) is carried decoded, and only when present, so a callback
+// without it reads exactly as it always did.
 export type CallbackResult =
-  | { kind: 'code'; code: string }
-  | { kind: 'error'; error: string }
+  | { kind: 'code'; code: string; iss?: string }
+  | { kind: 'error'; error: string; iss?: string }
+  | { kind: 'invalid'; reason: 'repeated_parameter' }
   | { kind: 'ignore' };
+
+/** Parameters an authorization response carries at most once. A repeat means
+ *  two values to choose between — the response is refused, not interpreted. */
+const SINGLE_PARAMS = ['code', 'state', 'iss', 'error'] as const;
 
 export function interpretCallback(reqUrl: URL, callbackPath: string): CallbackResult {
   if (reqUrl.pathname !== callbackPath) return { kind: 'ignore' };
+  if (SINGLE_PARAMS.some((p) => reqUrl.searchParams.getAll(p).length > 1)) {
+    return { kind: 'invalid', reason: 'repeated_parameter' };
+  }
+  const iss = reqUrl.searchParams.get('iss');
+  const withIss = iss !== null ? { iss } : {};
   const error = reqUrl.searchParams.get('error');
-  if (error) return { kind: 'error', error };
+  if (error) return { kind: 'error', error, ...withIss };
   const code = reqUrl.searchParams.get('code');
-  if (code) return { kind: 'code', code };
-  return { kind: 'error', error: 'missing_code' };
+  if (code) return { kind: 'code', code, ...withIss };
+  return { kind: 'error', error: 'missing_code', ...withIss };
+}
+
+/** What the loopback listener answers and whether the login continues. */
+export type CallbackOutcome =
+  | { status: 404 }
+  | { status: 200 | 400; html: string; settle: { code: string } | { error: string } };
+
+/** Fixed words for every refused response: nothing the server or the URL sent
+ *  (error, error_description, error_uri, iss) reaches the page or the error. */
+export const CALLBACK_REFUSED_HTML = '<html><body>xCLAUDE login failed. You can close this tab.</body></html>';
+export const ISS_MISMATCH_MESSAGE =
+  'authorization response rejected: it does not come from the expected authorization server (RFC 9207)';
+export const ISS_MISSING_MESSAGE =
+  'authorization response rejected: the authorization server did not identify itself (RFC 9207)';
+export const REPEATED_PARAMETER_MESSAGE = 'authorization response rejected: a parameter was repeated';
+
+/** Every value placed in the callback page goes through this: the page is
+ *  served from 127.0.0.1 and its query is whatever the redirect carried. */
+export function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * The decision for one callback request, pure. RFC 9207 is checked HERE, on
+ * the listener, so a code whose `iss` does not match never reaches
+ * finishAuth: the exchange only ever sees a code that passed.
+ */
+export function callbackOutcome(
+  result: CallbackResult,
+  checkIss: (iss: string | undefined) => 'ok' | 'mismatch' | 'missing',
+): CallbackOutcome {
+  if (result.kind === 'ignore') return { status: 404 };
+  if (result.kind === 'invalid') {
+    return { status: 400, html: CALLBACK_REFUSED_HTML, settle: { error: REPEATED_PARAMETER_MESSAGE } };
+  }
+  const verdict = checkIss(result.iss);
+  if (verdict !== 'ok') {
+    const message = verdict === 'mismatch' ? ISS_MISMATCH_MESSAGE : ISS_MISSING_MESSAGE;
+    return { status: 400, html: CALLBACK_REFUSED_HTML, settle: { error: message } };
+  }
+  if (result.kind === 'error') {
+    return {
+      status: 400,
+      html: `<html><body>xCLAUDE login failed: ${escapeHtml(result.error)}. You can close this tab.</body></html>`,
+      settle: { error: `authorization callback error: ${result.error}` },
+    };
+  }
+  return {
+    status: 200,
+    html: '<html><body>xCLAUDE: login complete. You can close this tab.</body></html>',
+    settle: { code: result.code },
+  };
 }
 
 // Drives the initialize handshake and reports whether the SDK redirected to the
@@ -127,22 +196,14 @@ async function defaultStartCallback(provider: LoginOAuthProvider): Promise<Callb
 
   const server = http.createServer((req, res) => {
     const reqUrl = new URL(req.url ?? '/', `http://127.0.0.1:${port}`);
-    const result = interpretCallback(reqUrl, callbackPath);
-    if (result.kind === 'ignore') {
+    const outcome = callbackOutcome(interpretCallback(reqUrl, callbackPath), (iss) => provider.checkResponseIss(iss));
+    if (outcome.status === 404) {
       res.writeHead(404).end();
       return;
     }
-    if (result.kind === 'error') {
-      res
-        .writeHead(400, { 'content-type': 'text/html' })
-        .end(`<html><body>xCLAUDE login failed: ${result.error}. You can close this tab.</body></html>`);
-      rejectCode(new Error(`authorization callback error: ${result.error}`));
-      return;
-    }
-    res
-      .writeHead(200, { 'content-type': 'text/html' })
-      .end('<html><body>xCLAUDE: login complete. You can close this tab.</body></html>');
-    resolveCode(result.code);
+    res.writeHead(outcome.status, { 'content-type': 'text/html' }).end(outcome.html);
+    if ('code' in outcome.settle) resolveCode(outcome.settle.code);
+    else rejectCode(new Error(outcome.settle.error));
   });
 
   await new Promise<void>((resolve, reject) => {

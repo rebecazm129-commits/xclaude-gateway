@@ -117,7 +117,8 @@ export type EventBody =
         | 'refresh_coalesced'
         | 'refresh_coalesced_stale'
         | 'lock_timeout'
-        | 'refresh_rejected';
+        | 'refresh_rejected'
+        | 'metadata_issuer_mismatch';
       lastTokenEventAgoMs?: number;
     }
   | {
@@ -193,7 +194,8 @@ export type EventBody =
         | 'refresh_coalesced'
         | 'refresh_coalesced_stale'
         | 'lock_timeout'
-        | 'refresh_rejected';
+        | 'refresh_rejected'
+        | 'metadata_issuer_mismatch';
       rotated?: boolean;
       scope?: 'tokens' | 'all' | 'client';
       crossProcess?: boolean;

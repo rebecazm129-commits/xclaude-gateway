@@ -87,8 +87,11 @@ async function login(s: Scenario = {}): Promise<void> {
         scopes_supported: [SENTINEL],
         resource_documentation: `https://docs.example/${SENTINEL}`,
       },
+      // issuer = the discovered URL (RFC 8414 §3.3, checked by the login);
+      // the sentinel rides in another metadata field instead.
       authorizationServerMetadata: {
-        issuer: `https://issuer.example/${SENTINEL}`,
+        issuer: as,
+        service_documentation: `https://docs.example/${SENTINEL}`,
         authorization_endpoint: `${as}authorize`,
         token_endpoint: `${as}token?k=${SENTINEL}`,
         response_types_supported: ['code'],

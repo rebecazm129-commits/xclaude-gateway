@@ -28,6 +28,11 @@ export type TokenEvent =
   // refresh token. Distinguishable in the trail from a plain coalesce.
   | { event: 'refresh_coalesced_stale' }
   | { event: 'lock_timeout'; waitedMs: number }
+  // 'metadata_issuer_mismatch' = the authorization server metadata's `issuer`
+  // is not the URL it was discovered at (RFC 8414 §3.3). Recorded once per
+  // process by the wrappers, which do not block on it; the login refuses.
+  // Carries no value: which server it was is in the connector's config.
+  | { event: 'metadata_issuer_mismatch' }
   // 'refresh_rejected' = the token endpoint answered non-2xx to a refresh.
   // This is the ONLY place the server's real reason survives: the SDK turns it
   // into parseErrorResponse → InvalidGrantError → invalidateCredentials, and by
@@ -68,6 +73,29 @@ export function issuersMatch(a: string, b: string): boolean {
   }
   return x === y || (x.endsWith('/') && x.slice(0, -1) === y) || (y.endsWith('/') && y.slice(0, -1) === x);
 }
+
+/**
+ * RFC 8414 §3.3: the metadata's `issuer` must be IDENTICAL to the
+ * authorization server URL it was discovered at — both as raw text, never
+ * through new URL(). One concession: when the URL has no path beyond the
+ * authority ("https://host" or "https://host/"), with and without the final
+ * slash count as the same, because that is how a real server publishes both
+ * (Google: "https://accounts.google.com/" advertised, "https://accounts.google.com"
+ * as issuer). Case, ports, percent-encoding and slashes in a non-empty path
+ * are never normalized.
+ */
+export function metadataIssuerMatches(issuer: string, authorizationServerUrl: string): boolean {
+  if (issuer === authorizationServerUrl) return true;
+  const ROOT = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/[^/?#]+\/?$/;
+  if (!ROOT.test(issuer) || !ROOT.test(authorizationServerUrl)) return false;
+  const bare = (s: string): string => (s.endsWith('/') ? s.slice(0, -1) : s);
+  return bare(issuer) === bare(authorizationServerUrl);
+}
+
+/** Why the login refuses an authorization server, said the same way every
+ *  time: no value from the server reaches the message. */
+export const METADATA_ISSUER_MISMATCH_MESSAGE =
+  'the authorization server metadata does not identify the server it was fetched from (RFC 8414)';
 
 /** Refresh this long BEFORE nominal expiry, so a token cannot die in flight
  *  between our check and the server's. */
@@ -130,6 +158,8 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
   // before any refresh. It is the ONLY source of the expected issuer for
   // refresh-fetch: never the Keychain, never a token response.
   private discoveredIssuer: string | null = null;
+  // metadata_issuer_mismatch is recorded once per process, not on every auth().
+  private issuerMismatchNoted = false;
 
   constructor(
     private readonly mcp: string,
@@ -156,8 +186,23 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
   // Only the save half: without discoveryState() the SDK keeps rediscovering on
   // every auth(), exactly as before. Called by auth() in every run, before it
   // reads the stored client and tokens and before any refresh.
+  //
+  // Also checks RFC 8414 §3.3 on the raw metadata: here only RECORDED (a
+  // wrapper that refuses would take a working connector down mid-session);
+  // the login provider below refuses.
   saveDiscoveryState(state: OAuthDiscoveryState): void {
     this.discoveredIssuer = String(state.authorizationServerUrl);
+    if (!this.discoveredIssuerIsConsistent(state) && !this.issuerMismatchNoted) {
+      this.issuerMismatchNoted = true;
+      this.emitEvent({ event: 'metadata_issuer_mismatch' });
+    }
+  }
+
+  /** RFC 8414 §3.3 on what discovery returned. No metadata document (the SDK
+   *  then falls back to default endpoints) has no issuer to contradict. */
+  protected discoveredIssuerIsConsistent(state: OAuthDiscoveryState): boolean {
+    const issuer = state.authorizationServerMetadata?.issuer;
+    return typeof issuer !== 'string' || metadataIssuerMatches(issuer, String(state.authorizationServerUrl));
   }
 
   /** The authorization server of this process's current auth() run, or null
@@ -334,10 +379,22 @@ export class LoginOAuthProvider extends KeychainOAuthProvider {
   private authorizationServer: Pick<AuthorizationCapture, 'authorizationServer' | 'authorizationServerSource'> | null =
     null;
   private exchanged: { grantedScopes: string[] | null } | null = null;
+  // RFC 9207: what the callback's `iss` is checked against — the metadata's
+  // `issuer` as published (raw), and whether the server promised to send it.
+  private responseIss: { issuer: string | null; required: boolean } | null = null;
 
-  // Keeps the base's issuer record, then captures for oauth_authorized.
+  // Keeps the base's issuer record, then REFUSES a metadata document that
+  // does not identify its own server (RFC 8414 §3.3): auth() awaits this, so
+  // the throw ends the login before any registration or redirect. Then
+  // captures for oauth_authorized and for the iss check.
   saveDiscoveryState(state: OAuthDiscoveryState): void {
     super.saveDiscoveryState(state);
+    if (!this.discoveredIssuerIsConsistent(state)) throw new Error(METADATA_ISSUER_MISMATCH_MESSAGE);
+    const md = state.authorizationServerMetadata;
+    this.responseIss = {
+      issuer: typeof md?.issuer === 'string' ? md.issuer : null,
+      required: (md as Record<string, unknown> | undefined)?.['authorization_response_iss_parameter_supported'] === true,
+    };
     const chosen = String(state.authorizationServerUrl);
     this.authorizationServer = {
       authorizationServer: chosen,
@@ -351,6 +408,22 @@ export class LoginOAuthProvider extends KeychainOAuthProvider {
     if (this.redirected !== null) {
       this.exchanged = { grantedScopes: typeof tokens.scope === 'string' ? tokens.scope.split(/\s+/).filter(Boolean) : null };
     }
+  }
+
+  /**
+   * RFC 9207 / SEP-2468, on the authorization response BEFORE its code is
+   * exchanged. `iss` is compared EXACTLY with the metadata's `issuer`:
+   *   present and different                    → 'mismatch'
+   *   absent, metadata promised it (…_supported: true) → 'missing'
+   *   absent, not promised                     → 'ok'
+   * Present with no known issuer (no metadata document) cannot be verified,
+   * so it is a mismatch too.
+   */
+  checkResponseIss(iss: string | undefined): 'ok' | 'mismatch' | 'missing' {
+    if (iss !== undefined) {
+      return this.responseIss?.issuer !== null && this.responseIss?.issuer === iss ? 'ok' : 'mismatch';
+    }
+    return this.responseIss?.required === true ? 'missing' : 'ok';
   }
 
   authorizationCapture(): AuthorizationCapture | null {
