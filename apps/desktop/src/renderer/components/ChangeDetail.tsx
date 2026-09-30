@@ -16,12 +16,15 @@ import { topSeverity } from '../hooks/useChangePage.js';
 import { Badge } from './Badge.js';
 import { ChangeDiff } from './ChangeDiff.js';
 import {
+  SCOPE_SOURCE_ASSUMED_TEXT,
   SECTION_LABELS,
+  SERVER_FALLBACK_TEXT,
   severityDisclaimer,
   changeTitle,
   historicalNote,
   humanSummary,
   itemLines,
+  scopeList,
 } from './change-copy.js';
 import { formatTimestamp } from './detections-format.js';
 
@@ -38,6 +41,53 @@ interface Props {
   onClose: () => void;
 }
 
+/** One key/value row of the drawer grammar. */
+function Kv({ k, v }: { k: string; v: string }): JSX.Element {
+  return (
+    <div className={styles['kvRow']}>
+      <span className={styles['kvKey']}>{k}:</span>
+      <span className={styles['kvValue']}>{v}</span>
+    </div>
+  );
+}
+
+/** "before → now", or just "now" when nothing moved or there is no before. */
+function beforeNow(before: string | null, now: string, moved: boolean): string {
+  return moved && before !== null ? `${before} → ${now}` : now;
+}
+
+/** The Change block of an authorization row: the server and the scopes before
+ *  → now, what was added and removed, and when the two logins happened. The
+ *  resource only when it moved — otherwise it is in Technical details. */
+function AuthorizationChange({ change }: { change: ConnectorChangeView }): JSX.Element | null {
+  const a = change.authorization;
+  if (a === undefined) return null;
+  const serverMoved = a.authorization_server.before !== null && a.authorization_server.before !== a.authorization_server.now;
+  const scopesMoved = a.scopes.added.length > 0 || a.scopes.removed.length > 0;
+  return (
+    <>
+      <div className={styles['kvList']}>
+        <Kv k="mcp" v={change.mcp} />
+        <Kv k="section" v={SECTION_LABELS[change.section]} />
+        <Kv k="authorization server" v={beforeNow(a.authorization_server.before, a.authorization_server.now, serverMoved)} />
+        <Kv
+          k="scopes"
+          v={beforeNow(a.scopes.before === null ? null : scopeList(a.scopes.before), scopeList(a.scopes.now), scopesMoved)}
+        />
+        {a.scopes.added.length > 0 && <Kv k="added" v={scopeList(a.scopes.added)} />}
+        {a.scopes.removed.length > 0 && <Kv k="removed" v={scopeList(a.scopes.removed)} />}
+        {a.resource.changed && <Kv k="resource" v={`${a.resource.before ?? 'none'} → ${a.resource.now ?? 'none'}`} />}
+        <Kv k="previous login" v={a.previous_login_at === null ? 'none' : formatTimestamp(a.previous_login_at)} />
+        <Kv k="this login" v={formatTimestamp(change.ts)} />
+      </div>
+      {a.scope_source === 'assumed_requested' && <div className={styles['emptyFindings']}>{SCOPE_SOURCE_ASSUMED_TEXT}</div>}
+      {a.authorization_server_source === 'server_url_fallback' && (
+        <div className={styles['emptyFindings']}>{SERVER_FALLBACK_TEXT}</div>
+      )}
+    </>
+  );
+}
+
 /** The review button's words: what it will do, or what it is doing. */
 function reviewLabel(change: ConnectorChangeView, pending: boolean): string {
   // During the write the status already shows the target (it moved at the
@@ -52,7 +102,10 @@ function findingLines(change: ConnectorChangeView): { key: string; type: string;
   const out = change.findings.map((f) => ({
     key: `${f.rule_id}|${f.evidence.path ?? ''}`,
     type: f.rule_id,
-    where: f.evidence.path ?? f.evidence.target ?? '',
+    where:
+      f.evidence.path ??
+      f.evidence.target ??
+      (f.evidence.count !== undefined && change.section === 'authorization' ? `${f.evidence.count} added` : ''),
   }));
   if (change.attention.level === 'review_recommended') {
     out.push({
@@ -134,6 +187,12 @@ export function ChangeDetail({ change, onReview, reviewPending = false, reviewEr
           {note !== null ? <div className={styles['emptyFindings']}>{note}</div> : null}
         </section>
 
+        {change.authorization !== undefined ? (
+          <section className={styles['block']}>
+            <div className={styles['blockLabel']}>Change</div>
+            <AuthorizationChange change={change} />
+          </section>
+        ) : (
         <section className={styles['block']}>
           <div className={styles['blockLabel']}>Change</div>
           <div className={styles['kvList']}>
@@ -158,6 +217,7 @@ export function ChangeDetail({ change, onReview, reviewPending = false, reviewEr
             ))}
           </div>
         </section>
+        )}
 
         {/* Only when something asked for a look. On a change nothing flagged,
             a heading asking "why" over "No findings" answers a question the
@@ -202,14 +262,26 @@ export function ChangeDetail({ change, onReview, reviewPending = false, reviewEr
                 <span className={styles['kvKey']}>event_id:</span>
                 <span className={styles['kvValue']}>{change.event_id}</span>
               </div>
-              <div className={styles['kvRow']}>
-                <span className={styles['kvKey']}>snapshot:</span>
-                <span className={styles['kvValue']}>
-                  {change.snapshot === null
-                    ? 'none (recorded by the previous format)'
-                    : `${change.snapshot.before ?? 'none'} → ${change.snapshot.after}`}
-                </span>
-              </div>
+              {change.authorization !== undefined ? (
+                <>
+                  <Kv k="resource" v={change.authorization.resource.now ?? 'none'} />
+                  <Kv k="requested scopes" v={scopeList(change.authorization.requested_scopes)} />
+                  <Kv k="scope source" v={change.authorization.scope_source} />
+                  <Kv k="authorization server source" v={change.authorization.authorization_server_source} />
+                  {change.authorization.reference_note !== undefined && (
+                    <Kv k="reference" v={change.authorization.reference_note} />
+                  )}
+                </>
+              ) : (
+                <div className={styles['kvRow']}>
+                  <span className={styles['kvKey']}>snapshot:</span>
+                  <span className={styles['kvValue']}>
+                    {change.snapshot === null
+                      ? 'none (recorded by the previous format)'
+                      : `${change.snapshot.before ?? 'none'} → ${change.snapshot.after}`}
+                  </span>
+                </div>
+              )}
               <div className={styles['kvRow']}>
                 <span className={styles['kvKey']}>section:</span>
                 <span className={styles['kvValue']}>{change.section}</span>

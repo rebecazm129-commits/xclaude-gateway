@@ -66,6 +66,10 @@ export interface TrayMenuState {
   /** How many connectors currently need re-login (audit.authAlerts.length).
    *  0 or undefined hides the line entirely. */
   authAlertCount?: number;
+  /** Unreviewed connector changes of the last 24h with a finding of medium
+   *  or above (change-notify.ts). Undefined hides the line: the count is read
+   *  off the trail on its own schedule and may not be known yet. */
+  changesToReview?: number;
   /** Current OS value, read fresh by the caller — never a cached boolean. */
   openAtLogin?: boolean;
   /** Toggle handler; omitted in contexts with no login-item support. */
@@ -97,6 +101,10 @@ export function buildTrayMenuTemplate(
   }
   if (state.counts) {
     template.push({ label: `${state.counts.flagged24h} flagged (24h)`, click: onOpen });
+  }
+  if (state.changesToReview !== undefined) {
+    const n = state.changesToReview;
+    template.push({ label: n === 1 ? '1 change to review (24h)' : `${n} changes to review (24h)`, click: onOpen });
   }
   // Only separate when the status group actually produced something, so a menu
   // with nothing to report never opens on a stray rule.

@@ -191,6 +191,7 @@ describe('proxy.oauth_authorized — what reaches the disk', () => {
       effective_granted_scopes: ['read', 'write'],
       scope_source: 'token_response',
       first_login: true,
+      previous_login_at: null,
       changes: [],
       findings: [],
     });
@@ -279,6 +280,8 @@ describe('proxy.oauth_authorized — comparison with the last good login', () =>
     const { lines } = onDisk();
     expect(referenceEvents(lines)).toHaveLength(1);
     expect(authorized(lines)[1]).toMatchObject({ first_login: false, findings: [], changes: [] });
+    // The previous login's time: the reference's write time, set by the first.
+    expect(typeof authorized(lines)[1]!['previous_login_at']).toBe('string');
   });
 
   it('a different authorization server: authorization_server_changed, high', async () => {

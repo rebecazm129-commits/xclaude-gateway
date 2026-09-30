@@ -87,7 +87,8 @@ import { createTray, computeTrayCounts, updateTrayMenu } from './tray.js';
 import { computeReloginTransitions } from './relogin-notify.js';
 import { readNotified, writeNotified, type NotifiedMap } from './relogin-state.js';
 import { isAllowedNavigation } from './navigation-guard.js';
-import { writeRecoveryMarkerAfterConnect, writeReloginNotified } from './recovery-writer.js';
+import { writeChangeNotified, writeRecoveryMarkerAfterConnect, writeReloginNotified } from './recovery-writer.js';
+import { computeChangeNotifications, computeChangesToReview } from './change-notify.js';
 import { excludeSpoolFromTimeMachine } from './spool-exclusion.js';
 import { readBaselineHistory, type BaselineHistoryEntry } from './baseline-history.js';
 
@@ -653,6 +654,14 @@ async function runRetentionSweep(): Promise<void> {
 // whenever the app happens to open.
 let notifiedRelogin: NotifiedMap | null = null;
 
+// The tray's "changes to review" line: undefined until the first change pass
+// has read the trail. Kept here so every refreshTray caller shows the last
+// known value without re-reading the changes on the 2s path.
+let changesToReview: number | undefined;
+// In-process guard on top of the app.change_notified markers: a marker whose
+// append failed must not turn into a notification every minute.
+const notifiedChanges = new Set<string>();
+
 /** Reads the OS login-item state. Never cached — macOS System Settings can
  *  change it behind our back, so every surface re-reads it on display. */
 function isOpenAtLogin(): boolean {
@@ -677,6 +686,7 @@ function refreshTray(counts: { flagged24h: number; critical24h: number }, authAl
   updateTrayMenu({
     counts,
     authAlertCount,
+    ...(changesToReview !== undefined ? { changesToReview } : {}),
     openAtLogin: isOpenAtLogin(),
     onToggleOpenAtLogin: (next) => {
       setOpenAtLogin(next);
@@ -718,6 +728,25 @@ function runReloginPass(alerts: readonly { mcp: string; lastFailureTs: string }[
   if (changed) writeNotified(nextNotified, BASE_DIR);
 }
 
+// One change pass: the tray's review count and the authorization
+// notifications, both off the trail's connector changes. Runs with the re-login
+// pass (60s) and after a review mark — never on the renderer's 2s poll.
+async function runChangesPass(): Promise<void> {
+  const views = await readConnectorChanges(WRAPPERS_DIR, { limit: 5000 });
+  const nowMs = Date.now();
+  changesToReview = computeChangesToReview(views, nowMs);
+  const supported = Notification.isSupported();
+  for (const n of computeChangeNotifications(views, nowMs, notifiedChanges)) {
+    if (supported) {
+      const note = new Notification({ title: n.title, body: n.body });
+      note.on('click', () => openWindow());
+      note.show();
+    }
+    notifiedChanges.add(n.eventId);
+    writeChangeNotified({ mcp: n.mcp, targetEventId: n.eventId, ruleId: n.ruleId, shown: supported }, WRAPPERS_DIR);
+  }
+}
+
 void app.whenReady().then(() => {
   bootstrapStableSymlink();
   // Launched by the login item → tray only, no window. wasOpenedAtLogin is the
@@ -736,10 +765,13 @@ void app.whenReady().then(() => {
   // end — this and the renderer's usePolledDetections (2s) are candidates to
   // collapse into a single source-of-truth poll later.
   const trayAndReloginPass = (): void => {
-    void auditStore.get().then((audit) => {
-      refreshTray(computeTrayCounts(audit.events, Date.now()), audit.authAlerts.length);
-      runReloginPass(audit.authAlerts);
-    });
+    void runChangesPass()
+      .catch((err) => console.error('[xcg] connector changes pass failed:', err))
+      .then(() => auditStore.get())
+      .then((audit) => {
+        refreshTray(computeTrayCounts(audit.events, Date.now()), audit.authAlerts.length);
+        runReloginPass(audit.authAlerts);
+      });
   };
   // Once now, then on the interval: a cold start that already has an unseen
   // failure must not wait a full minute to say so.
@@ -825,6 +857,10 @@ ipcMain.handle(
     if (target === undefined) return;
     if (target.review_status === params.to) return;
     writeReviewStatusChanged(params.eventId, target.review_status, params.to, WRAPPERS_DIR);
+    // The tray's review count moves with the mark, not a minute later.
+    await runChangesPass().catch((err) => console.error('[xcg] connector changes pass failed:', err));
+    const audit = await auditStore.get();
+    refreshTray(computeTrayCounts(audit.events, Date.now()), audit.authAlerts.length);
   },
 );
 
@@ -851,7 +887,7 @@ ipcMain.handle(
         generator: { app: 'xCLAUDE Gateway', version: app.getVersion() },
         events: events.map((c) => ({
           event_id: c.event_id,
-          event_type: 'connector_change' as const,
+          event_type: c.section === 'authorization' ? ('oauth_authorized' as const) : ('connector_change' as const),
           ts: c.ts,
           mcp: c.mcp,
           section: c.section,
@@ -864,6 +900,7 @@ ipcMain.handle(
           ...(c.source_format !== undefined ? { source_format: c.source_format } : {}),
           ...(c.review !== undefined ? { review: c.review } : {}),
           ...(c.reviewed_with !== undefined ? { reviewed_with: c.reviewed_with } : {}),
+          ...(c.authorization !== undefined ? { authorization: c.authorization } : {}),
         })),
       };
       writeFileSync(chosen.filePath, `${JSON.stringify(doc, null, 2)}\n`, { mode: 0o600 });

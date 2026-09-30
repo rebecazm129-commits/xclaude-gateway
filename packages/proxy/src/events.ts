@@ -214,6 +214,8 @@ export type EventBody =
       effective_granted_scopes: string[];
       scope_source: 'token_response' | 'assumed_requested';
       first_login: boolean;
+      /** When the login compared against happened; null on a first login. */
+      previous_login_at: string | null;
       changes: OAuthChange[];
       findings: OAuthFinding[];
     }

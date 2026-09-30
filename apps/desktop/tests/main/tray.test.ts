@@ -224,3 +224,24 @@ describe('buildTrayMenuTemplate — grouping', () => {
     ]);
   });
 });
+
+describe('buildTrayMenuTemplate — changes to review', () => {
+  const labels = (tpl: ReturnType<typeof buildTrayMenuTemplate>) => tpl.map((i) => i.label ?? i.type);
+
+  it('shows "{n} changes to review (24h)" after the flagged line, opening the window', () => {
+    const onOpen = vi.fn();
+    const tpl = buildTrayMenuTemplate(onOpen, { counts: { flagged24h: 3, critical24h: 0 }, changesToReview: 2 });
+    expect(labels(tpl).slice(0, 3)).toEqual(['3 flagged (24h)', '2 changes to review (24h)', 'separator']);
+    expect(tpl[1]?.click).toBe(onOpen);
+  });
+
+  it('singular for one, and zero is still said', () => {
+    expect(labels(buildTrayMenuTemplate(vi.fn(), { changesToReview: 1 }))[0]).toBe('1 change to review (24h)');
+    expect(labels(buildTrayMenuTemplate(vi.fn(), { changesToReview: 0 }))[0]).toBe('0 changes to review (24h)');
+  });
+
+  it('hidden until the count is known', () => {
+    const shown = labels(buildTrayMenuTemplate(vi.fn(), { counts: { flagged24h: 0, critical24h: 0 } }));
+    expect(shown.some((l) => String(l).includes('to review'))).toBe(false);
+  });
+});

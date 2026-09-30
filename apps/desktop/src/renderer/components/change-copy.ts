@@ -38,6 +38,7 @@ const SECTION_NOUN: Record<ConnectorChangeView['section'], string> = {
   resource_templates: 'Resource template',
   prompts: 'Prompt',
   discovery: 'Server info',
+  authorization: 'Authorization',
 };
 
 const SECTION_PLURAL: Record<ConnectorChangeView['section'], string> = {
@@ -46,6 +47,7 @@ const SECTION_PLURAL: Record<ConnectorChangeView['section'], string> = {
   resource_templates: 'resource templates',
   prompts: 'prompts',
   discovery: 'server info fields',
+  authorization: 'authorization details',
 };
 
 /** Distinct items this change touches. */
@@ -61,6 +63,7 @@ function targetsOf(view: ConnectorChangeView): string[] {
  * because listing fifty-two tool names in a row is not information.
  */
 export function changeTitle(view: ConnectorChangeView): string {
+  if (view.section === 'authorization') return AUTHORIZATION_TITLE[authorizationKind(view)];
   const targets = targetsOf(view);
   // A catalog review changed nothing: the title must not say it did.
   if (view.review === 'baseline') {
@@ -108,6 +111,7 @@ function leaf(path: string | undefined): string | null {
  * A finding beats a shape change, and a count beats a list.
  */
 export function detailsLine(view: ConnectorChangeView): string {
+  if (view.section === 'authorization') return authorizationDetails(view);
   const param = view.findings.find((f) => f.rule_id === 'sensitive_param_added');
   if (param !== undefined) {
     const name = leaf(param.evidence.path) ?? 'a parameter';
@@ -142,6 +146,7 @@ export function detailsLine(view: ConnectorChangeView): string {
 
 /** The plain sentence at the top of the detail panel. */
 export function humanSummary(view: ConnectorChangeView): string {
+  if (view.section === 'authorization') return authorizationSummary(view);
   if (view.review === 'baseline') return baselineSummary(view);
   const param = view.findings.find((f) => f.rule_id === 'sensitive_param_added');
   if (param !== undefined) {
@@ -240,4 +245,114 @@ export const SECTION_LABELS: Record<ConnectorChangeView['section'], string> = {
   resource_templates: 'Resource templates',
   prompts: 'Prompts',
   discovery: 'Server info',
+  authorization: 'Authorization',
 };
+
+// --- authorization rows ------------------------------------------------------
+//
+// A sign-in compared with the previous one (proxy.oauth_authorized). The words
+// below are a DRAFT pending review. Same two rules as the rest of this file:
+// an observation, not an accusation; no severity where no rule matched.
+
+type AuthorizationKind =
+  | 'server_changed'
+  | 'permissions_expanded'
+  | 'reference_unreadable'
+  | 'first_sign_in'
+  | 'scopes_reduced'
+  | 'resource_changed'
+  | 'recorded';
+
+/** What the row is about, strongest first: a rule beats a fact. */
+export function authorizationKind(view: ConnectorChangeView): AuthorizationKind {
+  const a = view.authorization;
+  const rules = new Set(view.findings.map((f) => f.rule_id));
+  if (rules.has('authorization_server_changed')) return 'server_changed';
+  if (rules.has('scopes_expanded')) return 'permissions_expanded';
+  if (a?.first_login === true) return a.reference_note === 'reseeded' ? 'reference_unreadable' : 'first_sign_in';
+  if ((a?.scopes.removed.length ?? 0) > 0) return 'scopes_reduced';
+  if (a?.resource.changed === true) return 'resource_changed';
+  return 'recorded';
+}
+
+const AUTHORIZATION_TITLE: Record<AuthorizationKind, string> = {
+  server_changed: 'Authorization server changed',
+  permissions_expanded: 'Permissions expanded',
+  reference_unreadable: 'Sign-in recorded (reference reset)',
+  first_sign_in: 'First sign-in recorded',
+  scopes_reduced: 'Scopes reduced',
+  resource_changed: 'Resource changed',
+  recorded: 'Sign-in recorded',
+};
+
+export const AUTHORIZATION_SERVER_CHANGED_TEXT =
+  'This connector is now authorizing through a different server than on its previous login. ' +
+  'Verify that the new authorization server belongs to the service you intended to connect.';
+export const PERMISSIONS_EXPANDED_TEXT = "This connector was granted permissions it didn't have on its previous login.";
+export const SCOPES_REDUCED_TEXT = 'This connector was granted fewer permissions than on its previous login.';
+export const RESOURCE_CHANGED_TEXT = 'The resource this connector authorizes for changed since its previous login.';
+
+export const REFERENCE_NOTE_TEXT: Record<NonNullable<NonNullable<ConnectorChangeView['authorization']>['reference_note']>, string> = {
+  initialized: 'First sign-in recorded on this Mac. Later sign-ins are compared with this one.',
+  reseeded: "The saved reference couldn't be read, so this sign-in wasn't compared. It is now the reference.",
+  kept_newer:
+    "A newer version of xCLAUDE Gateway saved this reference. It was left untouched and this sign-in wasn't compared.",
+  write_failed:
+    "This sign-in couldn't be saved as the reference. The next one will be compared with the previous sign-in.",
+};
+
+export const SCOPE_SOURCE_ASSUMED_TEXT = 'Granted scopes not returned by the server; showing the requested ones.';
+export const SERVER_FALLBACK_TEXT =
+  "Not listed in the server's protected resource metadata; the connector URL was used.";
+
+/** The host of a URL, or the value itself when it is not one. */
+export function hostOf(url: string | null): string {
+  if (url === null) return 'none';
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+/** "a, b, c", or "none". */
+export function scopeList(scopes: readonly string[] | null): string {
+  return scopes === null || scopes.length === 0 ? 'none' : scopes.join(', ');
+}
+
+function authorizationDetails(view: ConnectorChangeView): string {
+  const a = view.authorization;
+  if (a === undefined) return '';
+  switch (authorizationKind(view)) {
+    case 'server_changed':
+      return `${hostOf(a.authorization_server.before)} → ${hostOf(a.authorization_server.now)}`;
+    case 'permissions_expanded':
+      return `added: ${scopeList(a.scopes.added)}`;
+    case 'scopes_reduced':
+      return `removed: ${scopeList(a.scopes.removed)}`;
+    case 'resource_changed':
+      return `${hostOf(a.resource.before)} → ${hostOf(a.resource.now)}`;
+    default:
+      return hostOf(a.authorization_server.now);
+  }
+}
+
+/** Every sentence that applies, strongest first: a login can change the
+ *  server AND expand the scopes, and the summary must not hide the second. */
+function authorizationSummary(view: ConnectorChangeView): string {
+  const a = view.authorization;
+  if (a === undefined) return `${view.mcp} signed in.`;
+  const rules = new Set(view.findings.map((f) => f.rule_id));
+  const parts: string[] = [];
+  if (rules.has('authorization_server_changed')) parts.push(AUTHORIZATION_SERVER_CHANGED_TEXT);
+  if (rules.has('scopes_expanded')) parts.push(`${PERMISSIONS_EXPANDED_TEXT} Added: ${scopeList(a.scopes.added)}.`);
+  if (a.first_login) parts.push(REFERENCE_NOTE_TEXT[a.reference_note === 'reseeded' ? 'reseeded' : 'initialized']);
+  if (!a.first_login && a.scopes.removed.length > 0) {
+    parts.push(`${SCOPES_REDUCED_TEXT} Removed: ${scopeList(a.scopes.removed)}.`);
+  }
+  if (a.resource.changed) parts.push(RESOURCE_CHANGED_TEXT);
+  if (a.reference_note === 'kept_newer' || a.reference_note === 'write_failed') {
+    parts.push(REFERENCE_NOTE_TEXT[a.reference_note]);
+  }
+  return parts.length > 0 ? parts.join(' ') : `${view.mcp} signed in.`;
+}

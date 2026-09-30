@@ -425,6 +425,116 @@ const change = (over: Partial<ConnectorChangeView>): ConnectorChangeView => ({
   ...over,
 });
 
+// --- authorization rows (proxy.oauth_authorized, as the main reader maps it) ---
+
+const auth = (
+  over: Partial<ConnectorChangeView>,
+  a: Partial<NonNullable<ConnectorChangeView['authorization']>>,
+): ConnectorChangeView =>
+  change({
+    section: 'authorization',
+    snapshot: null,
+    ...over,
+    authorization: {
+      authorization_server: { before: 'https://auth.linear.app/', now: 'https://auth.linear.app/' },
+      authorization_server_source: 'protected_resource_metadata',
+      scopes: { before: ['read', 'write'], now: ['read', 'write'], added: [], removed: [] },
+      requested_scopes: ['read', 'write'],
+      scope_source: 'token_response',
+      resource: { before: 'https://mcp.linear.app/mcp', now: 'https://mcp.linear.app/mcp', changed: false },
+      first_login: false,
+      previous_login_at: '2026-09-23T09:54:24.000Z',
+      ...a,
+    },
+  });
+
+const AUTH_SERVER_CHANGED = auth(
+  {
+    event_id: 'evt-auth-server',
+    ts: '2026-09-30T08:41:00.000Z',
+    mcp: 'linear',
+    findings: [
+      { rule_id: 'authorization_server_changed', rule_version: 1, severity: 'high', evidence: { target: 'login.linear-auth.example' } },
+    ],
+  },
+  { authorization_server: { before: 'https://auth.linear.app/', now: 'https://login.linear-auth.example/' } },
+);
+
+const AUTH_SCOPES_EXPANDED = auth(
+  {
+    event_id: 'evt-auth-scopes',
+    ts: '2026-09-30T07:15:00.000Z',
+    mcp: 'github',
+    changes: [
+      { kind: 'item_added', target: 'admin:org' },
+      { kind: 'item_added', target: 'delete_repo' },
+    ],
+    findings: [{ rule_id: 'scopes_expanded', rule_version: 1, severity: 'medium', evidence: { count: 2 } }],
+  },
+  {
+    authorization_server: { before: 'https://github.com/login/oauth', now: 'https://github.com/login/oauth' },
+    scopes: {
+      before: ['read:org', 'read:user', 'repo'],
+      now: ['admin:org', 'delete_repo', 'read:org', 'read:user', 'repo'],
+      added: ['admin:org', 'delete_repo'],
+      removed: [],
+    },
+    requested_scopes: ['repo', 'read:org', 'read:user'],
+    scope_source: 'assumed_requested',
+    resource: { before: 'https://api.githubcopilot.com/mcp/', now: 'https://api.githubcopilot.com/mcp/', changed: false },
+    previous_login_at: '2026-09-28T16:02:00.000Z',
+  },
+);
+
+const AUTH_SCOPES_REDUCED = auth(
+  {
+    event_id: 'evt-auth-reduced',
+    ts: '2026-09-29T18:30:00.000Z',
+    mcp: 'gmail',
+    changes: [{ kind: 'item_removed', target: 'https://www.googleapis.com/auth/gmail.send' }],
+  },
+  {
+    authorization_server: { before: 'https://accounts.google.com/', now: 'https://accounts.google.com/' },
+    scopes: {
+      before: ['https://www.googleapis.com/auth/gmail.modify', 'https://www.googleapis.com/auth/gmail.send'],
+      now: ['https://www.googleapis.com/auth/gmail.modify'],
+      added: [],
+      removed: ['https://www.googleapis.com/auth/gmail.send'],
+    },
+    requested_scopes: ['https://www.googleapis.com/auth/gmail.modify'],
+    resource: { before: 'https://gmailmcp.googleapis.com/mcp/v1', now: 'https://gmailmcp.googleapis.com/mcp/v1', changed: false },
+    previous_login_at: '2026-09-22T10:00:00.000Z',
+  },
+);
+
+const AUTH_FIRST = auth(
+  { event_id: 'evt-auth-first', ts: '2026-09-29T09:20:00.000Z', mcp: 'notion' },
+  {
+    authorization_server: { before: null, now: 'https://mcp.notion.com/' },
+    authorization_server_source: 'server_url_fallback',
+    scopes: { before: null, now: [], added: [], removed: [] },
+    requested_scopes: [],
+    scope_source: 'assumed_requested',
+    resource: { before: null, now: 'https://mcp.notion.com/mcp', changed: false },
+    first_login: true,
+    previous_login_at: null,
+    reference_note: 'initialized',
+  },
+);
+
+const AUTH_RESEEDED = auth(
+  { event_id: 'evt-auth-reseeded', ts: '2026-09-28T12:05:00.000Z', mcp: 'stripe' },
+  {
+    authorization_server: { before: null, now: 'https://access.stripe.com/mcp' },
+    scopes: { before: null, now: ['mcp'], added: [], removed: [] },
+    requested_scopes: ['mcp'],
+    resource: { before: null, now: 'https://mcp.stripe.com', changed: false },
+    first_login: true,
+    previous_login_at: null,
+    reference_note: 'reseeded',
+  },
+);
+
 /** A catalog review: nothing moved, a rule matched the definition as it
  *  stands. The first time the auditor saw this catalog, or once after a rule
  *  got a new version. */
@@ -968,6 +1078,27 @@ export const SCENARIOS: readonly Scenario[] = [
     retention: null,
     hookVanishedTs: null,
     changes: [BASELINE_REVIEW, BCC],
+  },
+  {
+    id: 'authorization',
+    tab: 'changes',
+    label: 'MCP changes · authorization (OAuth sign-ins)',
+    note:
+      'Five authorization rows among a tools one (turn off "Needs review only" to see them all). ' +
+      'linear: HIGH "Authorization server changed", DETAILS ' +
+      '"auth.linear.app → login.linear-auth.example"; open it: server before → now, previous and this login ' +
+      'dates, resource only in Technical details. github: MEDIUM "Permissions expanded", "added: admin:org, ' +
+      'delete_repo", and the "Granted scopes not returned…" note. gmail: no badge, "Scopes reduced". notion: ' +
+      '"First sign-in recorded" with the fallback note. stripe: "Sign-in recorded (reference reset)". ' +
+      'Every title fits the CHANGE column at 1100px.',
+    entries: TWO_CONNECTORS,
+    events: [],
+    rows: [],
+    authAlerts: [],
+    baseline: BASELINE_BOTH,
+    retention: null,
+    hookVanishedTs: null,
+    changes: [AUTH_SERVER_CHANGED, AUTH_SCOPES_EXPANDED, AUTH_SCOPES_REDUCED, AUTH_FIRST, AUTH_RESEEDED, BASELINE_REVIEW],
   },
   {
     id: 'audit-trail',

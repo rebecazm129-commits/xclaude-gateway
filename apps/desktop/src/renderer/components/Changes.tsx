@@ -49,11 +49,14 @@ import bar from './ClaudeCode.module.css';
 
 const ROW_HEIGHT = 40;
 
+// CHANGE carries the title and must fit the longest one at 1100px ("Sign-in
+// recorded (reference reset)", "Existing tool definition flagged"); DETAILS
+// is the elastic column and may truncate.
 export const CHANGE_COLUMNS: readonly Column[] = [
   { key: 'time', label: 'Time', width: '130px' },
   { key: 'severity', label: 'Severity', width: '90px' },
-  { key: 'change', label: 'Change', width: '200px' },
-  { key: 'mcp', label: 'MCP', width: '150px' },
+  { key: 'change', label: 'Change', width: '260px' },
+  { key: 'mcp', label: 'MCP', width: '130px' },
   { key: 'details', label: 'Details', width: '1fr' },
 ];
 

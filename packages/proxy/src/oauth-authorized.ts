@@ -269,6 +269,8 @@ export function recordOAuthAuthorized(mcp: string, capture: AuthorizationCapture
     effective_granted_scopes: granted,
     scope_source: capture.grantedScopes === null ? 'assumed_requested' : 'token_response',
     first_login: previous === null,
+    // When the compared login happened: the reference's own write time.
+    previous_login_at: previous === null ? null : previous.updated_at,
     changes,
     findings,
   });

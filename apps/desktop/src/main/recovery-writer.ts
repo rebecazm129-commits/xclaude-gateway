@@ -108,6 +108,42 @@ export function writeReloginNotified(
   }
 }
 
+// Event type recording that a macOS notification for a connector change was
+// decided — shown, or refused by the platform (shown:false). One per change
+// event, keyed by target_event_id: readConnectorChanges folds these back onto
+// the change (view.notified), which is what keeps a notification from firing
+// twice across restarts. Inert for the detection pipeline, like the re-login
+// marker: not proxy.error, not mcp.*, not the recovery type.
+export const CHANGE_NOTIFIED_TYPE = 'app.change_notified';
+
+export interface ChangeNotifiedFields {
+  mcp: string;
+  targetEventId: string;
+  ruleId: string;
+  shown: boolean;
+}
+
+export function writeChangeNotified(fields: ChangeNotifiedFields, dir: string = DEFAULT_WRAPPERS_DIR): void {
+  const envelope = {
+    v: 1,
+    id: randomUUID(),
+    ts: new Date().toISOString(),
+    session: 'desktop',
+    mcp: fields.mcp,
+    type: CHANGE_NOTIFIED_TYPE,
+    target_event_id: fields.targetEventId,
+    rule_id: fields.ruleId,
+    shown: fields.shown,
+  };
+  const filePath = join(dir, APP_EVENTS_FILENAME);
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    appendFileSync(filePath, `${JSON.stringify(envelope)}\n`, { mode: 0o600 });
+  } catch (err) {
+    console.error(`writeChangeNotified: failed to append ${filePath}:`, err);
+  }
+}
+
 // Event type the retention reader (readLastPurgeMarker) consumes to surface the
 // last automatic purge in Settings. Inert for the detection pipeline: it matches
 // none of readAudit's guards (not proxy.error, not mcp.*, not the recovery

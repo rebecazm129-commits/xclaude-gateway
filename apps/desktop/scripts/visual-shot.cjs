@@ -37,13 +37,16 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** `scenario#Button label` captures the state AFTER clicking that button.
  *  Without it the tool can only ever see a view's initial state, which is how
- *  a change to a chip's pressed style came back as "zero pixels differ". */
+ *  a change to a chip's pressed style came back as "zero pixels differ".
+ *  Clicks chain — `scenario#First#Second` clicks both, in order — for a row
+ *  that is only reachable once a default filter is turned off. */
 async function capture(win, spec, width) {
-  const [scenario, clickLabel] = spec.split('#');
+  const [scenario, ...clickLabels] = spec.split('#');
   win.setContentSize(width, HEIGHT);
   await win.loadURL(`${baseUrl}/?scenario=${scenario}`);
   await win.webContents.insertCSS(FREEZE_CSS);
-  if (clickLabel !== undefined && clickLabel !== '') {
+  for (const clickLabel of clickLabels) {
+    if (clickLabel === '') continue;
     await wait(700);
     // Exact <button> label first, then any [role="button"] CONTAINING the
     // label — list rows are divs with that role, and they are what a capture

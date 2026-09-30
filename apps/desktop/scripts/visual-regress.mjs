@@ -84,6 +84,15 @@ const SCENARIOS = (
     // of the delete row (the only Bash row).
     'audit-trail',
     'audit-trail#Bash',
+    // OAuth sign-ins in MCP changes: the list, each kind of row open, and the
+    // Section filter naming the new section. Rows with no finding sit behind
+    // the default "Needs review only" chip, so their captures turn it off first.
+    'authorization#Needs review only',
+    'authorization#Authorization server changed',
+    'authorization#Permissions expanded',
+    'authorization#Needs review only#First sign-in recorded',
+    'authorization#Needs review only#Sign-in recorded (reference reset)',
+    'authorization#Section (2/2) ▾',
     // Claude Code elicitation: the table (medium accepted, HIGH declined),
     // then the panel of the HIGH one.
     'elicitation',

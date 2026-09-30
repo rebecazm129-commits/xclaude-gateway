@@ -69,11 +69,24 @@ export type AttentionView =
   | { level: 'normal' }
   | { level: 'review_recommended'; heuristic_id: string; heuristic_version: number };
 
+/** An authorization row's before → now (main/connector-changes.ts). */
+export interface AuthorizationView {
+  authorization_server: { before: string | null; now: string };
+  authorization_server_source: 'protected_resource_metadata' | 'server_url_fallback';
+  scopes: { before: string[] | null; now: string[]; added: string[]; removed: string[] };
+  requested_scopes: string[];
+  scope_source: 'token_response' | 'assumed_requested';
+  resource: { before: string | null; now: string | null; changed: boolean };
+  first_login: boolean;
+  previous_login_at: string | null;
+  reference_note?: 'initialized' | 'reseeded' | 'kept_newer' | 'write_failed';
+}
+
 export interface ConnectorChangeView {
   event_id: string;
   ts: string;
   mcp: string;
-  section: 'tools' | 'resources' | 'resource_templates' | 'prompts' | 'discovery';
+  section: 'tools' | 'resources' | 'resource_templates' | 'prompts' | 'discovery' | 'authorization';
   snapshot: { before: string | null; after: string } | null;
   changes: ConnectorChangeEntryView[];
   findings: ConnectorFindingView[];
@@ -87,6 +100,9 @@ export interface ConnectorChangeView {
   /** Previous and new text of the descriptions that moved. Native events only:
    *  a historical one has no snapshot to diff against. */
   descriptionDiff?: { target: string; before: string; after: string }[];
+  /** Authorization rows only. */
+  authorization?: AuthorizationView;
+  notified?: boolean;
 }
 
 export interface XcgApi {
