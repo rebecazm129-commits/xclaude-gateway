@@ -23,6 +23,7 @@ import {
 import { CchookUpdateCard } from './components/CchookUpdateCard.js';
 import { ToastStack, droppedToastText, type ToastItem } from './components/Toasts.js';
 import { CchookManagedNotice, managedNoticeToShow } from './components/CchookManagedNotice.js';
+import { CchookProfileNotice } from './components/CchookProfileNotice.js';
 import { CchookVanishedWarning } from './components/CchookVanishedWarning.js';
 import { Tabs, type TabOption } from './components/Tabs.js';
 import { usePolledHealth } from './hooks/usePolledHealth.js';
@@ -178,6 +179,29 @@ export function App(): JSX.Element {
     setActiveTab(tab);
     writeLastTab(tab);
   }, []);
+
+  // Dismiss on a ~/.claude-* profile notice: persisted by path in the main
+  // process; the status re-read drops it.
+  const handleDismissProfile = useCallback(
+    (path: string) => {
+      if (window.xcg.cchookDismissProfile === undefined) return;
+      void window.xcg
+        .cchookDismissProfile(path)
+        .then(() => refreshCchookStatus())
+        .catch((err) => console.error('cchook:dismiss-profile failed:', err));
+    },
+    [refreshCchookStatus],
+  );
+
+  // Opening the Claude Code tab (or landing on it) rescans the ~/.claude-*
+  // profiles instead of waiting for the once-a-minute scan.
+  useEffect(() => {
+    if (activeTab !== 'claude-code' || window.xcg.cchookRescanProfiles === undefined) return;
+    void window.xcg
+      .cchookRescanProfiles()
+      .then(() => refreshCchookStatus())
+      .catch((err) => console.error('cchook:rescan-profiles failed:', err));
+  }, [activeTab, refreshCchookStatus]);
 
   // "Re-add connectors": jump to the Connectors tab (the modal lives inside
   // Setup) and open the Add connector modal. Deliberately does NOT dismiss
@@ -388,6 +412,12 @@ export function App(): JSX.Element {
           onNotNow={handleNotNow}
         />
       ) : null}
+      {/* ~/.claude-* profiles without our hook: informational, Claude Code tab only. */}
+      {activeTab === 'claude-code'
+        ? (cchookStatus?.unauditedProfiles ?? []).map((p) => (
+            <CchookProfileNotice key={p.path} profile={p} onDismiss={handleDismissProfile} />
+          ))
+        : null}
       {activeTab === 'setup' ? (
         <Setup
           status={configStatus}

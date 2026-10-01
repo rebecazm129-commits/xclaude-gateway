@@ -25,6 +25,8 @@ export function buildFakeApi(s: Scenario): XcgApi {
   // "Update hooks" works for real in the harness: the next status is up to
   // date, so the notice can be captured before and after the click.
   let hookCheck: CchookHooksCheck = s.hookCheck ?? { state: 'up_to_date' };
+  // Dismiss on a profile notice works too: the next status leaves it out.
+  let unauditedProfiles = [...(s.unauditedProfiles ?? [])];
   const baselineFor = async (mcp: string): Promise<BaselineHistoryEntry[]> =>
     s.baseline[mcp] ?? [];
 
@@ -202,12 +204,17 @@ export function buildFakeApi(s: Scenario): XcgApi {
       settingsBackupDir: '~/Library/Application Support/xCLAUDE Gateway/backups/claude-settings',
       settingsManaged: s.settingsManaged ?? null,
       spoolDropped: s.spoolDropped ?? null,
+      unauditedProfiles,
       lastCycle: null,
       unreadableTotal: 0,
       lastSessionStartTs: null,
     }),
     cchookInstall: never,
     cchookNotNow: async () => undefined,
+    cchookRescanProfiles: async () => undefined,
+    cchookDismissProfile: async (path: string) => {
+      unauditedProfiles = unauditedProfiles.filter((p) => p.path !== path);
+    },
     cchookDismissDropped: async () => undefined,
     cchookUpdate: async () => {
       hookCheck = { state: 'up_to_date' };

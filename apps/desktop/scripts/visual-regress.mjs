@@ -108,6 +108,9 @@ const SCENARIOS = (
     // Events not recorded at the spool cap: the persistent toast with Dismiss,
     // then the same toast over the update card.
     'spool-dropped',
+    // A ~/.claude-work profile without the hook: the informational notice.
+    'unaudited-profile',
+    'unaudited-profile#Dismiss',
     'hooks-outdated-dropped',
   ].join(',')
 ).split(',');

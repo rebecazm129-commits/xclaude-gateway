@@ -255,6 +255,16 @@ export function hookUpdateDismissed(prefs: HookUpdatePrefs | undefined, key: str
   return key !== '' && prefs?.notNowKey === key;
 }
 
+/** A ~/.claude-* directory whose settings.json has no xCLAUDE hook — maybe
+ *  a CLAUDE_CONFIG_DIR profile xCLAUDE does not audit (claude-profile-scan.ts).
+ *  A suggestion only: nothing is installed there. */
+export interface UnauditedClaudeProfile {
+  /** The directory, home-relative: "~/.claude-work". */
+  path: string;
+  /** The install snippet to paste, same JSON as the managed-settings one. */
+  snippet: string;
+}
+
 // ~/.claude/settings.json not ours to write (a symlink, not a regular file, or
 // owned by another user): what the UI shows instead of writing, and the
 // snippet the user can paste into whatever manages the file.
@@ -304,6 +314,9 @@ export interface CchookStatus extends CchookIngestStatus {
   /** Hook-integrity notice (claude-code/hook-state.json): set while an
    *  out-of-band hook removal is undismissed; null otherwise. */
   pendingNotice: { ts: string } | null;
+  /** ~/.claude-* profiles without our hook (best-effort, informational).
+   *  Optional so snapshots built before it stay valid. */
+  unauditedProfiles?: UnauditedClaudeProfile[];
 }
 
 // A connector whose most recent auth event is a (recent) oauth failure with no

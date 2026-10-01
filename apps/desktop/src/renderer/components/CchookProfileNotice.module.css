@@ -1,0 +1,24 @@
+/* Only what the shared compact card (CchookUpdateCard.module.css) lacks: a
+   discreet "i" mark and a muted scope line. Neutral tokens only — this notice
+   reports a possibility, not lost coverage. */
+
+.icon {
+  flex: none;
+  align-self: flex-start;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  color: var(--kraft-ink-soft);
+  font-family: var(--kraft-font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  margin-top: 1px;
+}
+
+.muted {
+  color: var(--kraft-ink-soft);
+  font-size: 12px;
+}

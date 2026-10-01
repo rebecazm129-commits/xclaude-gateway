@@ -89,6 +89,8 @@ import { readNotified, writeNotified, type NotifiedMap } from './relogin-state.j
 import { isAllowedNavigation } from './navigation-guard.js';
 import { writeChangeNotified, writeRecoveryMarkerAfterConnect, writeReloginNotified } from './recovery-writer.js';
 import { computeChangeNotifications, computeChangesToReview } from './change-notify.js';
+import { createProfileScanCache } from './claude-profile-scan.js';
+import { dismissProfile, isProfilePath, readDismissedProfiles, visibleProfiles } from './profile-notice-prefs.js';
 import { excludeSpoolFromTimeMachine } from './spool-exclusion.js';
 import { readBaselineHistory, type BaselineHistoryEntry } from './baseline-history.js';
 
@@ -163,6 +165,20 @@ function retentionBanner(): RetentionBannerInfo | null {
 // + the ingester's in-process snapshot + the spool backlog. Polled at 2s by
 // the Sources tab, so isHookRegistered stays uncached (freshness beats the
 // negligible read cost) while detectClaudeCode caches per process.
+// ~/.claude-* profile suggestions: scanned at most once a minute, not on every
+// 2s poll; opening the Claude Code tab asks for a fresh scan.
+const profileScan = createProfileScanCache();
+
+ipcMain.handle('cchook:rescan-profiles', (): void => {
+  profileScan.invalidate();
+});
+
+// Dismiss: hides the notice of that one profile folder for good. Only a path
+// the scan could have produced is accepted.
+ipcMain.handle('cchook:dismiss-profile', (_e, path: unknown): void => {
+  if (isProfilePath(path)) dismissProfile(path);
+});
+
 ipcMain.handle('cchook:status', async (): Promise<CchookStatus> => {
   // `claude --version`, cached per binary + mtime (one stat per poll).
   const claudeCodeVersion = await readClaudeCodeVersion();
@@ -186,6 +202,7 @@ ipcMain.handle('cchook:status', async (): Promise<CchookStatus> => {
     spoolDropped: readUnseenDropped(dirname(cchookSpoolDir())),
     pendingSpool,
     pendingNotice: readPendingNotice(),
+    unauditedProfiles: visibleProfiles(profileScan.get(events), readDismissedProfiles()),
     ...getCchookStatus(),
   };
 });

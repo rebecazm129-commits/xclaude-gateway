@@ -10,6 +10,7 @@ import type { Category, Severity } from '@xcg/shared';
 import type { IpcConfigEntry, StatusResult } from '@xcg/shared/config';
 
 import type {
+  UnauditedClaudeProfile,
   CchookHooksCheck,
   CchookManagedSettings,
   ConnectorAuthAlert,
@@ -49,6 +50,8 @@ export interface Scenario {
   settingsManaged?: CchookManagedSettings;
   /** Drives cchookStatus().spoolDropped — events not recorded at the spool cap. */
   spoolDropped?: SpoolDroppedNotice;
+  /** Drives cchookStatus().unauditedProfiles — ~/.claude-* dirs without our hook. */
+  unauditedProfiles?: UnauditedClaudeProfile[];
 }
 
 const CONFIG_PATH = '/fixtures/claude_desktop_config.json';
@@ -1206,6 +1209,30 @@ export const SCENARIOS: readonly Scenario[] = [
     retention: null,
     hookVanishedTs: null,
     spoolDropped: { count: 37, firstTs: '2026-09-28T22:10:00.000Z', lastTs: '2026-09-29T07:45:00.000Z' },
+  },
+  {
+    id: 'unaudited-profile',
+    tab: 'claude-code',
+    label: 'Claude Code · a ~/.claude-work profile without the hook (informational)',
+    note:
+      'Above the Claude Code cards, a NEUTRAL compact card (not orange) with a discreet "i": ' +
+      '"Another Claude Code profile may not be audited", "xCLAUDE found ~/.claude-work/settings.json ' +
+      'without its hook. If you use this profile, add the xCLAUDE hook configuration manually.", the ' +
+      'muted line "xCLAUDE installs hooks automatically only in ~/.claude.", then "Copy hook ' +
+      'configuration" and a quiet "Dismiss" (which hides it). No toast, no count.',
+    entries: TWO_CONNECTORS,
+    events: rowsToEvents(ELICITATION),
+    rows: ELICITATION,
+    authAlerts: [],
+    baseline: BASELINE_BOTH,
+    retention: null,
+    hookVanishedTs: null,
+    unauditedProfiles: [
+      {
+        path: '~/.claude-work',
+        snippet: JSON.stringify({ hooks: { PostToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: 'xcg-cchook' }] }] } }, null, 2),
+      },
+    ],
   },
   {
     id: 'settings-symlink',

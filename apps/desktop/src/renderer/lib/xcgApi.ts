@@ -132,6 +132,10 @@ export interface XcgApi {
   configToolCount(name: string): Promise<ToolCount | null>;
   /** Claude Code auditing status (detect + hook + ingester + spool backlog). */
   cchookStatus(): Promise<CchookStatus>;
+  /** Drop the cached ~/.claude-* profile scan; the next status scans again. */
+  cchookRescanProfiles?(): Promise<void>;
+  /** Hide the notice of one ~/.claude-* profile for good (by its path). */
+  cchookDismissProfile?(path: string): Promise<void>;
   /** Register the capture hook in ~/.claude/settings.json (idempotent). */
   cchookInstall(): Promise<CchookInstallResult>;
   /** Bring an existing hook install up to date (new events, async, --event).
