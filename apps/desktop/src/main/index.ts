@@ -61,6 +61,7 @@ import { writeReviewStatusChanged } from './recovery-writer.js';
 import { CHANGES_EXPORT_SCHEMA_VERSION } from '@xcg/shared';
 import { createAuditStore } from './audit-store.js';
 import {
+  createChangesFileCache,
   readConnectorChanges,
   type ConnectorChangeView,
 } from './connector-changes.js';
@@ -671,6 +672,10 @@ async function runRetentionSweep(): Promise<void> {
 // whenever the app happens to open.
 let notifiedRelogin: NotifiedMap | null = null;
 
+// One per-file cache of the trail's connector changes for every reader below:
+// a pass re-reads only new or changed session files (append-only trail).
+const changesCache = createChangesFileCache();
+
 // The tray's "changes to review" line: undefined until the first change pass
 // has read the trail. Kept here so every refreshTray caller shows the last
 // known value without re-reading the changes on the 2s path.
@@ -749,7 +754,7 @@ function runReloginPass(alerts: readonly { mcp: string; lastFailureTs: string }[
 // notifications, both off the trail's connector changes. Runs with the re-login
 // pass (60s) and after a review mark — never on the renderer's 2s poll.
 async function runChangesPass(): Promise<void> {
-  const views = await readConnectorChanges(WRAPPERS_DIR, { limit: 5000 });
+  const views = await readConnectorChanges(WRAPPERS_DIR, { limit: 5000, cache: changesCache });
   const nowMs = Date.now();
   changesToReview = computeChangesToReview(views, nowMs);
   const supported = Notification.isSupported();
@@ -855,7 +860,7 @@ ipcMain.handle(
   'changes:list',
   async (_event, params?: { mcp?: string }): Promise<ConnectorChangeView[]> => {
     const mcp = typeof params?.mcp === 'string' && params.mcp !== '' ? params.mcp : undefined;
-    return readConnectorChanges(WRAPPERS_DIR, mcp === undefined ? {} : { mcp });
+    return readConnectorChanges(WRAPPERS_DIR, mcp === undefined ? { cache: changesCache } : { mcp, cache: changesCache });
   },
 );
 
@@ -867,15 +872,20 @@ ipcMain.handle(
   async (_event, params: { eventId: string; to: 'reviewed' | 'unreviewed' }): Promise<void> => {
     if (typeof params?.eventId !== 'string' || params.eventId === '') return;
     if (params.to !== 'reviewed' && params.to !== 'unreviewed') return;
-    const current = await readConnectorChanges(WRAPPERS_DIR, { limit: 5000 });
+    const current = await readConnectorChanges(WRAPPERS_DIR, { limit: 5000, cache: changesCache });
     const target = current.find((c) => c.event_id === params.eventId);
     // An unknown id is not written: a marker pointing at nothing would be a
     // row in the trail that can never be explained.
     if (target === undefined) return;
     if (target.review_status === params.to) return;
-    writeReviewStatusChanged(params.eventId, target.review_status, params.to, WRAPPERS_DIR);
-    // The tray's review count moves with the mark, not a minute later.
-    await runChangesPass().catch((err) => console.error('[xcg] connector changes pass failed:', err));
+    const written = writeReviewStatusChanged(params.eventId, target.review_status, params.to, WRAPPERS_DIR);
+    // The tray's review count moves with the mark, not a minute later — and
+    // without reading the trail again: the marker just written goes into the
+    // cached app-events entry, and the list is re-aggregated from the cache.
+    // Same result as a full read (the cache only skips unchanged files).
+    if (written !== null) await changesCache.noteAppended(written.path, written.bytes, written.marker);
+    const after = await readConnectorChanges(WRAPPERS_DIR, { limit: 5000, cache: changesCache });
+    changesToReview = computeChangesToReview(after, Date.now());
     const audit = await auditStore.get();
     refreshTray(computeTrayCounts(audit.events, Date.now()), audit.authAlerts.length);
   },
@@ -896,7 +906,7 @@ ipcMain.handle(
     if (chosen.canceled || chosen.filePath === undefined) return { ok: false, canceled: true };
     try {
       const wanted = new Set(params?.eventIds ?? []);
-      const all = await readConnectorChanges(WRAPPERS_DIR, { limit: 100000 });
+      const all = await readConnectorChanges(WRAPPERS_DIR, { limit: 100000, cache: changesCache });
       const events = all.filter((c) => wanted.has(c.event_id));
       const doc = {
         schema_version: CHANGES_EXPORT_SCHEMA_VERSION,

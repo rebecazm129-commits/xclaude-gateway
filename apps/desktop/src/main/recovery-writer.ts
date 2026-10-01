@@ -272,7 +272,7 @@ export function writeReviewStatusChanged(
   from: 'unreviewed' | 'reviewed',
   to: 'unreviewed' | 'reviewed',
   dir: string = DEFAULT_WRAPPERS_DIR,
-): void {
+): WrittenReviewMarker | null {
   const envelope = {
     v: 1,
     id: randomUUID(),
@@ -284,10 +284,25 @@ export function writeReviewStatusChanged(
     to,
   };
   const filePath = join(dir, APP_EVENTS_FILENAME);
+  const line = `${JSON.stringify(envelope)}\n`;
   try {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    appendFileSync(filePath, `${JSON.stringify(envelope)}\n`, { mode: 0o600 });
+    appendFileSync(filePath, line, { mode: 0o600 });
   } catch (err) {
     console.error(`writeReviewStatusChanged: failed to append ${filePath}:`, err);
+    return null;
   }
+  return {
+    path: filePath,
+    bytes: Buffer.byteLength(line, 'utf8'),
+    marker: { ts: envelope.ts, target_event_id: targetEventId, from, to },
+  };
+}
+
+/** What writeReviewStatusChanged appended, so a reader's cache can take the
+ *  marker in without re-reading the file. null when nothing was written. */
+export interface WrittenReviewMarker {
+  path: string;
+  bytes: number;
+  marker: { ts: string; target_event_id: string; from: 'unreviewed' | 'reviewed'; to: 'unreviewed' | 'reviewed' };
 }

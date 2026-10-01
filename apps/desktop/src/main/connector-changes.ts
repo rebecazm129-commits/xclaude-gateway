@@ -41,7 +41,7 @@
 // EMISSION TIME, which is fixed and, for hidden_characters, recoverable from
 // the line's own class field.
 
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
@@ -480,122 +480,246 @@ export function reviewMarkerOfLine(line: string): {
   };
 }
 
+type ReviewMarker = { ts: string; target_event_id: string; from: ReviewStatus; to: ReviewStatus };
+
+/** What one trail file contributes, before any cross-file step (sort, fold,
+ *  collapse, mcp filter). Views here are FINAL for the file — reference notes
+ *  already attached — and must never be mutated afterwards: the cache shares
+ *  them between passes. */
+export interface ChangesFileParse {
+  views: ConnectorChangeView[];
+  markers: ReviewMarker[];
+  notified: string[];
+}
+
+const EMPTY_PARSE: ChangesFileParse = { views: [], markers: [], notified: [] };
+
+/** One file's content → its views, review markers and notification targets. */
+export function parseChangesFile(content: string): ChangesFileParse {
+  // Cheap pre-filter: most session files carry neither format.
+  if (
+    !content.includes(CONNECTOR_CHANGE_TYPE) &&
+    !content.includes(LEGACY_CATEGORY) &&
+    !content.includes(REVIEW_STATUS_CHANGED_TYPE) &&
+    !content.includes(OAUTH_AUTHORIZED_TYPE) &&
+    !content.includes(CHANGE_NOTIFIED_TYPE)
+  ) {
+    return EMPTY_PARSE;
+  }
+  const views: ConnectorChangeView[] = [];
+  const markers: ReviewMarker[] = [];
+  const notified: string[] = [];
+  // A login process writes its reference note right before its
+  // oauth_authorized line (write_failed right after), all in its own
+  // session. Both pending slots hold ONE entry and are cleared when used or
+  // when a line of another session shows up, so they never grow.
+  let pendingNote: { session: string; note: NonNullable<AuthorizationView['reference_note']> } | null = null;
+  // A login that is not a row by itself, kept in case a write_failed /
+  // kept_newer note right after it makes it one.
+  let pendingLogin: { session: string; parsed: Record<string, unknown> } | null = null;
+  let oauthSession: string | null = null;
+  const oauthRowOfSession = new Map<string, ConnectorChangeView>();
+  for (const line of content.split('\n')) {
+    if (line.length === 0) continue;
+    const marker = reviewMarkerOfLine(line);
+    if (marker !== null) {
+      markers.push(marker);
+      continue;
+    }
+    if (line.includes(OAUTH_AUTHORIZED_TYPE) || line.includes(OAUTH_REFERENCE_TYPE) || line.includes(CHANGE_NOTIFIED_TYPE)) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      const target = notifiedTargetOf(parsed);
+      if (target !== null) {
+        notified.push(target);
+        continue;
+      }
+      const session = isRecord(parsed) && typeof parsed['session'] === 'string' ? parsed['session'] : '';
+      if (session !== oauthSession) {
+        oauthSession = session;
+        pendingNote = null;
+        pendingLogin = null;
+      }
+      const ref = referenceNoteOf(parsed);
+      if (ref !== null) {
+        const row = oauthRowOfSession.get(ref.session);
+        if (row?.authorization !== undefined) {
+          row.authorization.reference_note = ref.note;
+        } else if (pendingLogin !== null && pendingLogin.session === ref.session) {
+          // The note that makes a no-change login worth a row.
+          const late = fromOAuthLine(pendingLogin.parsed, ref.note);
+          pendingLogin = null;
+          if (late !== null) {
+            oauthRowOfSession.set(ref.session, late);
+            views.push(late);
+          }
+        } else {
+          pendingNote = { session: ref.session, note: ref.note };
+        }
+        continue;
+      }
+      if (isRecord(parsed) && parsed['type'] === OAUTH_AUTHORIZED_TYPE) {
+        const note = pendingNote !== null && pendingNote.session === session ? pendingNote.note : undefined;
+        pendingNote = null;
+        const oauthView = fromOAuthLine(parsed, note);
+        if (oauthView === null) {
+          pendingLogin = { session, parsed };
+          continue;
+        }
+        pendingLogin = null;
+        oauthRowOfSession.set(session, oauthView);
+        views.push(oauthView);
+        continue;
+      }
+    }
+    const view = viewOfLine(line);
+    if (view === null) continue;
+    views.push(view);
+  }
+  return { views, markers, notified };
+}
+
+/**
+ * Per-file cache of parseChangesFile, keyed by path and validated by size,
+ * mtime and inode. The trail is append-only and nearly all of it sits in
+ * session files that never change again, so a pass re-reads only what is new
+ * or changed. ANY change re-reads the whole file — growth included: a file's
+ * OAuth reference notes resolve across its lines, so a partial parse could
+ * disagree with a full one. A truncated or replaced file (smaller, or another
+ * inode) is therefore re-read like any other change. A file gone from the
+ * listing (retention) leaves the cache on the next pass.
+ */
+export interface ChangesFileCache {
+  /** Files re-read by the last pass (for tests and measurement). */
+  lastReads(): readonly string[];
+  /** Records a line we appended ourselves to a cached file, so the next pass
+   *  does not re-read it. Applied only when the file grew by exactly those
+   *  bytes since its cached state; otherwise the entry is dropped and the
+   *  next pass re-reads the file. */
+  noteAppended(path: string, appendedBytes: number, marker: ReviewMarker): Promise<void>;
+  /** @internal used by readConnectorChanges. */
+  entries: Map<string, { size: number; mtimeMs: number; ino: number; parse: ChangesFileParse }>;
+  /** @internal */
+  reads: string[];
+}
+
+export function createChangesFileCache(): ChangesFileCache {
+  const cache: ChangesFileCache = {
+    entries: new Map(),
+    reads: [],
+    lastReads: () => cache.reads,
+    async noteAppended(path, appendedBytes, marker) {
+      const entry = cache.entries.get(path);
+      if (entry === undefined) return;
+      try {
+        const st = await stat(path);
+        if (st.ino === entry.ino && st.size === entry.size + appendedBytes) {
+          cache.entries.set(path, {
+            size: st.size,
+            mtimeMs: st.mtimeMs,
+            ino: st.ino,
+            parse: { ...entry.parse, markers: [...entry.parse.markers, marker] },
+          });
+          return;
+        }
+      } catch {
+        // Fall through: drop the entry.
+      }
+      cache.entries.delete(path);
+    },
+  };
+  return cache;
+}
+
 /**
  * Every connector change in the trail, newest first.
  *
  * Read on demand like the baseline history, not folded into the 2s audit poll:
  * these feed a view the user opens, and keeping them off that path is what
- * guarantees they can never reach a counter by accident.
+ * guarantees they can never reach a counter by accident. With a cache, only
+ * new or changed files are read; the result is the same as a full read.
  */
 export async function readConnectorChanges(
   dir: string,
-  opts: { mcp?: string; limit?: number } = {},
+  opts: { mcp?: string; limit?: number; cache?: ChangesFileCache } = {},
 ): Promise<ConnectorChangeView[]> {
   const limit = opts.limit ?? 500;
-  const out: ConnectorChangeView[] = [];
-  const markers: { ts: string; target_event_id: string; from: ReviewStatus; to: ReviewStatus }[] = [];
-  const notified = new Set<string>();
+  const cache = opts.cache;
+  if (cache !== undefined) cache.reads = [];
   let files: string[];
   try {
     files = await listJsonlFiles(dir);
   } catch {
     return [];
   }
+  const parses: ChangesFileParse[] = [];
+  const seen = new Set<string>();
   for (const name of files) {
+    const path = join(dir, name);
+    seen.add(path);
+    if (cache !== undefined) {
+      let st;
+      try {
+        st = await stat(path);
+      } catch {
+        cache.entries.delete(path);
+        continue;
+      }
+      const hit = cache.entries.get(path);
+      if (hit !== undefined && hit.size === st.size && hit.mtimeMs === st.mtimeMs && hit.ino === st.ino) {
+        parses.push(hit.parse);
+        continue;
+      }
+      let content: string;
+      try {
+        content = await readFile(path, 'utf8');
+      } catch {
+        cache.entries.delete(path);
+        continue; // an unreadable session file must not lose the others
+      }
+      cache.reads.push(name);
+      const parse = parseChangesFile(content);
+      // The stat taken BEFORE the read keys the entry: a write landing during
+      // the read leaves the key stale, so the next pass re-reads — never the
+      // reverse (a fresh key over content that missed the write).
+      cache.entries.set(path, { size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, parse });
+      parses.push(parse);
+      continue;
+    }
     let content: string;
     try {
-      content = await readFile(join(dir, name), 'utf8');
+      content = await readFile(path, 'utf8');
     } catch {
       continue; // an unreadable session file must not lose the others
     }
-    // Cheap pre-filter: most session files carry neither format.
-    if (
-      !content.includes(CONNECTOR_CHANGE_TYPE) &&
-      !content.includes(LEGACY_CATEGORY) &&
-      !content.includes(REVIEW_STATUS_CHANGED_TYPE) &&
-      !content.includes(OAUTH_AUTHORIZED_TYPE) &&
-      !content.includes(CHANGE_NOTIFIED_TYPE)
-    ) {
-      continue;
-    }
-    // A login process writes its reference note right before its
-    // oauth_authorized line (write_failed right after), all in its own
-    // session. Both pending slots hold ONE entry and are cleared when used or
-    // when a line of another session shows up, so they never grow.
-    let pendingNote: { session: string; note: NonNullable<AuthorizationView['reference_note']> } | null = null;
-    // A login that is not a row by itself, kept in case a write_failed /
-    // kept_newer note right after it makes it one.
-    let pendingLogin: { session: string; parsed: Record<string, unknown> } | null = null;
-    let oauthSession: string | null = null;
-    const oauthRowOfSession = new Map<string, ConnectorChangeView>();
-    for (const line of content.split('\n')) {
-      if (line.length === 0) continue;
-      const marker = reviewMarkerOfLine(line);
-      if (marker !== null) {
-        markers.push(marker);
-        continue;
-      }
-      if (line.includes(OAUTH_AUTHORIZED_TYPE) || line.includes(OAUTH_REFERENCE_TYPE) || line.includes(CHANGE_NOTIFIED_TYPE)) {
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(line);
-        } catch {
-          continue;
-        }
-        const target = notifiedTargetOf(parsed);
-        if (target !== null) {
-          notified.add(target);
-          continue;
-        }
-        const session = isRecord(parsed) && typeof parsed['session'] === 'string' ? parsed['session'] : '';
-        if (session !== oauthSession) {
-          oauthSession = session;
-          pendingNote = null;
-          pendingLogin = null;
-        }
-        const ref = referenceNoteOf(parsed);
-        if (ref !== null) {
-          const row = oauthRowOfSession.get(ref.session);
-          if (row?.authorization !== undefined) {
-            row.authorization.reference_note = ref.note;
-          } else if (pendingLogin !== null && pendingLogin.session === ref.session) {
-            // The note that makes a no-change login worth a row.
-            const late = fromOAuthLine(pendingLogin.parsed, ref.note);
-            pendingLogin = null;
-            if (late !== null && (opts.mcp === undefined || late.mcp === opts.mcp)) {
-              oauthRowOfSession.set(ref.session, late);
-              out.push(late);
-            }
-          } else {
-            pendingNote = { session: ref.session, note: ref.note };
-          }
-          continue;
-        }
-        if (isRecord(parsed) && parsed['type'] === OAUTH_AUTHORIZED_TYPE) {
-          const note = pendingNote !== null && pendingNote.session === session ? pendingNote.note : undefined;
-          pendingNote = null;
-          const oauthView = fromOAuthLine(parsed, note);
-          if (oauthView === null) {
-            pendingLogin = { session, parsed };
-            continue;
-          }
-          pendingLogin = null;
-          if (opts.mcp !== undefined && oauthView.mcp !== opts.mcp) continue;
-          oauthRowOfSession.set(session, oauthView);
-          out.push(oauthView);
-          continue;
-        }
-      }
-      const view = viewOfLine(line);
-      if (view === null) continue;
-      if (opts.mcp !== undefined && view.mcp !== opts.mcp) continue;
-      out.push(view);
-    }
+    parses.push(parseChangesFile(content));
+  }
+  if (cache !== undefined) {
+    for (const key of [...cache.entries.keys()]) if (!seen.has(key)) cache.entries.delete(key);
+  }
+  return aggregateChanges(parses, opts.mcp, limit);
+}
+
+/** The cross-file steps, on parses that are never mutated: mcp filter, sort,
+ *  notified marks (copies), fold of the review markers (copies), collapse,
+ *  cap. */
+function aggregateChanges(parses: readonly ChangesFileParse[], mcp: string | undefined, limit: number): ConnectorChangeView[] {
+  const out: ConnectorChangeView[] = [];
+  const markers: ReviewMarker[] = [];
+  const notified = new Set<string>();
+  for (const p of parses) {
+    for (const v of p.views) if (mcp === undefined || v.mcp === mcp) out.push(v);
+    markers.push(...p.markers);
+    for (const id of p.notified) notified.add(id);
   }
   out.sort((a, b) => b.ts.localeCompare(a.ts));
+  const marked = out.map((v) => (notified.has(v.event_id) ? { ...v, notified: true } : v));
   // Fold BEFORE the cap: a marker written today may point at a change far down
   // the list, and slicing first would silently lose it. Collapse after the
   // fold, so a reviewed duplicate can win.
-  for (const v of out) if (notified.has(v.event_id)) v.notified = true;
-  return collapseDuplicates(foldReviewStatus(out, markers)).slice(0, limit);
+  return collapseDuplicates(foldReviewStatus(marked, markers)).slice(0, limit);
 }
