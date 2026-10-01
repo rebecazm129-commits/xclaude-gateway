@@ -28,6 +28,7 @@ import { Tabs, type TabOption } from './components/Tabs.js';
 import { usePolledHealth } from './hooks/usePolledHealth.js';
 import { usePolledConfigStatus } from './hooks/usePolledConfigStatus.js';
 import { usePolledCchookStatus } from './hooks/usePolledCchookStatus.js';
+import { reconnectConnector } from './lib/reconnect.js';
 
 import styles from './App.module.css';
 
@@ -278,7 +279,8 @@ export function App(): JSX.Element {
 
   const handleReconnect = useCallback(
     (name: string, url: string): Promise<ConnectResult> =>
-      window.xcg.configConnect(name, url).then((result) => {
+      // Same scope as the first connect (catalog, matched by URL): see lib/reconnect.ts.
+      reconnectConnector(window.xcg, name, url).then((result) => {
         // A successful reconnect rewrote the config entry; re-read so the
         // inspector/list reflect it. The result is returned so the caller
         // (ConnectorInspector) can render the success/error banner.
