@@ -7,10 +7,9 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir, readFile, stat, unlink } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-import { writeAtomic, type WriteAtomicResult } from '@xcg/shared/config';
+import { writeAtomic, xcgDataDir, type WriteAtomicResult } from '@xcg/shared/config';
 
 import type {
   PurgeMode,
@@ -27,12 +26,7 @@ import {
 
 // Base app dir (sibling of wrappers/); settings.json lives here, NOT inside
 // wrappers/, so readAudit's *.jsonl scan never sees it.
-export const BASE_DIR = join(
-  homedir(),
-  'Library',
-  'Application Support',
-  'xCLAUDE Gateway',
-);
+export const BASE_DIR = xcgDataDir();
 export const WRAPPERS_DIR = join(BASE_DIR, 'wrappers');
 export const SETTINGS_FILENAME = 'settings.json';
 

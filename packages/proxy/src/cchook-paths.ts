@@ -4,16 +4,12 @@
 // wrappers/ on purpose — the AuditStore/retention readdir scan of wrappers/ is
 // flat and must never see these files (F1.0-P3).
 
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+// The LIGHT module, not '@xcg/shared/config': this runs inside the hook, which
+// must stay small and start fast.
+import { xcgDataDir } from '@xcg/shared/config/data-dir';
+
 export function cchookSpoolDir(): string {
-  return join(
-    homedir(),
-    'Library',
-    'Application Support',
-    'xCLAUDE Gateway',
-    'claude-code',
-    'spool',
-  );
+  return join(xcgDataDir(), 'claude-code', 'spool');
 }

@@ -12,6 +12,11 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+import { xcgDataDir } from './data-dir.js';
+
+// Defined in its own minimal module (the hook imports it from there).
+export { xcgDataDir };
+
 // Canonical location of Claude Desktop's MCP config on macOS.
 export const CLAUDE_DESKTOP_CONFIG_PATH = join(
   homedir(),
@@ -20,17 +25,6 @@ export const CLAUDE_DESKTOP_CONFIG_PATH = join(
   'Claude',
   'claude_desktop_config.json',
 );
-
-/**
- * xCLAUDE Gateway's data folder: the audit trail (wrappers/), the connector
- * baselines (manifests/), the masking salt, the Claude Code spool, locks and
- * the stable bin/ symlinks. One function so nothing re-joins it by hand; the
- * home directory is a parameter so a detector can be tested against a fixed
- * one.
- */
-export function xcgDataDir(home: string = homedir()): string {
-  return join(home, 'Library', 'Application Support', 'xCLAUDE Gateway');
-}
 
 // Stable symlink that the .app bootstraps on first launch (F3b) and that
 // the wrap plan references in claude_desktop_config.json. Survives moving

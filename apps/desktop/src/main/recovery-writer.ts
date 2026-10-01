@@ -9,16 +9,11 @@
 
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-const DEFAULT_WRAPPERS_DIR = join(
-  homedir(),
-  'Library',
-  'Application Support',
-  'xCLAUDE Gateway',
-  'wrappers',
-);
+import { xcgDataDir } from '@xcg/shared/config';
+
+const DEFAULT_WRAPPERS_DIR = join(xcgDataDir(), 'wrappers');
 
 // Stable, desktop-owned file. Distinct from the proxy's ${session}.jsonl so the
 // two never contend on one fd. readAudit scans every *.jsonl in the dir.

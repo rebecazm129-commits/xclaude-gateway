@@ -38,9 +38,9 @@ type TabId = 'setup' | 'detections' | 'changes' | 'claude-code';
 const TAB_OPTIONS: readonly TabOption<TabId>[] = [
   { id: 'setup', label: 'Sources' },
   { id: 'detections', label: 'Detections' },
-  // "MCP changes", not "Changes": xCLAUDE audits Claude Code too, so the bare
-  // noun would not say whose surface moved.
-  { id: 'changes', label: 'MCP changes' },
+  // "MCP Changes", not "Changes": xCLAUDE audits Claude Code too, so the bare
+  // noun would not say whose surface moved. The id stays 'changes'.
+  { id: 'changes', label: 'MCP Changes' },
   { id: 'claude-code', label: 'Claude Code' },
 ];
 

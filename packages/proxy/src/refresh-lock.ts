@@ -12,8 +12,9 @@
 
 import { mkdirSync } from 'node:fs';
 import { open, readFile, rename, stat, unlink } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+
+import { xcgDataDir } from '@xcg/shared/config';
 
 /** Poll cadence while another process holds the lock. */
 export const LOCK_POLL_MS = 150;
@@ -47,10 +48,7 @@ export type RefreshLockResult =
  *  process of the same connector (wrappers of any generation + the login flow). */
 export function refreshLockPath(mcp: string): string {
   return join(
-    homedir(),
-    'Library',
-    'Application Support',
-    'xCLAUDE Gateway',
+    xcgDataDir(),
     'locks',
     `${mcp}.refresh.lock`,
   );

@@ -149,7 +149,7 @@ describe('Claude Code tab (F2.4)', () => {
     expect(tabs.map((t) => t.textContent)).toEqual([
       'Sources',
       'Detections',
-      'MCP changes',
+      'MCP Changes',
       'Claude Code',
     ]);
     fireEvent.click(screen.getByRole('tab', { name: 'Claude Code' }));

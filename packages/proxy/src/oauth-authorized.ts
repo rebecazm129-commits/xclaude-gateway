@@ -36,10 +36,11 @@ import {
   rmSync,
   writeSync,
 } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import { ulid } from 'ulid';
+
+import { xcgDataDir } from '@xcg/shared/config';
 
 import { JsonlWriter } from './audit.js';
 import { canonicalizeUrl } from './detection/launch-redaction.js';
@@ -297,7 +298,7 @@ export function recordOAuthAuthorized(mcp: string, capture: AuthorizationCapture
 }
 
 export function defaultDataDir(): string {
-  return join(homedir(), 'Library', 'Application Support', 'xCLAUDE Gateway');
+  return xcgDataDir();
 }
 
 /** The login process's own trail file: wrappers/<ulid>.jsonl, like a wrapper

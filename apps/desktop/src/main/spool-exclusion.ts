@@ -12,7 +12,7 @@
 // so. A failure is logged and changes nothing else.
 
 import { execFile } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, statSync } from 'node:fs';
 
 import { cchookSpoolDir } from '@xcg/proxy/cchook-ingest';
 
@@ -60,4 +60,65 @@ export async function excludeSpoolFromTimeMachine(deps: ExclusionDeps = {}): Pro
     log(`spool-exclusion: could not exclude ${dir} from Time Machine: ${err instanceof Error ? err.message : String(err)}`);
     return 'failed';
   }
+}
+
+/**
+ * Keeps the exclusion when the spool folder is recreated. The exclusion is an
+ * attribute of the folder itself, so a spool deleted while the app runs (by
+ * hand, a cleaner, a wiped data folder) comes back from the hook WITHOUT it —
+ * and the hook must not fix that (it stays a minimal, silent capturer). The
+ * app remembers the inode of the folder it excluded; on each ingest cycle a
+ * different inode means a different folder, which is excluded again. One
+ * stat per cycle; tmutil runs only on a change. A failure is logged by
+ * excludeSpoolFromTimeMachine and changes nothing else — the new inode is
+ * remembered either way, so a failing tmutil is not retried every 15 s.
+ */
+export interface SpoolExclusionGuard {
+  /** At app start: exclude, then remember the folder's inode. */
+  start(): Promise<ExclusionOutcome>;
+  /** On each ingest cycle: exclude again only if the folder changed. */
+  check(): Promise<void>;
+}
+
+export function createSpoolExclusionGuard(
+  deps: {
+    spoolDir?: string;
+    exclude?: () => Promise<ExclusionOutcome>;
+    inodeOf?: (dir: string) => number | null;
+  } = {},
+): SpoolExclusionGuard {
+  const dir = deps.spoolDir ?? cchookSpoolDir();
+  const exclude = deps.exclude ?? (() => excludeSpoolFromTimeMachine({ spoolDir: dir }));
+  const inodeOf =
+    deps.inodeOf ??
+    ((d: string): number | null => {
+      try {
+        return statSync(d).ino;
+      } catch {
+        return null;
+      }
+    });
+  let excludedIno: number | null = null;
+  let running = false;
+  return {
+    async start() {
+      const outcome = await exclude();
+      excludedIno = inodeOf(dir);
+      return outcome;
+    },
+    async check() {
+      if (running) return;
+      const ino = inodeOf(dir);
+      // Gone: nothing to exclude yet; the hook will recreate it and the next
+      // cycle sees a new inode.
+      if (ino === null || ino === excludedIno) return;
+      running = true;
+      try {
+        await exclude();
+        excludedIno = inodeOf(dir);
+      } finally {
+        running = false;
+      }
+    },
+  };
 }

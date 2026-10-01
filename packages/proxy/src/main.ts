@@ -3,9 +3,10 @@
 // Los eventos canónicos del wrapper van al JSONL per-sesión vía EventSink.
 
 import { spawn } from 'node:child_process';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
+
+import { xcgDataDir } from '@xcg/shared/config';
 
 import {
   StreamableHTTPClientTransport,
@@ -115,7 +116,7 @@ export function runStdio(opts: ParsedArgs): void {
   const { wrap, name, childArgs } = opts;
 
   const session = ulid();
-  const baseDir = join(homedir(), 'Library', 'Application Support', 'xCLAUDE Gateway');
+  const baseDir = xcgDataDir();
   const auditFile = join(baseDir, 'wrappers', `${session}.jsonl`);
 
   let writer: JsonlWriter;
@@ -357,7 +358,7 @@ async function runHttp(opts: HttpArgs): Promise<void> {
   const { url, name } = opts;
 
   const session = ulid();
-  const baseDir = join(homedir(), 'Library', 'Application Support', 'xCLAUDE Gateway');
+  const baseDir = xcgDataDir();
   const auditFile = join(baseDir, 'wrappers', `${session}.jsonl`);
 
   let writer: JsonlWriter;

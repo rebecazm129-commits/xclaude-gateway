@@ -971,7 +971,7 @@ export const SCENARIOS: readonly Scenario[] = [
   {
     id: 'long-diff',
     tab: 'changes',
-    label: 'MCP changes · long diff',
+    label: 'MCP Changes · long diff',
     note:
       'One change: ~2000 characters of vendor prose with a ~200-character instruction dropped into ' +
       'the MIDDLE. Open it. "What changed" must show the count and ONLY the inserted text, clamped ' +
@@ -1065,7 +1065,7 @@ export const SCENARIOS: readonly Scenario[] = [
   {
     id: 'baseline-review',
     tab: 'changes',
-    label: 'MCP changes · catalog review (baseline)',
+    label: 'MCP Changes · catalog review (baseline)',
     note:
       'Two rows. acme-docs is a catalog review: CHANGE reads "Existing tool definition flagged" — ' +
       'never "changed" — HIGH, DETAILS "instruction-like text in search_docs". Open it: Summary ' +
@@ -1085,7 +1085,7 @@ export const SCENARIOS: readonly Scenario[] = [
   {
     id: 'authorization',
     tab: 'changes',
-    label: 'MCP changes · authorization (OAuth sign-ins)',
+    label: 'MCP Changes · authorization (OAuth sign-ins)',
     note:
       'Five authorization rows among a tools one (turn off "Needs review only" to see them all). ' +
       'linear: HIGH "Authorization server changed", DETAILS ' +

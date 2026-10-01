@@ -1,5 +1,4 @@
 import { app, BrowserWindow, Notification, dialog, ipcMain, shell } from 'electron';
-import { homedir } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -92,7 +91,7 @@ import { writeChangeNotified, writeRecoveryMarkerAfterConnect, writeReloginNotif
 import { computeChangeNotifications, computeChangesToReview } from './change-notify.js';
 import { createProfileScanCache } from './claude-profile-scan.js';
 import { dismissProfile, isProfilePath, readDismissedProfiles, visibleProfiles } from './profile-notice-prefs.js';
-import { excludeSpoolFromTimeMachine } from './spool-exclusion.js';
+import { createSpoolExclusionGuard } from './spool-exclusion.js';
 import { readBaselineHistory, type BaselineHistoryEntry } from './baseline-history.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -617,8 +616,10 @@ const auditStore = createAuditStore(WRAPPERS_DIR);
 // AFTER each ingest cycle and with its own catch — an ingest failure never
 // hides an integrity check, and vice versa.
 // The spool is created here too (not only by the hook) and excluded from Time
-// Machine; a failure is logged inside and never blocks the ingest.
-void excludeSpoolFromTimeMachine();
+// Machine; a failure is logged inside and never blocks the ingest. If the
+// folder is recreated later (new inode), the 15s tick excludes it again.
+const spoolExclusion = createSpoolExclusionGuard();
+void spoolExclusion.start();
 void runCchookIngestCycle()
   .catch((err) => {
     console.error('cchook-ingester: startup cycle failed:', err);
@@ -641,6 +642,10 @@ setInterval(() => {
       } catch (err) {
         console.error('cchook-integrity: check failed:', err);
       }
+    })
+    .then(() => spoolExclusion.check())
+    .catch((err) => {
+      console.error('spool-exclusion: check failed:', err);
     });
 }, 15_000);
 
@@ -824,7 +829,7 @@ app.on('window-all-closed', () => {
 });
 
 ipcMain.handle('system:open-audit-folder', async (): Promise<void> => {
-  const dir = join(homedir(), 'Library', 'Application Support', 'xCLAUDE Gateway', 'wrappers');
+  const dir = WRAPPERS_DIR;
   try {
     mkdirSync(dir, { recursive: true });
   } catch {

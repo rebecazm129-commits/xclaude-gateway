@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
+
+import { xcgDataDir } from '@xcg/shared/config';
 
 import type {
   DetectionEvent,
@@ -18,13 +19,7 @@ import { DAY_MS, ELICITATION_METHOD } from '../shared/types.js';
 import { SELFTEST_WRAPPER_NAME } from './selftest-runner.js';
 import { CONNECTOR_RECOVERED_TYPE } from './recovery-writer.js';
 
-const DEFAULT_WRAPPERS_DIR = join(
-  homedir(),
-  'Library',
-  'Application Support',
-  'xCLAUDE Gateway',
-  'wrappers',
-);
+const DEFAULT_WRAPPERS_DIR = join(xcgDataDir(), 'wrappers');
 
 function isDetectionEvent(value: unknown): value is DetectionEvent {
   if (typeof value !== 'object' || value === null) return false;
