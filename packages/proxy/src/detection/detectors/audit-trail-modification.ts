@@ -4,10 +4,11 @@
 // removes the record of what it did is the one thing an audit layer must not
 // let pass unremarked.
 //
-// SCOPE (V1). Claude Code's native tools only — Write, Edit, MultiEdit and
-// Bash — as seen by the PostToolUse hook. Only operations that MODIFY or
-// DELETE; reading the folder is ordinary (developers read their own trail all
-// the time: 214 reads in the real trail, every one from a development session).
+// SCOPE (V1). Claude Code's native tools only — Write, Edit, MultiEdit,
+// NotebookEdit and Bash — as seen by the PostToolUse hook. Only operations
+// that MODIFY or DELETE; reading the folder is ordinary (developers read their
+// own trail all the time: 214 reads in the real trail, every one from a
+// development session).
 // MCP servers are out of scope: their "paths" may live on another machine,
 // and a tool's text mentioning the folder is not a file operation (the only 5
 // MCP calls in the real trail that name it are Notion pages).
@@ -45,7 +46,6 @@
 //   - pushd, subshell bodies in $(…) and backticks, eval;
 //   - commands run by find … -exec (-exec rm {}, -exec cp {} …): only
 //     find … -delete is read;
-//   - NotebookEdit (notebook_path), not in V1's tool list;
 //   - MCP tool calls, and every read.
 // The folder is compared case-insensitively: macOS volumes are case-insensitive
 // by default, so ~/library/application support/xclaude gateway is the same
@@ -530,7 +530,14 @@ export function bashOps(
 
 // ---- detector ----------------------------------------------------------------
 
-const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit']);
+// The argument that names the file each writing tool acts on. NotebookEdit
+// counts in every edit_mode: deleting a cell rewrites the notebook too.
+const WRITE_TOOL_PATH_ARG: ReadonlyMap<string, string> = new Map([
+  ['Write', 'file_path'],
+  ['Edit', 'file_path'],
+  ['MultiEdit', 'file_path'],
+  ['NotebookEdit', 'notebook_path'],
+]);
 
 export interface AuditTrailOptions {
   home?: string;
@@ -558,8 +565,9 @@ export function createAuditTrailModification(opts: AuditTrailOptions = {}): Dete
     const ctx: PathContext = { home, dataDir, cwd: input.cwd ?? null };
 
     const findings: DetectionFinding[] = [];
-    if (WRITE_TOOLS.has(tool)) {
-      const file = args['file_path'];
+    const pathArg = WRITE_TOOL_PATH_ARG.get(tool);
+    if (pathArg !== undefined) {
+      const file = args[pathArg];
       if (typeof file === 'string') {
         const p = resolvePath(file, ctx);
         if (p !== null && insideDataDir(p, dataDir)) findings.push({ type: 'write', location: tool });

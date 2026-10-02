@@ -549,10 +549,10 @@ export function synthesize(parsed: ParsedHook, ctx: SynthesizeContext): Envelope
 /**
  * The detection an Elicitation carries: protocol_tripwire / server_request —
  * a server asked the user for input mid-task — at medium, or HIGH when it is
- * a form and one of its fields (by name, title or description, read in memory
- * and dropped) looks like it asks for a secret. Computed here rather than by
- * the tool chain: none of the tool detectors applies to a server's request,
- * and this one must not depend on the tripwire's per-process dedup.
+ * a form and one of its fields (by name or title — never by description) looks
+ * like it asks for a secret. Computed here rather than by the tool chain: none
+ * of the tool detectors applies to a server's request, and this one must not
+ * depend on the tripwire's per-process dedup.
  */
 export function elicitationDetection(raw: unknown): DetectorOutput {
   const { asksForSecret } = readElicitation(raw);

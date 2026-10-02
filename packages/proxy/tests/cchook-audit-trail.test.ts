@@ -64,6 +64,45 @@ describe('audit_trail_modification through cchook-ingest', () => {
     expect(categories(events)).toEqual(['tool_call_allowed']);
   });
 
+  it('a NotebookEdit of a notebook in the data folder is a write (delete mode included)', () => {
+    const events = run({
+      hook_event_name: 'PostToolUse',
+      tool_name: 'NotebookEdit',
+      tool_input: { notebook_path: `${xcgDataDir(homedir())}/wrappers/notes.ipynb`, edit_mode: 'delete', cell_id: 'c1' },
+      tool_response: {},
+      tool_use_id: 'toolu_nb',
+    });
+    const req = events.find((e) => e['type'] === 'mcp.request')!;
+    expect(req['detection']).toEqual({
+      category: 'audit_trail_modification',
+      severity: 'high',
+      findings: [{ type: 'write', location: 'NotebookEdit' }],
+    });
+  });
+
+  it('a NotebookEdit outside the data folder is a plain tool call', () => {
+    const events = run({
+      hook_event_name: 'PostToolUse',
+      tool_name: 'NotebookEdit',
+      tool_input: { notebook_path: '/Users/user/code/app/analysis.ipynb', new_source: 'x' },
+      tool_response: {},
+      tool_use_id: 'toolu_nb2',
+    });
+    expect(categories(events)).toEqual(['tool_call_allowed']);
+  });
+
+  it('a relative notebook_path resolves against the hook cwd', () => {
+    const events = run({
+      hook_event_name: 'PostToolUse',
+      tool_name: 'NotebookEdit',
+      tool_input: { notebook_path: 'wrappers/notes.ipynb', new_source: 'x' },
+      tool_response: {},
+      tool_use_id: 'toolu_nb3',
+      cwd: xcgDataDir(homedir()),
+    });
+    expect(categories(events)).toEqual(['audit_trail_modification']);
+  });
+
   it('only the Claude Code chain carries the detector', () => {
     expect(CLAUDE_CODE_DETECTORS).toContain(auditTrailModification);
     expect(ACTIVE_DETECTORS).not.toContain(auditTrailModification);

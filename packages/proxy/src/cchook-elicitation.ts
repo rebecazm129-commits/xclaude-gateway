@@ -15,9 +15,11 @@
 // query with credential-named values replaced, plus flags — the userinfo and the
 // fragment are never kept, only whether they were there.
 //
-// Field names, titles and descriptions ARE read in memory, once, to decide
-// whether the form asks for a secret (password, token, API key…) — that raises
-// the severity — and are then dropped, except name and title as above.
+// Field names and titles ARE read in memory, once, to decide whether the form
+// asks for a secret (password, token, API key…) — that raises the severity.
+// The description is never read for it: it is the server's prose, and prose
+// that warns ("do not give us your pin") reads like prose that asks. A secret
+// named only there stays at the request's own severity.
 
 import type { CredentialMatch } from './detection/detectors/credential.js';
 import { credentialMatches } from './detection/detectors/credential.js';
@@ -76,8 +78,8 @@ export const QUERY_MASK = '[masked]';
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 const clip = (s: string, max: number): string => (s.length > max ? s.slice(0, max) : s);
 
-// Words that name a secret, matched as whole tokens of a field's name, title
-// or description (camelCase, snake_case and spaces all split).
+// Words that name a secret, matched as whole tokens of a field's name or
+// title (camelCase, snake_case and spaces all split).
 const SECRET_TOKENS: ReadonlySet<string> = new Set([
   'password', 'passwd', 'passphrase', 'passcode', 'secret', 'token', 'apikey',
   'credential', 'credentials', 'pin', 'otp', 'totp', 'mfa',
@@ -130,9 +132,7 @@ function readFields(schema: unknown): { fields: ElicitationField[]; truncated: b
   for (const [name, def] of entries) {
     const d = def !== null && typeof def === 'object' ? (def as Record<string, unknown>) : {};
     const title = str(d['title']);
-    const description = str(d['description']);
-    // In memory only: the description is read here and never stored.
-    if (namesASecret(name) || (title !== undefined && namesASecret(title)) || (description !== undefined && namesASecret(description))) {
+    if (namesASecret(name) || (title !== undefined && namesASecret(title))) {
       asksForSecret = true;
     }
     if (out.length >= ELICITATION_MAX_FIELDS) continue;

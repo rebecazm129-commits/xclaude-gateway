@@ -3,8 +3,8 @@
 // What the user typed (ElicitationResult.content) never reaches the spool nor
 // the trail; of an Elicitation the trail keeps a strict whitelist — never a
 // default, an enum, a description; the detection is protocol_tripwire /
-// server_request, HIGH when the form asks for a secret; and the hook stays a
-// silent exit 0 whatever it receives.
+// server_request, HIGH when a field's name or title asks for a secret; and
+// the hook stays a silent exit 0 whatever it receives.
 
 import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -298,13 +298,49 @@ describe('detection', () => {
     expect(det.findings).toEqual([{ type: 'server_request', location: 'elicitation', rule: 'secret_field' }]);
   });
 
-  it('a secret asked only through the description is HIGH too, and the description is not stored', () => {
+  // Only the field's name or title raise it: the description is the server's
+  // prose, and a warning ("do not give us your pin") reads like a request.
+  it('a secret named only in the description stays MEDIUM, and the description is not stored', () => {
     const payload = elicitation({
       requested_schema: { type: 'object', properties: { value: { type: 'string', description: DESCRIPTION } } },
     });
     const events = ingest(redactForSpool(JSON.stringify(payload), KEY));
-    expect(detectionOf(events).severity).toBe('high');
+    expect(detectionOf(events)).toEqual({
+      category: 'protocol_tripwire',
+      severity: 'medium',
+      findings: [{ type: 'server_request', location: 'elicitation' }],
+    });
     expect(JSON.stringify(events)).not.toContain(DESCRIPTION);
+  });
+
+  it('a description that warns against giving a pin → MEDIUM', () => {
+    const payload = elicitation({
+      requested_schema: {
+        type: 'object',
+        properties: { phone: { type: 'string', title: 'Phone', description: 'do not give us your pin' } },
+      },
+    });
+    const det = detectionOf(ingest(redactForSpool(JSON.stringify(payload), KEY)));
+    expect(det.severity).toBe('medium');
+    expect(det.findings).toEqual([{ type: 'server_request', location: 'elicitation' }]);
+  });
+
+  it('a field named "pin" → HIGH', () => {
+    const payload = elicitation({
+      requested_schema: { type: 'object', properties: { pin: { type: 'string' } } },
+    });
+    const det = detectionOf(ingest(redactForSpool(JSON.stringify(payload), KEY)));
+    expect(det.severity).toBe('high');
+    expect(det.findings).toEqual([{ type: 'server_request', location: 'elicitation', rule: 'secret_field' }]);
+  });
+
+  it('a field titled "API token" → HIGH', () => {
+    const payload = elicitation({
+      requested_schema: { type: 'object', properties: { value: { type: 'string', title: 'API token' } } },
+    });
+    const det = detectionOf(ingest(redactForSpool(JSON.stringify(payload), KEY)));
+    expect(det.severity).toBe('high');
+    expect(det.findings).toEqual([{ type: 'server_request', location: 'elicitation', rule: 'secret_field' }]);
   });
 
   it('a form without a secret field → medium', () => {
