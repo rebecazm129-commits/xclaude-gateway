@@ -61,6 +61,9 @@
   cursor: not-allowed;
 }
 
+/* State, not severity: a passing run is the neutral card of CchookUpdateCard
+   with the green ✓ of the "audited" dot; a failing one is the orange of lost
+   coverage (detection may not be working). */
 .banner_success,
 .banner_error {
   font-size: 13px;
@@ -71,15 +74,15 @@
 }
 
 .banner_success {
-  background: var(--kraft-low-bg);
-  border: var(--kraft-hairline) solid var(--kraft-low-border);
-  color: var(--kraft-low-text);
+  background: var(--kraft-bg);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  color: var(--kraft-ink);
 }
 
 .banner_error {
-  background: var(--kraft-critical-bg);
-  border: var(--kraft-hairline) solid var(--kraft-critical-border);
-  color: var(--kraft-critical-text);
+  background: var(--kraft-warning-bg);
+  border: var(--kraft-hairline) solid var(--kraft-warning-border);
+  color: var(--kraft-warning-text);
 }
 
 .entries {
@@ -101,13 +104,13 @@
 
 .statusPass {
   flex-shrink: 0;
-  color: var(--kraft-low-text);
+  color: var(--kraft-status);
   font-weight: 700;
 }
 
 .statusFail {
   flex-shrink: 0;
-  color: var(--kraft-critical-text);
+  color: var(--kraft-warning-text);
   font-weight: 700;
 }
 

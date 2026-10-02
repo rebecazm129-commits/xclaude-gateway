@@ -74,13 +74,16 @@
   color: var(--kraft-ink-soft);
 }
 
+/* Heads-up notes (custom-domain email, admin approval, the unverified-app
+ * screen): possibilities, not lost coverage — the neutral card tokens of
+ * CchookUpdateCard, not the orange palette. */
 .warn {
   margin: 0;
   padding: 10px 12px;
   border-radius: var(--kraft-radius-sm);
-  background: var(--kraft-warning-bg);
-  border: 1px solid var(--kraft-warning-border);
-  color: var(--kraft-warning-text);
+  background: var(--kraft-bg);
+  border: var(--kraft-hairline) solid var(--kraft-border-strong);
+  color: var(--kraft-ink);
   font-size: 12.5px;
   line-height: 1.5;
 }

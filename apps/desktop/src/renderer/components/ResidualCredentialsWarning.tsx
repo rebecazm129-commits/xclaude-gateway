@@ -2,6 +2,12 @@ import type { ReactElement } from 'react';
 
 import type { RemoveRemoteResult } from '@xcg/shared/config';
 
+// The neutral compact card of the profile notice (same band, inset, border,
+// "i" mark and quiet Dismiss link): a leftover the user may clean up, not lost
+// coverage, so less weight than the orange notices.
+import card from './CchookUpdateCard.module.css';
+import profile from './CchookProfileNotice.module.css';
+import footer from './AuditFooter.module.css';
 import styles from './ResidualCredentialsWarning.module.css';
 
 // Mirror of the proxy's CREDENTIAL_KINDS (packages/proxy/src/credentials.ts):
@@ -61,22 +67,30 @@ export function ResidualCredentialsWarning({
     .join('; ');
 
   return (
-    <div className={styles['warning']} role="status">
-      <p className={styles['title']}>Credentials may remain in your Keychain</p>
-      <p className={styles['body']}>
-        {subject} {verb}. One or more of these items may remain under the service{' '}
-        com.xclaude.gateway: <span className={styles['items']}>{items}</span>. You can delete them
-        manually in Keychain Access by searching for {'"com.xclaude.gateway"'}.
-      </p>
-      <div className={styles['actions']}>
-        <button
-          type="button"
-          className={styles['dismissButton']}
-          onClick={onDismiss}
-          aria-label="Dismiss Keychain credentials notice"
-        >
-          Dismiss
-        </button>
+    <div className={card['band']}>
+      <div className={card['card']} role="status">
+        <span className={profile['icon']} aria-hidden="true">
+          i
+        </span>
+        <div className={card['text']}>
+          <p className={card['line']}>
+            <strong>Credentials may remain in your Keychain</strong>
+            <br />
+            {subject} {verb}. One or more of these items may remain under the service{' '}
+            com.xclaude.gateway: <span className={styles['items']}>{items}</span>. You can delete
+            them manually in Keychain Access by searching for {'"com.xclaude.gateway"'}.
+          </p>
+        </div>
+        <div className={card['actions']}>
+          <button
+            type="button"
+            className={footer['footerLink']}
+            onClick={onDismiss}
+            aria-label="Dismiss Keychain credentials notice"
+          >
+            Dismiss
+          </button>
+        </div>
       </div>
     </div>
   );
