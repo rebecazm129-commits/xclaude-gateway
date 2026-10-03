@@ -194,7 +194,9 @@ export function ChangeDetail({ change, onReview, reviewPending = false, reviewEr
           </section>
         ) : (
         <section className={styles['block']}>
-          <div className={styles['blockLabel']}>Change</div>
+          {/* A catalog review: nothing moved, the definition as it stands was
+              judged — so the block does not say "Change" (DRAFT label). */}
+          <div className={styles['blockLabel']}>{change.review === 'baseline' ? 'Definition' : 'Change'}</div>
           <div className={styles['kvList']}>
             <div className={styles['kvRow']}>
               <span className={styles['kvKey']}>mcp:</span>

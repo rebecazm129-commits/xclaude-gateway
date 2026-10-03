@@ -241,3 +241,45 @@ describe('DetailDrawer — Claude Code elicitation', () => {
     expect(screen.getByText('The host uses internationalized characters (punycode)')).toBeTruthy();
   });
 });
+
+describe('DetailDrawer — block title', () => {
+  // A protocol tripwire is not a tool call: a server's request says
+  // "Request", a protocol signal in a response says "Response".
+  it('a protocol_tripwire row titles its block "Request", never "Tool call"', async () => {
+    const row: DetectionRowSlim = {
+      id: 't1', ts: '2026-09-24T12:05:00.000Z', mcp: 'linear', type: 'mcp.request',
+      category: 'protocol_tripwire', severity: 'medium', source: 'gateway', method: 'sampling/createMessage',
+    };
+    stubDetail({
+      id: 't1', ts: '2026-09-24T12:05:00.000Z', session: '01HXTESTSESSION', mcp: 'linear', type: 'mcp.request',
+      rpcId: 7, direction: 'server_to_client', category: 'protocol_tripwire', severity: 'medium', source: 'gateway',
+      method: 'sampling/createMessage', findings: [{ type: 'server_request', location: 'method' }],
+    } as DetectionDetail);
+    render(<DetailDrawer row={row} onClose={vi.fn()} />);
+    expect(await screen.findByText('Request')).toBeTruthy();
+    expect(screen.queryByText('Tool call')).toBeNull();
+  });
+
+  it('a protocol signal in a response (input_required enrichment) titles its block "Response"', async () => {
+    const row: DetectionRowSlim = {
+      id: 't2', ts: '2026-09-24T12:00:00.000Z', mcp: 'stripe', type: 'mcp.detection_enrichment',
+      category: 'protocol_tripwire', severity: 'medium', source: 'gateway',
+    };
+    stubDetail({
+      id: 't2', ts: '2026-09-24T12:00:00.000Z', session: '01HXTESTSESSION', mcp: 'stripe',
+      type: 'mcp.detection_enrichment', rpcId: 4, direction: 'server_to_client', category: 'protocol_tripwire',
+      severity: 'medium', source: 'gateway', findings: [{ type: 'input_required', location: 'result' }],
+    } as DetectionDetail);
+    render(<DetailDrawer row={row} onClose={vi.fn()} />);
+    expect(await screen.findByText('Response')).toBeTruthy();
+    expect(screen.queryByText('Request')).toBeNull();
+    expect(screen.queryByText('Tool call')).toBeNull();
+  });
+
+  it('any other row keeps "Tool call"', async () => {
+    stubDetail(detail([{ type: 'email', location: 'result' }]));
+    render(<DetailDrawer row={ROW} onClose={vi.fn()} />);
+    expect(await screen.findByText('Tool call')).toBeTruthy();
+    expect(screen.queryByText('Request')).toBeNull();
+  });
+});

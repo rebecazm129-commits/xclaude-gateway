@@ -202,7 +202,7 @@ describe('grading (F-A): surface, injection, migration, corpus', () => {
     expect(det?.findings).toContainEqual({
       type: 'sensitive_param_added',
       rule_id: 'sensitive_param_added',
-      rule_version: 1,
+      rule_version: 2,
       location: 'send.bcc',
     });
   });
@@ -222,7 +222,7 @@ describe('grading (F-A): surface, injection, migration, corpus', () => {
     expect(det?.findings).toContainEqual({
       type: 'sensitive_param_added',
       rule_id: 'sensitive_param_added',
-      rule_version: 1,
+      rule_version: 2,
       location: 'send.to',
     });
   });
@@ -256,7 +256,7 @@ describe('grading (F-A): surface, injection, migration, corpus', () => {
     expect(det?.findings).toContainEqual({
       type: 'sensitive_param_added',
       rule_id: 'sensitive_param_added',
-      rule_version: 1,
+      rule_version: 2,
       location: 'q.webhook_url',
     });
   });
@@ -373,7 +373,7 @@ describe('grading (F-A): surface, injection, migration, corpus', () => {
       expect(det?.findings).toContainEqual({
         type: 'sensitive_param_added',
         rule_id: 'sensitive_param_added',
-        rule_version: 1,
+        rule_version: 2,
         location: `${t}.${p}`,
       });
     }
@@ -400,7 +400,7 @@ describe('grading (F-A): surface, injection, migration, corpus', () => {
     expect(det?.findings).toContainEqual({
       type: 'sensitive_param_added',
       rule_id: 'sensitive_param_added',
-      rule_version: 1,
+      rule_version: 2,
       location: 'b.webhook_url',
     });
   });

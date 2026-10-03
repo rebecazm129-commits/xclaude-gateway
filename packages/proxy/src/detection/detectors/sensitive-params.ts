@@ -25,6 +25,12 @@
 //                   carry no separator, so the tokeniser cannot split them and
 //                   rules 1-3 never see their parts.
 //
+// One exception to rule 1: a name whose LAST token is `id` or `ids` refers to
+// a stored thing rather than carrying it, so a CREDENTIAL token in it does not
+// count — crm_credential_id (Apollo) names a credential, it is not one. The
+// destination tokens still count there (webhook_url_id still matches), and so
+// do pairs and compounds (api_key_id).
+//
 // What tokenising fixes and what it does NOT: it fixes `author` (one token,
 // never `auth`) and `unfurl_app_links` (`links` is not `link`). It does NOT
 // fix `projectKey` — hence rule 3 rather than a bare `key`.
@@ -109,10 +115,16 @@ export function isCredentialName(name: string): boolean {
   return false;
 }
 
+/** A last token that makes the name a reference: crm_credential_id. */
+const ID_SUFFIXES: ReadonlySet<string> = new Set(['id', 'ids']);
+
 export function isSensitiveParamName(name: string): boolean {
   const t = tokenizeParamName(name);
   if (t.length === 0) return false;
-  if (t.some((x) => SENSITIVE_TOKENS.has(x) || SENSITIVE_COMPOUNDS.has(x))) return true;
+  const isReference = ID_SUFFIXES.has(t[t.length - 1]!);
+  const counts = (x: string): boolean =>
+    SENSITIVE_COMPOUNDS.has(x) || (SENSITIVE_TOKENS.has(x) && !(isReference && CREDENTIAL_TOKENS.has(x)));
+  if (t.some(counts)) return true;
   if (POSITIONAL_TOKENS.has(t[0]!)) return true;
   for (let i = 0; i < t.length - 1; i++) {
     for (const [a, b] of SENSITIVE_PAIRS) {

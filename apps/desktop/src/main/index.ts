@@ -875,14 +875,29 @@ ipcMain.handle(
 ipcMain.handle(
   'changes:set-review-status',
   async (_event, params: { eventId: string; to: 'reviewed' | 'unreviewed' }): Promise<void> => {
-    if (typeof params?.eventId !== 'string' || params.eventId === '') return;
-    if (params.to !== 'reviewed' && params.to !== 'unreviewed') return;
+    // Every exit that writes nothing says why on the console — never in the
+    // trail: a row for a no-op would be noise. (A failed append logs in
+    // writeReviewStatusChanged.)
+    if (typeof params?.eventId !== 'string' || params.eventId === '') {
+      console.warn('set-review-status: not written — missing event id');
+      return;
+    }
+    if (params.to !== 'reviewed' && params.to !== 'unreviewed') {
+      console.warn(`set-review-status: not written — invalid target status for ${params.eventId}`);
+      return;
+    }
     const current = await readConnectorChanges(WRAPPERS_DIR, { limit: 5000, cache: changesCache });
     const target = current.find((c) => c.event_id === params.eventId);
     // An unknown id is not written: a marker pointing at nothing would be a
     // row in the trail that can never be explained.
-    if (target === undefined) return;
-    if (target.review_status === params.to) return;
+    if (target === undefined) {
+      console.warn(`set-review-status: not written — no change with id ${params.eventId}`);
+      return;
+    }
+    if (target.review_status === params.to) {
+      console.warn(`set-review-status: not written — ${params.eventId} is already ${params.to}`);
+      return;
+    }
     const written = writeReviewStatusChanged(params.eventId, target.review_status, params.to, WRAPPERS_DIR);
     // The tray's review count moves with the mark, not a minute later — and
     // without reading the trail again: the marker just written goes into the

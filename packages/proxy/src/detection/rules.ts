@@ -20,8 +20,11 @@ import type { RuleId } from '@xcg/shared';
 
 export const RULE_VERSIONS: Readonly<Record<RuleId, number>> = {
   /** A parameter whose NAME matches the sensitive-token matcher (whole words,
-   *  first-position, consecutive pairs and separator-less compounds). */
-  sensitive_param_added: 1,
+   *  first-position, consecutive pairs and separator-less compounds).
+   *  v2: a credential token no longer counts in a name ending in id/ids
+   *  (crm_credential_id names a stored credential, it does not carry one);
+   *  destination tokens, pairs and compounds still do. */
+  sensitive_param_added: 2,
   /** A path-shaped reference to a credential file (~/.ssh/id_rsa, .env…),
    *  recorded by shape, never read. */
   sensitive_path_reference: 1,

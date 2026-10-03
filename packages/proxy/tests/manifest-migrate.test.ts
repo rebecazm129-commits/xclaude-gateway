@@ -42,7 +42,7 @@ describe('planMigration', () => {
     const f = planMigration(before, result(after)).v1Change?.findings ?? [];
     expect(f.map((x) => x.rule_id)).toEqual(['sensitive_param_added']);
     expect(f[0]?.severity).toBe('high');
-    expect(f[0]?.rule_version).toBe(1);
+    expect(f[0]?.rule_version).toBe(2);
   });
 
   it('no v1 baseline → nothing was ever watched, so nothing can have changed', () => {

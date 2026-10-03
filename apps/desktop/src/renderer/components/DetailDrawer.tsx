@@ -317,7 +317,16 @@ function DetectionDetailPanel({ row, onClose }: { row: DetectionRowSlim; onClose
           <>
             {elicitation === undefined && (
               <section className={styles['block']}>
-                <div className={styles['blockLabel']}>Tool call</div>
+                {/* A protocol tripwire is not a tool call: a server's request
+                    (mcp.request) or a protocol signal in a response — the
+                    input_required enrichment (DRAFT labels). */}
+                <div className={styles['blockLabel']}>
+                  {detail.category !== 'protocol_tripwire'
+                    ? 'Tool call'
+                    : detail.type === 'mcp.request'
+                      ? 'Request'
+                      : 'Response'}
+                </div>
                 <div className={styles['kvList']}>
                   {toolName !== undefined && (
                     <div className={styles['kvRow']}>

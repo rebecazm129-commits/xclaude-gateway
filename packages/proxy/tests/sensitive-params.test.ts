@@ -101,6 +101,20 @@ describe('isSensitiveParamName', () => {
     }
   });
 
+  it('a name ending in id/ids refers to a credential, it does not carry one', () => {
+    expect(isSensitiveParamName('crm_credential_id')).toBe(false);
+    expect(isSensitiveParamName('authTokenIds')).toBe(false);
+    // Without the suffix, the same tokens still match.
+    expect(isSensitiveParamName('credential')).toBe(true);
+    expect(isSensitiveParamName('api_token')).toBe(true);
+  });
+
+  it('the id suffix only lifts credential tokens: destinations, pairs and compounds still match', () => {
+    expect(isSensitiveParamName('webhook_url_id')).toBe(true);
+    expect(isSensitiveParamName('api_key_id')).toBe(true);
+    expect(isSensitiveParamName('apikey_id')).toBe(true);
+  });
+
   it('`links` is not `link`, and `email` singular is out of the list', () => {
     expect(isSensitiveParamName('links')).toBe(false);
     expect(isSensitiveParamName('email')).toBe(false);
