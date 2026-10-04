@@ -319,7 +319,7 @@ function DetectionDetailPanel({ row, onClose }: { row: DetectionRowSlim; onClose
               <section className={styles['block']}>
                 {/* A protocol tripwire is not a tool call: a server's request
                     (mcp.request) or a protocol signal in a response — the
-                    input_required enrichment (DRAFT labels). */}
+                    input_required enrichment. */}
                 <div className={styles['blockLabel']}>
                   {detail.category !== 'protocol_tripwire'
                     ? 'Tool call'

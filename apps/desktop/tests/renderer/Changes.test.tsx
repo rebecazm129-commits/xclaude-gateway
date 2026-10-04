@@ -53,7 +53,7 @@ describe('MCP changes — the default view', () => {
     // changes out: 12 recorded, 10 in view.
     mount('needs-review');
     return settle().then(() => {
-      expect(cardTexts()).toEqual(['10All changes', '5Needs review', '1Medium', '2High']);
+      expect(cardTexts()).toEqual(['10Total', '5Needs review', '1Medium', '2High']);
     });
   });
 
@@ -123,7 +123,7 @@ describe('MCP changes — the previous format', () => {
     fireEvent.click(screen.getByText('Needs review only').closest('button')!);
     await settle();
     expect(rowNodes()).toHaveLength(0);
-    expect(cardTexts()).toEqual(['0All changes', '0Needs review', '0Medium', '0High']);
+    expect(cardTexts()).toEqual(['0Total', '0Needs review', '0Medium', '0High']);
     // No note in the chips row any more: the Status filter is the way in.
     expect(screen.queryByRole('button', { name: /historical change/ })).toBeNull();
     expect(screen.getByRole('button', { name: /^Status \(2\/3\)/ })).toBeDefined();
@@ -134,7 +134,7 @@ describe('MCP changes — the previous format', () => {
     fireEvent.click(previous);
     await settle();
     expect(rowNodes()).toHaveLength(2);
-    expect(cardTexts()).toContain('2All changes');
+    expect(cardTexts()).toContain('2Total');
   });
 
   it('with nothing else recorded, the empty state points at the Status filter', async () => {

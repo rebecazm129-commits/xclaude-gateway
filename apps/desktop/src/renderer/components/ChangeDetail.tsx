@@ -77,8 +77,8 @@ function AuthorizationChange({ change }: { change: ConnectorChangeView }): JSX.E
         {a.scopes.added.length > 0 && <Kv k="added" v={scopeList(a.scopes.added)} />}
         {a.scopes.removed.length > 0 && <Kv k="removed" v={scopeList(a.scopes.removed)} />}
         {a.resource.changed && <Kv k="resource" v={`${a.resource.before ?? 'none'} → ${a.resource.now ?? 'none'}`} />}
-        <Kv k="previous login" v={a.previous_login_at === null ? 'none' : formatTimestamp(a.previous_login_at)} />
-        <Kv k="this login" v={formatTimestamp(change.ts)} />
+        <Kv k="previous sign-in" v={a.previous_login_at === null ? 'none' : formatTimestamp(a.previous_login_at)} />
+        <Kv k="this sign-in" v={formatTimestamp(change.ts)} />
       </div>
       {a.scope_source === 'assumed_requested' && <div className={styles['emptyFindings']}>{SCOPE_SOURCE_ASSUMED_TEXT}</div>}
       {a.authorization_server_source === 'server_url_fallback' && (
@@ -195,7 +195,7 @@ export function ChangeDetail({ change, onReview, reviewPending = false, reviewEr
         ) : (
         <section className={styles['block']}>
           {/* A catalog review: nothing moved, the definition as it stands was
-              judged — so the block does not say "Change" (DRAFT label). */}
+              judged — so the block does not say "Change". */}
           <div className={styles['blockLabel']}>{change.review === 'baseline' ? 'Definition' : 'Change'}</div>
           <div className={styles['kvList']}>
             <div className={styles['kvRow']}>

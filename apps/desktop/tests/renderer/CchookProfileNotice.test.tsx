@@ -17,7 +17,7 @@ describe('CchookProfileNotice', () => {
     expect(screen.getByText('Another Claude Code profile may not be audited')).toBeTruthy();
     expect(
       screen.getByText(
-        'xCLAUDE found ~/.claude-work/settings.json without its hook. If you use this profile, add the xCLAUDE hook configuration manually.',
+        'xCLAUDE found ~/.claude-work/settings.json without the xCLAUDE hook. If you use this profile, add the xCLAUDE hook configuration manually.',
       ),
     ).toBeTruthy();
     expect(screen.getByText('xCLAUDE installs hooks automatically only in ~/.claude.')).toBeTruthy();

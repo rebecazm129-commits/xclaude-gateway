@@ -48,6 +48,7 @@ export interface ChangeNotification {
 }
 
 export const CHANGE_NOTIFICATION_BODY = 'Review it in xCLAUDE Gateway before using this connector.';
+export const PERMISSIONS_EXPANDED_NOTIFICATION_BODY = 'Review the new permissions in xCLAUDE Gateway.';
 
 /** At most one per event: a changed server outranks expanded permissions. */
 export function computeChangeNotifications(
@@ -74,7 +75,7 @@ export function computeChangeNotifications(
         mcp: v.mcp,
         ruleId: 'scopes_expanded',
         title: `${v.mcp}: permissions expanded`,
-        body: CHANGE_NOTIFICATION_BODY,
+        body: PERMISSIONS_EXPANDED_NOTIFICATION_BODY,
       });
     }
   }

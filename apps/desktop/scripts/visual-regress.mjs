@@ -78,7 +78,7 @@ const SCENARIOS = (
     'baseline-review',
     'baseline-review#acme-docs',
     // MCP changes with the Needs review only chip lifted: nothing narrows the
-    // list, so All changes is the card that reads as the filter.
+    // list, so Total is the card that reads as the filter.
     'needs-review#Needs review only',
     // audit_trail_modification: the table with both subtypes, then the panel
     // of the delete row (the only Bash row).
@@ -91,7 +91,7 @@ const SCENARIOS = (
     'authorization#Authorization server changed',
     'authorization#Permissions expanded',
     'authorization#Needs review only#First sign-in recorded',
-    'authorization#Needs review only#Sign-in recorded (reference reset)',
+    'authorization#Needs review only#Sign-in recorded (not compared)',
     'authorization#Section (2/2) ▾',
     // Claude Code elicitation: the table (medium accepted, HIGH declined),
     // then the panel of the HIGH one.

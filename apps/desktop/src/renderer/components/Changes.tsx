@@ -49,8 +49,8 @@ import bar from './ClaudeCode.module.css';
 
 const ROW_HEIGHT = 40;
 
-// CHANGE carries the title and must fit the longest one at 1100px ("Sign-in
-// recorded (reference reset)", "Existing tool definition flagged"); DETAILS
+// CHANGE carries the title and must fit the longest one at 1100px ("Existing
+// tool definition flagged", "Sign-in recorded (not compared)"); DETAILS
 // is the elastic column and may truncate.
 export const CHANGE_COLUMNS: readonly Column[] = [
   { key: 'time', label: 'Time', width: '130px' },
@@ -158,7 +158,7 @@ export function Changes(): JSX.Element {
           : null;
     // Which card reads as the current filter. Needs review is the filter
     // whenever the list is narrowed to it — by the card OR by the chip, which
-    // is how the tab opens — and All changes only when nothing narrows it.
+    // is how the tab opens — and Total only when nothing narrows it.
     // Dimming still follows a PRESSED card only, so opening the tab dims
     // nothing.
     const showing =
@@ -183,7 +183,7 @@ export function Changes(): JSX.Element {
       {
         // key 'total': the same card as TOTAL in the sibling tabs, style included.
         key: 'total',
-        label: 'All changes',
+        label: 'Total',
         count: page.total,
         active: showing === 'total',
         inactive: pressed !== null,
@@ -193,8 +193,8 @@ export function Changes(): JSX.Element {
           setNeedsReviewOnly(false);
         },
         tooltip: includeHistorical
-          ? 'Every change, flagged or not, previous format included'
-          : 'Every change, flagged or not, previous format aside',
+          ? 'Every row: changes, catalog reviews and sign-ins, previous format included'
+          : 'Every row: changes, catalog reviews and sign-ins, previous format aside',
       },
       {
         // The question the tab exists to answer. Prominent but NOT coloured:

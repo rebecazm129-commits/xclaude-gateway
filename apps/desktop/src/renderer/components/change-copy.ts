@@ -250,9 +250,10 @@ export const SECTION_LABELS: Record<ConnectorChangeView['section'], string> = {
 
 // --- authorization rows ------------------------------------------------------
 //
-// A sign-in compared with the previous one (proxy.oauth_authorized). The words
-// below are a DRAFT pending review. Same two rules as the rest of this file:
-// an observation, not an accusation; no severity where no rule matched.
+// A sign-in compared with the previous one (proxy.oauth_authorized). Same two
+// rules as the rest of this file: an observation, not an accusation; no
+// severity where no rule matched. "sign-in" and "permissions" in titles and
+// sentences; "scopes" only next to the technical keys of the detail panel.
 
 type AuthorizationKind =
   | 'server_changed'
@@ -278,32 +279,34 @@ export function authorizationKind(view: ConnectorChangeView): AuthorizationKind 
 const AUTHORIZATION_TITLE: Record<AuthorizationKind, string> = {
   server_changed: 'Authorization server changed',
   permissions_expanded: 'Permissions expanded',
-  reference_unreadable: 'Sign-in recorded (reference reset)',
+  reference_unreadable: 'Sign-in recorded (not compared)',
   first_sign_in: 'First sign-in recorded',
-  scopes_reduced: 'Scopes reduced',
+  scopes_reduced: 'Permissions reduced',
   resource_changed: 'Resource changed',
   recorded: 'Sign-in recorded',
 };
 
 export const AUTHORIZATION_SERVER_CHANGED_TEXT =
-  'This connector is now authorizing through a different server than on its previous login. ' +
+  'This connector is now authorizing through a different server than on its previous sign-in. ' +
   'Verify that the new authorization server belongs to the service you intended to connect.';
-export const PERMISSIONS_EXPANDED_TEXT = "This connector was granted permissions it didn't have on its previous login.";
-export const SCOPES_REDUCED_TEXT = 'This connector was granted fewer permissions than on its previous login.';
-export const RESOURCE_CHANGED_TEXT = 'The resource this connector authorizes for changed since its previous login.';
+export const PERMISSIONS_EXPANDED_TEXT = "This connector was granted permissions it didn't have on its previous sign-in.";
+export const SCOPES_REDUCED_TEXT = 'This connector was granted fewer permissions than on its previous sign-in.';
+export const RESOURCE_CHANGED_TEXT =
+  'This connector now requests access to a different resource than on its previous sign-in.';
 
 export const REFERENCE_NOTE_TEXT: Record<NonNullable<NonNullable<ConnectorChangeView['authorization']>['reference_note']>, string> = {
   initialized: 'First sign-in recorded on this Mac. Later sign-ins are compared with this one.',
-  reseeded: "The saved reference couldn't be read, so this sign-in wasn't compared. It is now the reference.",
+  reseeded:
+    "The previous sign-in record couldn't be read, so this sign-in wasn't compared. Later sign-ins are compared with this one.",
   kept_newer:
-    "A newer version of xCLAUDE Gateway saved this reference. It was left untouched and this sign-in wasn't compared.",
+    "A newer version of xCLAUDE Gateway saved the previous sign-in record. This version left it unchanged, so this sign-in wasn't compared.",
   write_failed:
-    "This sign-in couldn't be saved as the reference. The next one will be compared with the previous sign-in.",
+    "This sign-in couldn't be saved for comparison, so the next sign-in will be compared with the last saved one.",
 };
 
-export const SCOPE_SOURCE_ASSUMED_TEXT = 'Granted scopes not returned by the server; showing the requested ones.';
-export const SERVER_FALLBACK_TEXT =
-  "Not listed in the server's protected resource metadata; the connector URL was used.";
+export const SCOPE_SOURCE_ASSUMED_TEXT =
+  "The authorization server didn't report the granted scopes, so the requested scopes are shown.";
+export const SERVER_FALLBACK_TEXT = "The connector didn't name its authorization server, so its own address was used.";
 
 /** The host of a URL, or the value itself when it is not one. */
 export function hostOf(url: string | null): string {

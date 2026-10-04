@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   CHANGE_NOTIFICATION_BODY,
+  PERMISSIONS_EXPANDED_NOTIFICATION_BODY,
   computeChangeNotifications,
   computeChangesToReview,
 } from '../../src/main/change-notify.js';
@@ -72,9 +73,10 @@ describe('computeChangeNotifications', () => {
     );
     expect(out).toEqual([
       { eventId: 'a', mcp: 'linear', ruleId: 'authorization_server_changed', title: 'linear: authorization server changed', body: CHANGE_NOTIFICATION_BODY },
-      { eventId: 'b', mcp: 'github', ruleId: 'scopes_expanded', title: 'github: permissions expanded', body: CHANGE_NOTIFICATION_BODY },
+      { eventId: 'b', mcp: 'github', ruleId: 'scopes_expanded', title: 'github: permissions expanded', body: PERMISSIONS_EXPANDED_NOTIFICATION_BODY },
     ]);
     expect(CHANGE_NOTIFICATION_BODY).toBe('Review it in xCLAUDE Gateway before using this connector.');
+    expect(PERMISSIONS_EXPANDED_NOTIFICATION_BODY).toBe('Review the new permissions in xCLAUDE Gateway.');
   });
 
   it('one per event: a changed server outranks expanded permissions', () => {

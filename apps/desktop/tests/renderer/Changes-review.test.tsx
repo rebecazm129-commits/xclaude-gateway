@@ -123,18 +123,18 @@ describe('Mark as reviewed', () => {
 describe('which card reads as the filter', () => {
   const active = (): string[] => cards().filter((c) => c.className.includes('cardActive')).map((c) => c.textContent ?? '');
 
-  it('opening the tab (the Needs review only chip) shows Needs review, not All changes', async () => {
+  it('opening the tab (the Needs review only chip) shows Needs review, not Total', async () => {
     mount(async () => undefined);
     await settle();
     expect(active()).toEqual(['5Needs review']);
   });
 
-  it('lifting the chip shows All changes', async () => {
+  it('lifting the chip shows Total', async () => {
     mount(async () => undefined);
     await settle();
     fireEvent.click(screen.getByText('Needs review only').closest('button')!);
     await settle();
-    expect(active().map((t) => t.replace(/^\d+/, ''))).toEqual(['All changes']);
+    expect(active().map((t) => t.replace(/^\d+/, ''))).toEqual(['Total']);
   });
 
   it('a pressed severity card is the only one shown', async () => {

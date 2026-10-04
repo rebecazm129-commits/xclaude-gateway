@@ -1089,10 +1089,10 @@ export const SCENARIOS: readonly Scenario[] = [
     note:
       'Five authorization rows among a tools one (turn off "Needs review only" to see them all). ' +
       'linear: HIGH "Authorization server changed", DETAILS ' +
-      '"auth.linear.app → login.linear-auth.example"; open it: server before → now, previous and this login ' +
+      '"auth.linear.app → login.linear-auth.example"; open it: server before → now, previous and this sign-in ' +
       'dates, resource only in Technical details. github: MEDIUM "Permissions expanded", "added: admin:org, ' +
-      'delete_repo", and the "Granted scopes not returned…" note. gmail: no badge, "Scopes reduced". notion: ' +
-      '"First sign-in recorded" with the fallback note. stripe: "Sign-in recorded (reference reset)". ' +
+      'delete_repo", and the "The authorization server didn\'t report…" note. gmail: no badge, "Permissions reduced". notion: ' +
+      '"First sign-in recorded" with the fallback note. stripe: "Sign-in recorded (not compared)". ' +
       'Every title fits the CHANGE column at 1100px.',
     entries: TWO_CONNECTORS,
     events: [],
@@ -1217,7 +1217,7 @@ export const SCENARIOS: readonly Scenario[] = [
     note:
       'Above the Claude Code cards, a NEUTRAL compact card (not orange) with a discreet "i": ' +
       '"Another Claude Code profile may not be audited", "xCLAUDE found ~/.claude-work/settings.json ' +
-      'without its hook. If you use this profile, add the xCLAUDE hook configuration manually.", the ' +
+      'without the xCLAUDE hook. If you use this profile, add the xCLAUDE hook configuration manually.", the ' +
       'muted line "xCLAUDE installs hooks automatically only in ~/.claude.", then "Copy hook ' +
       'configuration" and a quiet "Dismiss" (which hides it). No toast, no count.',
     entries: TWO_CONNECTORS,

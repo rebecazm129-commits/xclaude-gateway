@@ -10,10 +10,9 @@ import card from './CchookUpdateCard.module.css';
 import own from './CchookProfileNotice.module.css';
 import footer from './AuditFooter.module.css';
 
-// DRAFT copy, pending review.
 export const CCHOOK_PROFILE_TITLE = 'Another Claude Code profile may not be audited';
 export function cchookProfileText(path: string): string {
-  return `xCLAUDE found ${path}/settings.json without its hook. If you use this profile, add the xCLAUDE hook configuration manually.`;
+  return `xCLAUDE found ${path}/settings.json without the xCLAUDE hook. If you use this profile, add the xCLAUDE hook configuration manually.`;
 }
 export const CCHOOK_PROFILE_SCOPE = 'xCLAUDE installs hooks automatically only in ~/.claude.';
 export const CCHOOK_PROFILE_DISMISS = 'Dismiss';
