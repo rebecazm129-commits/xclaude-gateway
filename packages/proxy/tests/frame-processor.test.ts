@@ -430,12 +430,12 @@ describe('createFrameProcessor — tool_manifest_changed (tools/list)', () => {
     findings: [
       {
         rule_id: 'injection_marker',
-        rule_version: 2,
+        rule_version: 3,
         severity: 'high',
         evidence: { target: 'send', path: '$.description', rule: 'ignore_other_tools' },
       },
     ],
-    reviewedWith: { injection_marker: 2, sensitive_path_reference: 1, hidden_characters: 2 },
+    reviewedWith: { injection_marker: 3, sensitive_path_reference: 1, hidden_characters: 2 },
     snapshot: { before: null, after: 'sha256:a' },
   };
 

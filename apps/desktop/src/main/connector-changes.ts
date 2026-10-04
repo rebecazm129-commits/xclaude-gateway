@@ -376,15 +376,17 @@ function notifiedTargetOf(value: unknown): string | null {
 }
 
 /** What makes two review lines the same record: everything the event
- *  states, minus its id, time and session. */
+ *  states, minus its id, time and session — and minus the rule versions. A
+ *  rule's version going up re-reviews every stored catalog with the WHOLE
+ *  rule, so a finding already reported comes back stamped with the new
+ *  version; it is the same finding, and shows once. */
 function duplicateKey(v: ConnectorChangeView): string {
   return JSON.stringify([
     v.section,
     v.snapshot,
     v.changes,
-    v.findings,
+    v.findings.map((f) => ({ ...f, rule_version: undefined })), // dropped by stringify
     v.attention,
-    v.reviewed_with ?? null,
     v.review ?? null,
   ]);
 }
@@ -395,7 +397,8 @@ function duplicateKey(v: ConnectorChangeView): string {
  * trail keeps both — it is evidence of what each process did — but the list
  * shows one: consecutive CATALOG REVIEW lines of the same connector that state
  * exactly the same thing collapse into the newest. A reviewed copy wins over
- * an unreviewed one, so a mark is never hidden.
+ * an unreviewed one, so a mark is never hidden — which is also how a
+ * re-review after a version bump inherits the mark of the review it repeats.
  *
  * Only review lines. Change lines are not collapsed, even identical ones: a
  * change's review status follows the event, not its content (see "a new change

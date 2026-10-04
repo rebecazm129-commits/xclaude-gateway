@@ -120,11 +120,39 @@ describe('collapseDuplicates — review lines of a duplicate process', () => {
     expect(rows).toHaveLength(3);
   });
 
-  it('anything that differs keeps both: findings, catalog hash, rule versions', () => {
+  it('anything that differs keeps both: findings, catalog hash', () => {
     const base = view(reviewLine());
     expect(collapseDuplicates([base, view(reviewLine({ findings: [] }))])).toHaveLength(2);
     expect(collapseDuplicates([base, view(reviewLine({ snapshot: { before: null, after: 'sha256:other' } }))])).toHaveLength(2);
-    expect(collapseDuplicates([base, view(reviewLine({ reviewed_with: { ...REVIEWED_WITH, injection_marker: 3 } }))])).toHaveLength(2);
+    expect(
+      collapseDuplicates([base, view(reviewLine({ findings: [{ ...FINDING, evidence: { ...FINDING.evidence, rule: 'prefer_over_other_tools' } }] }))]),
+    ).toHaveLength(2);
+  });
+
+  it('a re-review after a version bump that states the same findings shows once, and keeps the mark', async () => {
+    // The v2 review, already marked reviewed; then the same catalog re-reviewed
+    // once injection_marker went to v3: same findings, new versions.
+    const v2 = reviewLine({ id: 'RV2', ts: '2026-09-27T10:00:00.000Z' });
+    const v3 = reviewLine({
+      id: 'RV3',
+      ts: '2026-10-04T10:00:00.000Z',
+      reviewed_with: { ...REVIEWED_WITH, injection_marker: 3 },
+      findings: [{ ...FINDING, rule_version: 3 }],
+    });
+    const marker = {
+      v: 1, id: 'M2', ts: '2026-09-28T09:00:00.000Z', session: 'desktop',
+      type: REVIEW_STATUS_CHANGED_TYPE, target_event_id: 'RV2', from: 'unreviewed', to: 'reviewed',
+    };
+    const rows = await readConnectorChanges(await dirWith(v2, marker, v3));
+    expect(rows.map((r) => [r.event_id, r.review_status])).toEqual([['RV2', 'reviewed']]);
+  });
+
+  it('a re-review that finds something NEW is its own row', () => {
+    const v3 = view(reviewLine({
+      reviewed_with: { ...REVIEWED_WITH, injection_marker: 3 },
+      findings: [{ ...FINDING, rule_version: 3 }, { ...FINDING, rule_version: 3, evidence: { ...FINDING.evidence, target: 'reply' } }],
+    }));
+    expect(collapseDuplicates([v3, view(reviewLine())])).toHaveLength(2);
   });
 
   it('change lines are never collapsed, even identical ones', () => {

@@ -70,7 +70,7 @@ describe('catalog review — the seed', () => {
     expect(out.review?.findings).toEqual([
       {
         rule_id: 'injection_marker',
-        rule_version: 2,
+        rule_version: 3,
         severity: 'high',
         evidence: { target: 'send', path: '$.description', rule: 'ignore_other_tools' },
       },

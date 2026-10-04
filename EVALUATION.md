@@ -1,5 +1,26 @@
 # Evaluation
 
+## Tool-surface rules V1.1 (injection_marker v3) — not yet evaluated
+
+V1.1 widens the four patterns by mechanism, not by case: source
+prepositions ("provided by"), object-first word order in sentences and
+identifiers, choice verbs beyond use/call/invoke/select, "this" without a
+noun before "instead of", and "dont" without an apostrophe.
+
+The five V1.0 misses were used as development examples for these changes
+and now pass. Holdout v1 is therefore a regression set only: its results
+under V1.1 are not a measure of detection.
+
+As a sanity check, not a false-positive rate, the catalog review was run
+over the 755 tool definitions in docker/mcp-registry (commit 49b643c,
+28 servers): 0 cross-tool matches; the three matches found came from the
+V1 injection patterns (injection_pattern), all false positives on
+'jailbreak'/'jailbroken' in okta-mcp-server's device-policy descriptions,
+outside the scope of V1.1.
+
+A V1.1 figure will be published only after a new sealed holdout, written
+and filtered without access to the rules.
+
 ## Tool-surface rules V1.0 (commit bdd93e5)
 
 **Setup.** A 54-case holdout was written independently — by a separate model,

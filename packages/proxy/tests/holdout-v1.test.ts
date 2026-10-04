@@ -6,13 +6,17 @@
 // catalog review — the seed of observeSection on an empty baseline — not
 // through a copy of the regular expressions.
 //
-// Pinned as measured: 19/24 positives detected, each by its own phrase; 0/30
-// negatives flagged. The five misses are GAPS asserted as misses: if one starts
-// passing, this fails on purpose, so the improvement is recorded (move it out
-// of KNOWN_GAPS and update EVALUATION.md) instead of passing in silence.
+// Measured on V1.0 (injection_marker v2): 19/24 positives detected, each by its
+// own phrase; 0/30 negatives flagged.
 //
-// This holdout is spent: it was used to measure V1.0 and is now a regression
-// set. V1.1 needs a new one.
+// V1.1 (injection_marker v3) closed the five V1.0 misses by widening the
+// mechanism behind each one, and those five cases were its DEVELOPMENT
+// examples. So this holdout is spent: it is a regression set, and 24/24 here
+// is not a measure of detection. V1.1 is not yet evaluated (EVALUATION.md).
+//
+// A case that stops being detected is a regression; a new miss goes into
+// KNOWN_GAPS, asserted as a miss, so a later fix is recorded instead of
+// passing in silence.
 
 import { mkdirSync, readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -45,14 +49,10 @@ const RULE_OF: Record<'P1' | 'P3' | 'P4' | 'P5', string> = {
   P5: 'displace_named_tools',
 };
 
-/** The five measured misses (EVALUATION.md, "Known misses"). */
-const KNOWN_GAPS: Record<string, string> = {
-  'POS-P1-02': '"provided by other servers": by, not from/of',
-  'POS-P1-05': 'identifier with the object after "other server"',
-  'POS-P3-04': '"choose": a verb outside use/call/invoke/select',
-  'POS-P3-05': 'identifier "use this" with no tool/server/connector',
-  'POS-P5-05': '"dont" without an apostrophe',
-};
+/** Misses under the current rules. Empty since V1.1: the five V1.0 misses
+ *  (EVALUATION.md, "Known misses") were POS-P1-02, POS-P1-05, POS-P3-04,
+ *  POS-P3-05 and POS-P5-05. */
+const KNOWN_GAPS: Record<string, string> = {};
 
 /** A neutral tool with the case's text in the field the case names. */
 function toolFor(c: HoldoutCase): Record<string, unknown> {
@@ -137,10 +137,10 @@ describe('holdout v1 — negatives and out-of-scope', () => {
   }
 });
 
-describe('holdout v1 — the measured totals', () => {
-  it('19/24 positives, 0/30 negatives', () => {
+describe('holdout v1 — totals as a regression set (not a measure since V1.1)', () => {
+  it('24/24 positives, 0/30 negatives', () => {
     const detected = CASES.filter((c) => c.kind === 'positive' && review(c).length > 0).length;
     const flagged = CASES.filter((c) => c.kind === 'negative' && review(c).length > 0).length;
-    expect([detected, flagged]).toEqual([19, 0]);
+    expect([detected, flagged]).toEqual([24 - Object.keys(KNOWN_GAPS).length, 0]);
   });
 });

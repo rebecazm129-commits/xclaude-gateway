@@ -30,6 +30,11 @@ export const RULE_VERSIONS: Readonly<Record<RuleId, number>> = {
   sensitive_path_reference: 1,
   /** An instruction-shaped marker anywhere on the tool surface, matched on the
    *  normalized view.
+   *  v3: widens the cross-tool phrasings by mechanism — "by" as a source
+   *  ("provided by other servers"), the object first ("ignore other tools'
+   *  instructions", disregard_other_server_instructions), choice verbs
+   *  (choose, pick, prefer, opt for), "this" with no noun before "instead
+   *  of", and "dont" / "don t". Not yet evaluated: see EVALUATION.md.
    *  v2: adds four cross-tool phrasings (detectors/cross-tool.ts) — disregard
    *  other tools' instructions, prefer this tool over all others, run before
    *  any tool, stop using a named set of tools in favour of this one. v1 was
@@ -38,9 +43,9 @@ export const RULE_VERSIONS: Readonly<Record<RuleId, number>> = {
    *  Known gaps: a mention of a SPECIFIC tool of another server ("when using
    *  send_email…"), semantic poisoning with no instruction-shaped wording, and
    *  an instruction split across several tools or fields.
-   *  Evaluation (holdout v1): 19/24 in-scope detected, 0/30 negatives flagged
-   *  — see EVALUATION.md. */
-  injection_marker: 2,
+   *  Evaluation of v2 (holdout v1): 19/24 in-scope detected, 0/30 negatives
+   *  flagged — see EVALUATION.md. */
+  injection_marker: 3,
   /** Invisible characters, graded by class (text-normalize.ts).
    *  v2: tag, bidi and a RUN of variation selectors high; zero-width, ANSI and
    *  rare invisible controls (U+206A-U+206F, the unassigned tag plane) medium.

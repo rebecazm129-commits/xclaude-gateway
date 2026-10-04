@@ -289,7 +289,7 @@ describe('grading (F-A): surface, injection, migration, corpus', () => {
     expect(det?.findings).toContainEqual({
       type: 'injection_marker',
       rule_id: 'injection_marker',
-      rule_version: 2,
+      rule_version: 3,
       location: 'send',
       path: '$.description',
       rule: 'injection_pattern',
@@ -547,7 +547,7 @@ describe('createManifestStore', () => {
     expect(out.change?.findings).toEqual([
       {
         rule_id: 'injection_marker',
-        rule_version: 2,
+        rule_version: 3,
         severity: 'high',
         evidence: { target: 'send', path: '$.description', rule: 'injection_pattern' },
       },

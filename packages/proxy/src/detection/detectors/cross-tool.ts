@@ -1,7 +1,9 @@
-// Cross-tool instructions on a tool's surface — injection_marker v2.
+// Cross-tool instructions on a tool's surface — injection_marker v3.
 //
-// Evaluation (holdout v1, 54 cases written after the freeze): 19/24 in-scope
-// detected, 0/30 negatives flagged — see EVALUATION.md.
+// Evaluation (holdout v1, 54 cases written after the v2 freeze): 19/24
+// in-scope detected, 0/30 negatives flagged — see EVALUATION.md. v3 widens
+// the phrasings by mechanism, using the five v1 misses as development
+// examples, so holdout v1 no longer measures it; v3 is not yet evaluated.
 //
 // Tool poisoning's cross-server form ("shadowing") is a definition that tells
 // the model how to treat tools it does not own: disregard what other servers
@@ -40,25 +42,35 @@ export type CrossToolRule =
 
 const OTHER = String.raw`(?:other|another|external|different)`;
 const TARGETS = String.raw`(?:tools?|servers?|connectors?)`;
-const SELF = String.raw`(?:use|call|invoke|select)\s(?:this|the current)\s(?:tool|server|connector)\b`;
-const NEG = String.raw`(?:do not|don't|never)`;
+/** Verbs that pick a tool. Deliberately not "rely on", "default to" or "go
+ *  with": legitimate definitions say those about their own behaviour. */
+const CHOOSE = String.raw`(?:use|call|invoke|select|choose|pick|prefer|opt for)`;
+const SELF = String.raw`${CHOOSE}\s(?:this|the current)\s(?:tool|server|connector)\b`;
+/** "dont" and "don t" are how an identifier spells it (don_t, dontUse). */
+const NEG = String.raw`(?:do not|don't|dont|don t|never)`;
+const INSTRUCTIONS = String.raw`(?:instructions?|rules?|guidance|directions?)`;
+const ANY_OTHER = String.raw`(?:instead of|rather than)\s(?:(?:using|calling|invoking)\s)?(?:any|all)\s${OTHER}\s${TARGETS}\b`;
 /** Up to `n` words between two anchors. */
 const gap = (n: number): string => String.raw`(?:\W+\w+){0,${n}}?\W+`;
 
 const PATTERNS: readonly { rule: CrossToolRule; pattern: RegExp }[] = [
   {
-    // P1: ignore/disregard … instructions|rules|guidance|directions … from|of … other tools
+    // P1: ignore/disregard … instructions|rules|guidance|directions … from|of|by … other tools,
+    // or the object first: ignore/disregard [≤2 words] other tools['s|'] instructions
     rule: 'ignore_other_tools',
     pattern: new RegExp(
-      String.raw`\b(?:ignore|disregard)\b${gap(4)}(?:instructions?|rules?|guidance|directions?)\b${gap(3)}(?:from|of)\W+(?:\w+\W+){0,3}?${OTHER}\s${TARGETS}\b`,
+      String.raw`\b(?:ignore|disregard)\b${gap(4)}${INSTRUCTIONS}\b${gap(3)}(?:from|of|by)\W+(?:\w+\W+){0,3}?${OTHER}\s${TARGETS}\b` +
+        String.raw`|\b(?:ignore|disregard)\b${gap(2)}${OTHER}\s${TARGETS}(?:'s|')?\s${INSTRUCTIONS}\b`,
     ),
   },
   {
-    // P3: use this tool … instead of / rather than any|all other tools (either order)
+    // P3: use|choose|… this tool … instead of / rather than any|all other tools (either order),
+    // or "this" with no noun and at most two words before instead of / rather than
     rule: 'prefer_over_other_tools',
     pattern: new RegExp(
-      String.raw`\b${SELF}${gap(4)}(?:instead of|rather than)\s(?:(?:using|calling|invoking)\s)?(?:any|all)\s${OTHER}\s${TARGETS}\b` +
-        String.raw`|\b(?:instead of|rather than)\s(?:(?:using|calling|invoking)\s)?(?:any|all)\s${OTHER}\s${TARGETS}\b${gap(4)}${SELF}`,
+      String.raw`\b${SELF}${gap(4)}${ANY_OTHER}` +
+        String.raw`|\b${ANY_OTHER}${gap(4)}${SELF}` +
+        String.raw`|\b${CHOOSE}\sthis${gap(2)}${ANY_OTHER}`,
     ),
   },
   {
@@ -67,7 +79,7 @@ const PATTERNS: readonly { rule: CrossToolRule; pattern: RegExp }[] = [
     pattern: new RegExp(String.raw`\b(?:before|after)\s(?:calling|using|invoking)\s(?:any|all|every)\s(?:other\s)?${TARGETS}\b`),
   },
   {
-    // P5: do not|don't|never use|call|invoke [the] <X> tools … use|call|invoke this tool
+    // P5: do not|don't|dont|never use|call|invoke [the] <X> tools … use|call|invoke this tool
     rule: 'displace_named_tools',
     pattern: new RegExp(
       String.raw`\b${NEG}\s(?:use|call|invoke)\s(?:the\s)?[a-z0-9][a-z0-9_-]*\stools?\b${gap(6)}(?:use|call|invoke)\s(?:this|the current)\stool\b`,
