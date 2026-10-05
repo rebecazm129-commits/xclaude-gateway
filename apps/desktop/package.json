@@ -2,7 +2,7 @@
   "name": "@xcg/desktop",
   "version": "1.0.0-beta.7",
   "private": true,
-  "description": "Local-first MCP audit gateway for Claude Desktop",
+  "description": "A local audit trail for Claude's tool activity and MCP connector changes.",
   "author": {
     "name": "Rebeca Zambrano Moreno"
   },
