@@ -140,6 +140,7 @@ async function login(s: Scenario = {}): Promise<void> {
       if (s.failAt === 'callback') throw new Error('authorization callback error: access_denied');
       return `code-${SENTINEL}`;
     }),
+    finish: vi.fn(),
     close: vi.fn(),
   };
 

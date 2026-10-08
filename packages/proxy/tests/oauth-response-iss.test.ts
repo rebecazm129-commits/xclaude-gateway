@@ -28,7 +28,7 @@ import { auth, type OAuthDiscoveryState } from '@modelcontextprotocol/sdk/client
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
 
 import {
-  CALLBACK_REFUSED_HTML,
+  CALLBACK_FAILED_HTML,
   escapeHtml,
   ISS_MISMATCH_MESSAGE,
   ISS_MISSING_MESSAGE,
@@ -179,14 +179,14 @@ describe('RFC 9207 — iss on the authorization response', () => {
   it('Google iss with one slash more is refused — compared with the metadata issuer, not the advertised URL', () => {
     const p = google();
     const out = callbackOutcome(cb(`code=C1&iss=${encodeURIComponent(GOOGLE_AS)}`), (i) => p.checkResponseIss(i));
-    expect(out).toEqual({ status: 400, html: CALLBACK_REFUSED_HTML, settle: { error: ISS_MISMATCH_MESSAGE } });
+    expect(out).toEqual({ status: 400, html: CALLBACK_FAILED_HTML, settle: { error: ISS_MISMATCH_MESSAGE } });
   });
 
   it('absent iss: refused when the server announces it, accepted when it does not', () => {
     const g = google();
     expect(callbackOutcome(cb('code=C1&state=S'), (i) => g.checkResponseIss(i))).toEqual({
       status: 400,
-      html: CALLBACK_REFUSED_HTML,
+      html: CALLBACK_FAILED_HTML,
       settle: { error: ISS_MISSING_MESSAGE },
     });
     const q = quiet();
@@ -205,18 +205,22 @@ describe('RFC 9207 — iss on the authorization response', () => {
       ),
       (i) => p.checkResponseIss(i),
     );
-    expect(out).toEqual({ status: 400, html: CALLBACK_REFUSED_HTML, settle: { error: ISS_MISMATCH_MESSAGE } });
+    expect(out).toEqual({ status: 400, html: CALLBACK_FAILED_HTML, settle: { error: ISS_MISMATCH_MESSAGE } });
     const said = JSON.stringify(out);
     for (const leak of ['access_denied', 'Click', 'evil.example']) expect(said).not.toContain(leak);
   });
 
-  it('an error response from the right server keeps today\'s page (error code only)', () => {
+  it('an error response from the right server: the fixed failed page, the error code to xCLAUDE only', () => {
     const p = google();
     const out = callbackOutcome(cb(`error=access_denied&iss=${encodeURIComponent(GOOGLE_ISSUER)}`), (i) => p.checkResponseIss(i));
-    expect(out).toMatchObject({ status: 400, settle: { error: 'authorization callback error: access_denied' } });
+    expect(out).toEqual({
+      status: 400,
+      html: CALLBACK_FAILED_HTML,
+      settle: { error: 'authorization callback error: access_denied' },
+    });
   });
 
-  it('an error value is escaped in the page: <script> never reaches it as markup', () => {
+  it('an error value never reaches the page, as markup or as text', () => {
     const p = google();
     const payload = '<script>alert("x")</script>&\'';
     const out = callbackOutcome(
@@ -224,8 +228,8 @@ describe('RFC 9207 — iss on the authorization response', () => {
       (i) => p.checkResponseIss(i),
     );
     if (!('html' in out)) throw new Error('expected a page');
-    expect(out.html).not.toContain('<script>');
-    expect(out.html).toContain('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;&amp;&#39;');
+    expect(out.html).toBe(CALLBACK_FAILED_HTML);
+    expect(out.html).not.toContain('script');
     expect(escapeHtml('a&b')).toBe('a&amp;b');
   });
 
@@ -234,7 +238,7 @@ describe('RFC 9207 — iss on the authorization response', () => {
     (query) => {
       expect(cb(query)).toEqual({ kind: 'invalid', reason: 'repeated_parameter' });
       const out = callbackOutcome(cb(query), () => 'ok');
-      expect(out).toEqual({ status: 400, html: CALLBACK_REFUSED_HTML, settle: { error: REPEATED_PARAMETER_MESSAGE } });
+      expect(out).toEqual({ status: 400, html: CALLBACK_FAILED_HTML, settle: { error: REPEATED_PARAMETER_MESSAGE } });
     },
   );
 

@@ -28,6 +28,10 @@ export interface LoginTransport {
 }
 export interface CallbackHandle {
   waitForCode(): Promise<string>;
+  /** Answers the browser that delivered the code, once the exchange is over:
+   *  true → the complete page, false → the failed page. */
+  finish(ok: boolean): void;
+  /** Stops listening; a browser still waiting gets the failed page. */
   close(): void;
 }
 export interface RunLoginDeps {
@@ -69,14 +73,19 @@ export function interpretCallback(reqUrl: URL, callbackPath: string): CallbackRe
   return { kind: 'error', error: 'missing_code', ...withIss };
 }
 
-/** What the loopback listener answers and whether the login continues. */
+/** What the loopback listener answers and whether the login continues. A
+ *  code gets no page yet: the browser is answered after the exchange
+ *  (CallbackHandle.finish), so it never says "complete" for a login that then
+ *  fails. */
 export type CallbackOutcome =
   | { status: 404 }
-  | { status: 200 | 400; html: string; settle: { code: string } | { error: string } };
+  | { status: 200; settle: { code: string } }
+  | { status: 400; html: string; settle: { error: string } };
 
-/** Fixed words for every refused response: nothing the server or the URL sent
- *  (error, error_description, error_uri, iss) reaches the page or the error. */
-export const CALLBACK_REFUSED_HTML = '<html><body>xCLAUDE login failed. You can close this tab.</body></html>';
+/** The only two pages the browser ever sees. Fixed words: nothing the server
+ *  or the URL sent (error, error_description, error_uri, iss) reaches them. */
+export const CALLBACK_COMPLETE_HTML = '<html><body>xCLAUDE: login complete. You can close this tab.</body></html>';
+export const CALLBACK_FAILED_HTML = '<html><body>xCLAUDE: login failed. Return to xCLAUDE for details.</body></html>';
 export const ISS_MISMATCH_MESSAGE =
   'authorization response rejected: it does not come from the expected authorization server (RFC 9207)';
 export const ISS_MISSING_MESSAGE =
@@ -105,25 +114,19 @@ export function callbackOutcome(
 ): CallbackOutcome {
   if (result.kind === 'ignore') return { status: 404 };
   if (result.kind === 'invalid') {
-    return { status: 400, html: CALLBACK_REFUSED_HTML, settle: { error: REPEATED_PARAMETER_MESSAGE } };
+    return { status: 400, html: CALLBACK_FAILED_HTML, settle: { error: REPEATED_PARAMETER_MESSAGE } };
   }
   const verdict = checkIss(result.iss);
   if (verdict !== 'ok') {
     const message = verdict === 'mismatch' ? ISS_MISMATCH_MESSAGE : ISS_MISSING_MESSAGE;
-    return { status: 400, html: CALLBACK_REFUSED_HTML, settle: { error: message } };
+    return { status: 400, html: CALLBACK_FAILED_HTML, settle: { error: message } };
   }
   if (result.kind === 'error') {
-    return {
-      status: 400,
-      html: `<html><body>xCLAUDE login failed: ${escapeHtml(result.error)}. You can close this tab.</body></html>`,
-      settle: { error: `authorization callback error: ${result.error}` },
-    };
+    // The provider's error code goes to xCLAUDE (the login's error), never to
+    // the page.
+    return { status: 400, html: CALLBACK_FAILED_HTML, settle: { error: `authorization callback error: ${result.error}` } };
   }
-  return {
-    status: 200,
-    html: '<html><body>xCLAUDE: login complete. You can close this tab.</body></html>',
-    settle: { code: result.code },
-  };
+  return { status: 200, settle: { code: result.code } };
 }
 
 // Drives the initialize handshake and reports whether the SDK redirected to the
@@ -181,11 +184,32 @@ async function defaultDiscover(url: string): Promise<unknown> {
 
 // Real loopback listener on the fixed product redirect (127.0.0.1:51703/xcg-callback).
 // Awaits listen() so EADDRINUSE fails fast (as before).
-async function defaultStartCallback(provider: LoginOAuthProvider): Promise<CallbackHandle> {
-  const redirect = new URL(provider.redirectUrl);
-  const port = Number(redirect.port);
+function defaultStartCallback(provider: LoginOAuthProvider): Promise<CallbackHandle> {
+  return startCallbackListener(provider.redirectUrl, (iss) => provider.checkResponseIss(iss));
+}
+
+/** The loopback listener. A request carrying a code is held open until
+ *  finish() or close() answers it; every other outcome is answered at once.
+ *  Exported for tests (port 0 binds a free port, reported as `port`). */
+export async function startCallbackListener(
+  redirectUrl: string,
+  checkIss: (iss: string | undefined) => 'ok' | 'mismatch' | 'missing',
+): Promise<CallbackHandle & { port: number }> {
+  const redirect = new URL(redirectUrl);
   const callbackPath = redirect.pathname;
+  let port = Number(redirect.port);
   let timer: NodeJS.Timeout | undefined;
+  // Browsers waiting for the result of the exchange, and that result once known.
+  const waiting: http.ServerResponse[] = [];
+  let result: boolean | null = null;
+  const answer = (res: http.ServerResponse, ok: boolean): void => {
+    res.writeHead(ok ? 200 : 400, { 'content-type': 'text/html' }).end(ok ? CALLBACK_COMPLETE_HTML : CALLBACK_FAILED_HTML);
+  };
+  const finish = (ok: boolean): void => {
+    if (result !== null) return;
+    result = ok;
+    for (const res of waiting.splice(0)) answer(res, ok);
+  };
 
   let resolveCode!: (code: string) => void;
   let rejectCode!: (err: Error) => void;
@@ -196,14 +220,20 @@ async function defaultStartCallback(provider: LoginOAuthProvider): Promise<Callb
 
   const server = http.createServer((req, res) => {
     const reqUrl = new URL(req.url ?? '/', `http://127.0.0.1:${port}`);
-    const outcome = callbackOutcome(interpretCallback(reqUrl, callbackPath), (iss) => provider.checkResponseIss(iss));
+    const outcome = callbackOutcome(interpretCallback(reqUrl, callbackPath), checkIss);
     if (outcome.status === 404) {
       res.writeHead(404).end();
       return;
     }
-    res.writeHead(outcome.status, { 'content-type': 'text/html' }).end(outcome.html);
-    if ('code' in outcome.settle) resolveCode(outcome.settle.code);
-    else rejectCode(new Error(outcome.settle.error));
+    if (outcome.status === 400) {
+      res.writeHead(400, { 'content-type': 'text/html' }).end(outcome.html);
+      rejectCode(new Error(outcome.settle.error));
+      return;
+    }
+    // A code: the page waits for the exchange.
+    if (result !== null) answer(res, result);
+    else waiting.push(res);
+    resolveCode(outcome.settle.code);
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -221,8 +251,12 @@ async function defaultStartCallback(provider: LoginOAuthProvider): Promise<Callb
     });
     server.listen(port, '127.0.0.1', resolve);
   });
+  const address = server.address();
+  if (address !== null && typeof address === 'object') port = address.port;
 
   return {
+    port,
+    finish,
     waitForCode: () =>
       Promise.race([
         codePromise,
@@ -235,6 +269,7 @@ async function defaultStartCallback(provider: LoginOAuthProvider): Promise<Callb
       ]),
     close: () => {
       if (timer) clearTimeout(timer);
+      finish(false);
       server.close();
     },
   };
@@ -269,6 +304,17 @@ export async function runLogin({ url, name, scope }: LoginArgs, deps: RunLoginDe
       );
     }
   };
+  // The browser's code → tokens → the page. finishAuth writes nothing: the
+  // client and tokens it produced are written by persistAuthorization(), and
+  // only then does the browser read "complete". Any failure on the way leaves
+  // the browser to callback.close() in the finally below: "failed".
+  const exchangeCode = async (): Promise<void> => {
+    const code = await callback.waitForCode();
+    await transport.finishAuth(code);
+    await provider.persistAuthorization();
+    callback.finish(true);
+    recordIfAuthorized();
+  };
   try {
     await transport.start();
 
@@ -299,9 +345,7 @@ export async function runLogin({ url, name, scope }: LoginArgs, deps: RunLoginDe
       // error, never a false success.
       const result = await authFn(provider, { serverUrl: url, scope, fetchFn: refreshFetch });
       if (result === 'REDIRECT') {
-        const code = await callback.waitForCode();
-        await transport.finishAuth(code);
-        recordIfAuthorized();
+        await exchangeCode();
         process.stderr.write(
           `xcg-proxy login: authorized "${name}" with scope "${scope}"; token stored in Keychain\n`,
         );
@@ -330,9 +374,7 @@ export async function runLogin({ url, name, scope }: LoginArgs, deps: RunLoginDe
 
     if (redirected) {
       // 401 path: the SDK already opened the browser during send(); wait for the code.
-      const code = await callback.waitForCode();
-      await transport.finishAuth(code);
-      recordIfAuthorized();
+      await exchangeCode();
       process.stderr.write(`xcg-proxy login: authorized "${name}"; token stored in Keychain\n`);
       return;
     }
@@ -357,9 +399,7 @@ export async function runLogin({ url, name, scope }: LoginArgs, deps: RunLoginDe
     // surface as a login error, never a false success.
     const result = await authFn(provider, { serverUrl: url, scope, fetchFn: refreshFetch });
     if (result === 'REDIRECT') {
-      const code = await callback.waitForCode();
-      await transport.finishAuth(code);
-      recordIfAuthorized();
+      await exchangeCode();
       process.stderr.write(`xcg-proxy login: authorized "${name}" (deferred auth); token stored in Keychain\n`);
     } else {
       process.stderr.write(`xcg-proxy login: authorized "${name}" via stored/refreshed credentials\n`);

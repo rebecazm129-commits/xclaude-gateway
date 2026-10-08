@@ -162,7 +162,7 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
   private issuerMismatchNoted = false;
 
   constructor(
-    private readonly mcp: string,
+    protected readonly mcp: string,
     private readonly onEvent?: (e: TokenEvent) => void,
   ) {}
 
@@ -229,7 +229,40 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
     };
   }
 
+  // Early guard. The wrapper is a NON-INTERACTIVE OAuth consumer: it can use a
+  // token or refresh one, never start an authorization. discoveryState() is the
+  // first thing the SDK's auth() asks the provider — before discovery, client
+  // registration, PKCE or any Keychain write — so with neither a usable access
+  // token nor a refresh token the wrapper stops here. Returning undefined keeps
+  // today's behavior otherwise (no cached discovery: auth() rediscovers).
+  // The 08/10 stripe incident: five wrappers started without a token during a
+  // Reconnect, each ran auth() to the end and overwrote the login's verifier.
+  async discoveryState(): Promise<OAuthDiscoveryState | undefined> {
+    const stored = await this.tokens();
+    if (stored?.refresh_token === undefined && !accessTokenUsable(stored, Date.now())) {
+      throw new ReauthRequiredError(this.mcp);
+    }
+    return undefined;
+  }
+
+  // Invariant: the wrapper never creates or overwrites :client; it only deletes
+  // it if the server rejects it (invalid_client / unauthorized_client, via the
+  // SDK's invalidateCredentials('all')). Only the login registers (DCR) and
+  // persists a client. No stored client, or
+  // one bound to another authorization server, would make the SDK register a
+  // new one — the wrapper refuses instead (saveDiscoveryState runs before this
+  // in every auth(), so the discovered issuer is known here).
   async clientInformation(): Promise<OAuthClientInformationFull | undefined> {
+    const stored = await this.readStoredClient();
+    if (stored === undefined) throw new ReauthRequiredError(this.mcp);
+    const bound = (stored as { issuer?: unknown }).issuer;
+    if (typeof bound === 'string' && this.discoveredIssuer !== null && !issuersMatch(bound, this.discoveredIssuer)) {
+      throw new ReauthRequiredError(this.mcp);
+    }
+    return stored;
+  }
+
+  protected async readStoredClient(): Promise<OAuthClientInformationFull | undefined> {
     const raw = await keychainGet(this.acct('client'));
     if (raw == null) return undefined;
     try {
@@ -244,7 +277,15 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
     }
   }
 
-  async saveClientInformation(info: OAuthClientInformationFull): Promise<void> {
+  // Never called with the guards above: clientInformation() refuses before the
+  // SDK would register. The one remaining call is the SDK stamping an unbound
+  // client with its issuer after a refresh (bindClientInformation), which it
+  // wraps in try/catch — the client then stays unbound and is used as stored.
+  async saveClientInformation(_info: OAuthClientInformationFull): Promise<void> {
+    throw new ReauthRequiredError(this.mcp);
+  }
+
+  protected async writeClient(info: OAuthClientInformationFull): Promise<void> {
     await keychainSet(this.acct('client'), JSON.stringify(info));
   }
 
@@ -300,14 +341,15 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
     return { ...tokens, obtained_at: carried ?? Date.now() };
   }
 
-  async saveCodeVerifier(verifier: string): Promise<void> {
-    await keychainSet(this.acct('verifier'), verifier);
+  // The wrapper never stores a PKCE verifier: it cannot complete an
+  // authorization, and a verifier written here would overwrite the one a login
+  // in progress depends on. The login keeps its own in memory (below).
+  async saveCodeVerifier(_verifier: string): Promise<void> {
+    throw new ReauthRequiredError(this.mcp);
   }
 
   async codeVerifier(): Promise<string> {
-    const raw = await keychainGet(this.acct('verifier'));
-    if (raw == null) throw new Error(`no PKCE code verifier stored for "${this.mcp}"`);
-    return raw;
+    throw new ReauthRequiredError(this.mcp);
   }
 
   redirectToAuthorization(_authorizationUrl: URL): void {
@@ -359,14 +401,17 @@ export class KeychainOAuthProvider implements OAuthClientProvider {
       this.tokensCache = { v: undefined };
       this.emitEvent({ event: 'invalidated', scope });
     }
+    // The verifier no longer lives in the Keychain (the login keeps it in
+    // memory), so no scope deletes it here.
     if (scope === 'all' || scope === 'client') await keychainDelete(this.acct('client'));
-    if (scope === 'all' || scope === 'verifier') await keychainDelete(this.acct('verifier'));
   }
 }
 
 // Provider para el login interactivo: abre el navegador en vez de rechazar. El
 // listener loopback (login.ts) captura el callback. Hereda redirectUrl/clientMetadata
-// (el placeholder 51703 ES la URI de loopback real) y todo el almacenamiento Keychain.
+// (el placeholder 51703 ES la URI de loopback real) y el almacenamiento Keychain de
+// los tokens; el verifier, el cliente nuevo y los tokens del canje viven en memoria
+// hasta persistAuthorization().
 //
 // It also captures what proxy.oauth_authorized records (oauth-authorized.ts), in
 // memory and reduced on the spot: two query parameters of the authorization
@@ -382,6 +427,66 @@ export class LoginOAuthProvider extends KeychainOAuthProvider {
   // RFC 9207: what the callback's `iss` is checked against — the metadata's
   // `issuer` as published (raw), and whether the server promised to send it.
   private responseIss: { issuer: string | null; required: boolean } | null = null;
+  // PKCE verifier of THIS login, in memory only: no other process can overwrite
+  // it between the redirect and the code exchange.
+  private verifier: string | null = null;
+  // A client registered (DCR) or stamped in this login, and the tokens of the
+  // code exchange: held here and written to the Keychain only by
+  // persistAuthorization(), after finishAuth succeeded. The stored client is
+  // read once and kept, so a wrapper deleting it mid-login cannot pull it from
+  // under the exchange.
+  private pendingClient: OAuthClientInformationFull | null = null;
+  private storedClient: { v: OAuthClientInformationFull | undefined } | null = null;
+  private pendingTokens: OAuthTokens | null = null;
+
+  // The login IS the interactive flow: no early guard, full discovery as before.
+  async discoveryState(): Promise<OAuthDiscoveryState | undefined> {
+    return undefined;
+  }
+
+  async clientInformation(): Promise<OAuthClientInformationFull | undefined> {
+    if (this.pendingClient !== null) return this.pendingClient;
+    if (this.storedClient === null) this.storedClient = { v: await this.readStoredClient() };
+    return this.storedClient.v;
+  }
+
+  async saveClientInformation(info: OAuthClientInformationFull): Promise<void> {
+    this.pendingClient = info;
+  }
+
+  async saveCodeVerifier(verifier: string): Promise<void> {
+    this.verifier = verifier;
+  }
+
+  async codeVerifier(): Promise<string> {
+    if (this.verifier === null) throw new Error(`no PKCE code verifier in this login for "${this.mcp}"`);
+    return this.verifier;
+  }
+
+  async invalidateCredentials(scope: 'all' | 'client' | 'tokens' | 'verifier' | 'discovery'): Promise<void> {
+    if (scope === 'all' || scope === 'client') {
+      this.pendingClient = null;
+      this.storedClient = null;
+    }
+    if (scope === 'all' || scope === 'verifier') this.verifier = null;
+    if (scope === 'all' || scope === 'tokens') this.pendingTokens = null;
+    await super.invalidateCredentials(scope);
+  }
+
+  /** Writes what the code exchange produced: the client first, then the tokens
+   *  bound to it. Called by runLogin only after finishAuth succeeded. */
+  async persistAuthorization(): Promise<void> {
+    if (this.pendingClient !== null) {
+      await this.writeClient(this.pendingClient);
+      this.storedClient = { v: this.pendingClient };
+      this.pendingClient = null;
+    }
+    if (this.pendingTokens !== null) {
+      const tokens = this.pendingTokens;
+      this.pendingTokens = null;
+      await super.saveTokens(tokens);
+    }
+  }
 
   // Keeps the base's issuer record, then REFUSES a metadata document that
   // does not identify its own server (RFC 8414 §3.3): auth() awaits this, so
@@ -403,11 +508,16 @@ export class LoginOAuthProvider extends KeychainOAuthProvider {
     };
   }
 
+  // A code exchange (a redirect happened in this login) is held for
+  // persistAuthorization(). A refresh on the stored-credentials path, with no
+  // redirect, is written as before.
   async saveTokens(tokens: OAuthTokens): Promise<void> {
-    await super.saveTokens(tokens);
-    if (this.redirected !== null) {
-      this.exchanged = { grantedScopes: typeof tokens.scope === 'string' ? tokens.scope.split(/\s+/).filter(Boolean) : null };
+    if (this.redirected === null) {
+      await super.saveTokens(tokens);
+      return;
     }
+    this.pendingTokens = tokens;
+    this.exchanged = { grantedScopes: typeof tokens.scope === 'string' ? tokens.scope.split(/\s+/).filter(Boolean) : null };
   }
 
   /**

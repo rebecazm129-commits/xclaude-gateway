@@ -470,9 +470,8 @@ export function SettingsDrawer({ status, onRefresh, onClose }: SettingsDrawerPro
         </p>
         <p className={styles['about']}>
           xCLAUDE Gateway audits the tool calls Claude Desktop and Claude Code
-          make through your sources, classified by risk across 6 risk categories
-          and 4 severity levels. Everything is audited locally — no account, no
-          telemetry.
+          make through your sources and classifies them by risk and severity.
+          Everything is audited locally — no account, no telemetry.
         </p>
         <p className={styles['about']}>
           xCLAUDE Gateway is an independent, open-source project, not affiliated

@@ -203,6 +203,11 @@ describe('SDK auth() with bound credentials', () => {
     await expect(auth(provider, { serverUrl: MCP_URL, fetchFn })).resolves.toBe('REDIRECT');
     expect(net.calls.some((c) => c.grant === 'refresh_token')).toBe(false);
     expect(net.calls.filter((c) => c.url === `${AS}/register`)).toHaveLength(1);
+    // The new client is held by the login until the exchange succeeds: the
+    // Keychain still has the old one, and persistAuthorization() writes it.
+    expect(storedClient()).toMatchObject({ client_id: 'client-old', issuer: AS_OTHER });
+    expect(await provider.clientInformation()).toMatchObject({ client_id: 'client-new', issuer: AS });
+    await provider.persistAuthorization();
     expect(storedClient()).toMatchObject({ client_id: 'client-new', issuer: AS });
   });
 
@@ -217,7 +222,7 @@ describe('SDK auth() with bound credentials', () => {
     expect(provider.currentIssuer()).toBe(AS);
   });
 
-  it('tokens and client saved before binding: refreshed, then both rewritten with the issuer', async () => {
+  it('tokens and client saved before binding: refreshed; tokens rewritten with the issuer, the client left as stored (the wrapper never writes it)', async () => {
     seedBoundTo(undefined);
     const net = network({ access_token: 'ATn', refresh_token: 'RTn', token_type: 'bearer', issuer: 'https://evil.example' });
     const { provider } = process_(null);
@@ -225,7 +230,7 @@ describe('SDK auth() with bound credentials', () => {
     await expect(auth(provider, { serverUrl: MCP_URL, fetchFn })).resolves.toBe('AUTHORIZED');
     expect(net.calls.filter((c) => c.grant === 'refresh_token')).toHaveLength(1);
     expect(storedTokens()).toMatchObject({ refresh_token: 'RTn', issuer: AS });
-    expect(storedClient()).toMatchObject({ client_id: 'client-old', issuer: AS });
+    expect(storedClient()).toEqual({ client_id: 'client-old', redirect_uris: ['http://127.0.0.1:51703/xcg-callback'] });
     expect([...mocks.store.values()].join('')).not.toContain('evil.example');
   });
 });

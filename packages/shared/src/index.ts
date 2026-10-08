@@ -19,28 +19,17 @@ import type { RuleId } from './connector-change.js';
 
 export type Severity = 'low' | 'medium' | 'high' | 'critical';
 
-// CANONICAL COUNT (product copy depends on it): 7 categories = 6 RISK
-// categories (credential_detected, prompt_injection, email_send_warning,
-// data_export_warning, pii_detected, pii_structured) + tool_call_allowed, the
-// non-risk BASELINE emitted when nothing matches.
+// Product copy states NO category count: the Settings drawer About says the
+// tool calls are classified "by risk and severity". tool_call_allowed is not
+// a risk category: it is the non-risk BASELINE emitted when nothing matches.
 //
-// Everywhere the product states a count, the formulation is "6 risk
-// categories, 4 severity levels" — tool_call_allowed is not a risk category.
-// It was SEVEN until 24/09, when tool_manifest_changed stopped being a
-// category of tool-call detection and became its own kind of event: a
-// connector_change, with facts in changes[] and rule verdicts in findings[].
-// The member stays in this union so four months of trail lines keep parsing;
-// nothing emits it any more.
+// tool_manifest_changed stopped being a category of tool-call detection on
+// 24/09 and became its own kind of event: a connector_change, with facts in
+// changes[] and rule verdicts in findings[]. The member stays in this union so
+// four months of trail lines keep parsing; nothing emits it any more.
 //
-// If you add or remove a member here, update every copy that states a count
-// (Settings drawer About, README, release notes, the website).
-//
-// PENDING: protocol_tripwire (the shape of a JSON-RPC exchange, not its
-// content) and audit_trail_modification (a Claude Code tool call that writes
-// to or deletes xCLAUDE's own data folder) were added after the count above
-// was written. Whether they are "risk categories" — and so what the public
-// count becomes — is an open product decision; the copy has NOT been changed
-// yet.
+// If any copy (README, release notes, the website) states a count, check it
+// when you add or remove a member here.
 export type Category =
   | 'credential_detected'
   | 'prompt_injection'

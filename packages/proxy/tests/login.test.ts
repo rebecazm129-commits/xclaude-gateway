@@ -71,7 +71,7 @@ function makeDeps(over: Record<string, unknown> = {}) {
     finishAuth: vi.fn().mockResolvedValue(undefined),
     close: vi.fn().mockResolvedValue(undefined),
   };
-  const callback = { waitForCode: vi.fn().mockResolvedValue('test-code'), close: vi.fn() };
+  const callback = { waitForCode: vi.fn().mockResolvedValue('test-code'), finish: vi.fn(), close: vi.fn() };
   const authFn = vi.fn();
   const hasStored = vi.fn();
   const discoverFn = vi.fn().mockResolvedValue({}); // metadata present
@@ -198,7 +198,7 @@ describe('runLogin — no explicit scope ⇒ existing flow (unchanged)', () => {
       finishAuth: vi.fn().mockResolvedValue(undefined),
       close: vi.fn().mockResolvedValue(undefined),
     };
-    const callback = { waitForCode: vi.fn().mockResolvedValue('test-code'), close: vi.fn() };
+    const callback = { waitForCode: vi.fn().mockResolvedValue('test-code'), finish: vi.fn(), close: vi.fn() };
     const authFn = vi.fn();
     const deps = {
       authFn, hasStored: vi.fn(), discoverFn: vi.fn().mockResolvedValue({}),

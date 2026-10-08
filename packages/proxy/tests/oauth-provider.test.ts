@@ -80,24 +80,36 @@ describe('KeychainOAuthProvider', () => {
       expect(typeof got?.obtained_at).toBe('number');
     });
 
-    it('clientInformation persisted under "<mcp>:client"', async () => {
-      const p = new KeychainOAuthProvider('notion');
+    it('wrapper reads the client stored under "<mcp>:client"', async () => {
       const info: OAuthClientInformationFull = {
         client_id: 'cid-123',
         redirect_uris: ['http://127.0.0.1:51703/xcg-callback'],
       };
-      await p.saveClientInformation(info);
-      expect(mocks.store.has('notion:client')).toBe(true);
-      const got = await p.clientInformation();
-      expect(got).toEqual(info);
+      mocks.store.set('notion:client', JSON.stringify(info));
+      const p = new KeychainOAuthProvider('notion');
+      expect(await p.clientInformation()).toEqual(info);
     });
 
-    it('codeVerifier persisted under "<mcp>:verifier"', async () => {
+    it('wrapper never writes the client: saveClientInformation refuses, Keychain untouched', async () => {
       const p = new KeychainOAuthProvider('notion');
+      await expect(p.saveClientInformation({ client_id: 'cid', redirect_uris: ['http://x'] })).rejects.toBeInstanceOf(
+        ReauthRequiredError,
+      );
+      expect(mocks.store.has('notion:client')).toBe(false);
+    });
+
+    it('wrapper never stores a PKCE verifier: save and read both refuse, Keychain untouched', async () => {
+      const p = new KeychainOAuthProvider('notion');
+      await expect(p.saveCodeVerifier('pkce-verifier-string')).rejects.toBeInstanceOf(ReauthRequiredError);
+      await expect(p.codeVerifier()).rejects.toBeInstanceOf(ReauthRequiredError);
+      expect(mocks.store.has('notion:verifier')).toBe(false);
+    });
+
+    it('login keeps its verifier in memory only', async () => {
+      const p = new LoginOAuthProvider('notion');
       await p.saveCodeVerifier('pkce-verifier-string');
-      expect(mocks.store.has('notion:verifier')).toBe(true);
-      const got = await p.codeVerifier();
-      expect(got).toBe('pkce-verifier-string');
+      expect(await p.codeVerifier()).toBe('pkce-verifier-string');
+      expect(mocks.store.has('notion:verifier')).toBe(false);
     });
 
     it('namespacing isolates two providers with different mcp names', async () => {
@@ -118,14 +130,19 @@ describe('KeychainOAuthProvider', () => {
       expect(await p.tokens()).toBeUndefined();
     });
 
-    it('clientInformation() returns undefined when account does not exist', async () => {
+    it('wrapper clientInformation() with no stored client → ReauthRequiredError (it never registers one)', async () => {
       const p = new KeychainOAuthProvider('notion');
+      await expect(p.clientInformation()).rejects.toBeInstanceOf(ReauthRequiredError);
+    });
+
+    it('login clientInformation() returns undefined when account does not exist (it may register)', async () => {
+      const p = new LoginOAuthProvider('notion');
       expect(await p.clientInformation()).toBeUndefined();
     });
 
-    it('codeVerifier() throws when no verifier stored', async () => {
-      const p = new KeychainOAuthProvider('notion');
-      await expect(p.codeVerifier()).rejects.toThrow(/no PKCE code verifier stored/);
+    it('login codeVerifier() throws when this login stored none', async () => {
+      const p = new LoginOAuthProvider('notion');
+      await expect(p.codeVerifier()).rejects.toThrow(/no PKCE code verifier in this login/);
     });
   });
 
@@ -144,19 +161,21 @@ describe('KeychainOAuthProvider', () => {
   });
 
   describe('invalidateCredentials', () => {
+    // The client and a legacy verifier are seeded directly: the wrapper never
+    // writes either (a :verifier left by an earlier version stays untouched).
     async function seedAll(p: KeychainOAuthProvider): Promise<void> {
       await p.saveTokens({ access_token: 'x', token_type: 'Bearer' });
-      await p.saveClientInformation({ client_id: 'cid', redirect_uris: ['http://x'] });
-      await p.saveCodeVerifier('v');
+      mocks.store.set('notion:client', JSON.stringify({ client_id: 'cid', redirect_uris: ['http://x'] }));
+      mocks.store.set('notion:verifier', 'v');
     }
 
-    it("'all' deletes the 3 accounts", async () => {
+    it("'all' deletes tokens and client, never the verifier", async () => {
       const p = new KeychainOAuthProvider('notion');
       await seedAll(p);
       await p.invalidateCredentials('all');
       expect(mocks.store.has('notion:tokens')).toBe(false);
       expect(mocks.store.has('notion:client')).toBe(false);
-      expect(mocks.store.has('notion:verifier')).toBe(false);
+      expect(mocks.store.has('notion:verifier')).toBe(true);
     });
 
     it("'tokens' deletes only tokens (outside the recent-refresh window)", async () => {
@@ -192,13 +211,13 @@ describe('KeychainOAuthProvider', () => {
       expect(mocks.store.has('notion:verifier')).toBe(true);
     });
 
-    it("'verifier' deletes only verifier", async () => {
+    it("'verifier' deletes nothing from the Keychain (the verifier lives in the login's memory)", async () => {
       const p = new KeychainOAuthProvider('notion');
       await seedAll(p);
       await p.invalidateCredentials('verifier');
       expect(mocks.store.has('notion:tokens')).toBe(true);
       expect(mocks.store.has('notion:client')).toBe(true);
-      expect(mocks.store.has('notion:verifier')).toBe(false);
+      expect(mocks.store.has('notion:verifier')).toBe(true);
     });
 
     it("'discovery' deletes nothing", async () => {
@@ -460,13 +479,14 @@ describe('KeychainOAuthProvider', () => {
       expect(events).toEqual([{ event: 'corrupt_blob', scope: 'tokens' }]);
     });
 
-    it('corrupt client blob: undefined + corrupt_blob event, does not throw', async () => {
+    it('corrupt client blob: corrupt_blob event; the wrapper refuses (ReauthRequiredError), the login reads it as absent', async () => {
       mocks.store.set('notion:client', '{truncated');
       const events: TokenEvent[] = [];
       const p = new KeychainOAuthProvider('notion', (e) => events.push(e));
 
-      await expect(p.clientInformation()).resolves.toBeUndefined();
+      await expect(p.clientInformation()).rejects.toBeInstanceOf(ReauthRequiredError);
       expect(events).toEqual([{ event: 'corrupt_blob', scope: 'client' }]);
+      await expect(new LoginOAuthProvider('notion').clientInformation()).resolves.toBeUndefined();
     });
 
     it('valid blobs untouched: parse works and no corrupt_blob event is emitted', async () => {
@@ -494,7 +514,7 @@ describe('KeychainOAuthProvider', () => {
       expect(call.args).toEqual([url.toString()]);
     });
 
-    it('inherits the Keychain backing: saveTokens persists under "<mcp>:tokens"', async () => {
+    it('outside a code exchange (no redirect: the stored/refreshed path) saveTokens persists under "<mcp>:tokens"', async () => {
       const p = new LoginOAuthProvider('linear');
       await p.saveTokens({ access_token: 'xx', token_type: 'Bearer' });
       expect(mocks.store.has('linear:tokens')).toBe(true);

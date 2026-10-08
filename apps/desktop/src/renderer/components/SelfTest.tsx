@@ -1,7 +1,8 @@
 import { useState, type ReactElement } from 'react';
 
-import type { SelfTestReport } from '@xcg/shared';
+import type { Category, SelfTestReport, Severity } from '@xcg/shared';
 
+import { displaySeverity } from './detections-format.js';
 import styles from './SelfTest.module.css';
 
 type BannerTone = 'success' | 'error';
@@ -30,6 +31,13 @@ function bannerFor(report: SelfTestReport): { tone: BannerTone; text: string } {
   }
 }
 
+// Severity as the rest of the app shows it: NONE for tool_call_allowed (the
+// trail, and the check itself, keep the engine's `low`), upper case like the
+// badges.
+function shownSeverity(category: Category, severity: Severity): string {
+  return displaySeverity({ category, severity }).toUpperCase();
+}
+
 function SelfTestResult({ report }: { report: SelfTestReport }): ReactElement {
   const banner = bannerFor(report);
   return (
@@ -49,8 +57,8 @@ function SelfTestResult({ report }: { report: SelfTestReport }): ReactElement {
                 {entry.actual === null
                   ? 'not observed'
                   : entry.pass
-                    ? `${entry.actual.category} / ${entry.actual.severity}`
-                    : `got ${entry.actual.category} / ${entry.actual.severity}, expected ${entry.example.categoryKey} / ${entry.example.expectedSeverity}`}
+                    ? `${entry.actual.category} / ${shownSeverity(entry.actual.category, entry.actual.severity)}`
+                    : `got ${entry.actual.category} / ${shownSeverity(entry.actual.category, entry.actual.severity)}, expected ${entry.example.categoryKey} / ${shownSeverity(entry.example.categoryKey, entry.example.expectedSeverity)}`}
               </span>
             </li>
           ))}
