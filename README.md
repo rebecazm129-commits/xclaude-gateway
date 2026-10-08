@@ -89,10 +89,10 @@ The **Detections** tab lists every recorded tool call. **Claude Code** shows the
 | --- | --- | --- |
 | `credential_detected` | CRITICAL | Known formats of API keys and tokens. |
 | `prompt_injection` | CRITICAL | Instruction-override, role-override, system-prompt-extraction, and jailbreak phrasing. |
-| `email_send_warning` | HIGH / MEDIUM | Requests to send email, and send (HIGH) or draft (MEDIUM) email tools. |
+| `email_send_warning` | HIGH / MEDIUM | Requests to send email, in tool arguments or results, and send (HIGH) or draft (MEDIUM) email tools. |
 | `audit_trail_modification` | HIGH | A Claude Code tool call that writes to or deletes xCLAUDE's own data folder. |
 | `protocol_tripwire` | HIGH / MEDIUM / LOW | A server sending the client a request other than ping or roots, an unknown method or protocol version, or an `input_required` response. |
-| `data_export_warning` | MEDIUM | Requests to export data. |
+| `data_export_warning` | MEDIUM | Requests to export data; in tool results, only when they name an explicit destination. |
 | `pii_structured` | MEDIUM | Well-formed PII shapes, checksum-confirmed where the format has a checksum. |
 | `pii_detected` | LOW | People, organizations, and locations found by the on-device NER model. |
 | `tool_call_allowed` | NONE | Normal activity: a call that matched none of the above. |
@@ -144,7 +144,7 @@ xCLAUDE is a complement to the safety behavior of your MCP client, not a replace
 - **Detections sit on top of the audit trail; the underlying record remains available for later review.**
 - **Claude Code tool calls are recorded after they complete.** A call that never finishes may leave no event. Elicitations and session starts and ends are recorded when they happen.
 - **Tool catalog review covers specific patterns.** It does not catch a reference to a specific tool of another server, poisoning with no instruction-shaped wording, or an instruction split across several tools or fields.
-- **Text patterns are English only.** Injection, email, data-export, and tool catalog phrasing is matched in English.
+- **Some text patterns are English only.** Injection and tool catalog phrasing is matched in English; email and data-export phrasing is matched in English and Spanish.
 - **Claude Desktop's native Connectors cannot be audited.** Their traffic goes through Anthropic's servers and never reaches your machine. Connect the same service *through* xCLAUDE instead.
 - **Durability is not transactional.** Writes are append-only but not fsynced per line.
 - **Out of scope today:** Cowork, direct Anthropic API use, the content of Skills (their tool calls are captured), and Claude's built-in tools such as web search or code execution.

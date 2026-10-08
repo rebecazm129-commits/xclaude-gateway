@@ -11,12 +11,12 @@ Every recorded tool call is classified. A call that matches no detector is recor
 | `email_send_warning` | HIGH / MEDIUM | Imperative requests to send email in tool text, and send-semantics tool calls (see below). | Both |
 | `audit_trail_modification` | HIGH | A Claude Code tool call that writes to or deletes xCLAUDE's own data folder (see [claude-code.md](claude-code.md#the-claude-code-view)). | Claude Code |
 | `protocol_tripwire` | HIGH / MEDIUM / LOW | The shape of a JSON-RPC exchange rather than its content (see below). | Proxy; in Claude Code, elicitation only |
-| `data_export_warning` | MEDIUM | Imperative requests to export data. | Both |
+| `data_export_warning` | MEDIUM | Imperative requests to export data; in results, only with an explicit destination (see below). | Both |
 | `pii_structured` | MEDIUM | Well-formed PII shapes, checksum-confirmed where the format has a checksum; digit-only formats also require a nearby context keyword (see below). | Both |
 | `pii_detected` | LOW | Named-entity PII — people, organizations, locations — found by the on-device NER model. Async enrichment; runs on requests only. | Proxy |
 | `tool_call_allowed` | NONE | Normal activity: emitted for every call that matches none of the above. Counted in no severity total. | Both |
 
-**Both directions.** The five text detectors (`credential_detected`, `prompt_injection`, `email_send_warning`, `data_export_warning`, `pii_structured`) scan tool-call results as well as outgoing arguments — a secret, an injected instruction or a checksum-valid identifier arriving in a server's response is classified too. Named-entity PII runs on requests only.
+**Both directions.** The five text detectors (`credential_detected`, `prompt_injection`, `email_send_warning`, `data_export_warning`, `pii_structured`) scan tool-call results as well as outgoing arguments — a secret, an injected instruction or a checksum-valid identifier arriving in a server's response is classified too. In results, `email_send_warning` applies its text patterns only (a result has no tool name), and `data_export_warning` fires only when the text names an explicit destination: a URL, email address, IP, host, or absolute or home path. Named-entity PII runs on requests only.
 
 **`email_send_warning` branches.** An AI-executed send (`send`/`reply`/`forward` tools) flags at HIGH — an action that deserves human attention regardless of intent; an AI-composed draft (`draft`/`compose` tools) flags at MEDIUM, since a draft is content one click away from sent.
 
