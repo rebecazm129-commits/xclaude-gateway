@@ -107,6 +107,14 @@ The audit log otherwise contains whatever crossed the wire. This can include:
 
 Treat the `wrappers/` directory, and any trail you export, as sensitive.
 
+## Config backups
+
+The first time xCLAUDE writes `~/Library/Application Support/Claude/claude_desktop_config.json`, it saves a literal copy of the original next to it as `claude_desktop_config.json.bak`. The copy includes each server's `env`, so it can contain secrets. It is created once and never updated: if you rotate a key, the old value stays in the backup. You can delete it by hand when you no longer need it; the next time xCLAUDE writes the config, it creates a new one from the config as it is then.
+
+Before each change it makes to Claude Code's `~/.claude/settings.json` (installing, updating, or removing its hook), xCLAUDE copies the file's exact contents to `~/Library/Application Support/xCLAUDE Gateway/backups/claude-settings/`, readable only by your user account, and keeps the newest three. The settings file can contain an `env` block, so the copies can contain secrets: a rotated key stays in them until three newer copies replace them. You can delete them by hand; the next change creates a new one.
+
+Versions 1.0.0-beta.4 to 1.0.0-beta.6 instead saved a one-time literal copy as `~/.claude/settings.json.bak`. Later versions neither use nor remove it. It can contain the same secrets, and you can delete it by hand.
+
 ## OAuth sign-ins
 
 OAuth tokens for remote connectors are stored in the macOS Keychain, not in xCLAUDE's data folder.
